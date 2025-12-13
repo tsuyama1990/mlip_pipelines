@@ -1,0 +1,4 @@
+# file: /app/src/core/calculators/mace_factory.py
+# hypothesis_version: 6.148.7
+
+['large', 'medium', 'small']

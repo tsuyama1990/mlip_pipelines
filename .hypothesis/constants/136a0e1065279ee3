@@ -1,0 +1,4 @@
+# file: /app/src/external/mlip_struc_gen/src/nnp_gen/generators/alloy.py
+# hypothesis_version: 6.148.7
+
+[0.0, 1.0, 225, 229, 'Cu', 'Fe', 'alloy_bulk', 'alloy_surface', 'balanced', 'bcc', 'config_source', 'fcc', 'range', 'target_composition']

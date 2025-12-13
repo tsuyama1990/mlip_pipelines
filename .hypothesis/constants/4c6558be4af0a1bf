@@ -1,0 +1,4 @@
+# file: /app/src/config/settings.py
+# hypothesis_version: 6.148.7
+
+[0.0, 0.01, 200, '.env', 'Default data type', 'Device to run on', 'Generator type', 'LBFGS', 'Si', '__', 'alloy', 'before', 'cpu', 'cuda', 'cuda:', 'data/output', 'device', 'elements', 'float32', 'float64', 'medium', 'target_element']

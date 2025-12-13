@@ -53,5 +53,6 @@ class Settings(BaseSettings):
     relax: RelaxationSettings = Field(default_factory=RelaxationSettings)
     generator: GeneratorSettings = Field(default_factory=GeneratorSettings)
     output_dir: Path = Field(Path("data/output"), description="Base output directory")
+    random_seed: int = Field(42, description="Global random seed for reproducibility")
 
     model_config = SettingsConfigDict(env_file=".env", env_nested_delimiter="__")

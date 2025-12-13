@@ -1,0 +1,4 @@
+# file: /app/src/external/mlip_struc_gen/src/nnp_gen/generators/factory.py
+# hypothesis_version: 6.148.7
+
+['alloy', 'covalent', 'designated', 'from_files', 'interface', 'ionic', 'knowledge', 'mixed', 'molecule', 'random', 'solvent_adsorbate', 'vacuum_adsorbate']

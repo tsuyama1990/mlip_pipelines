@@ -1,7 +1,9 @@
 import sys
+from typing import List, Optional
 from pathlib import Path
 from loguru import logger
 from ase import Atoms
+from ase.data import atomic_numbers
 import omegaconf
 
 # Add external repo to sys.path
@@ -18,16 +20,23 @@ from src.config.settings import GeneratorSettings
 try:
     from nnp_gen.generators.factory import GeneratorFactory
     from nnp_gen.core.config import AlloySystemConfig, PhysicsConstraints
+    from nnp_gen.core.interfaces import BaseGenerator
 except ImportError as e:
     logger.critical(f"Failed to import from external repository: {e}")
     raise
 
+def validate_elements(elements: List[str]) -> None:
+    for elem in elements:
+        if elem not in atomic_numbers:
+            raise ValueError(f"Invalid element: {elem}")
+
 class ExternalGeneratorAdapter:
-    def __init__(self, settings: GeneratorSettings):
+    def __init__(self, settings: GeneratorSettings, seed: int = 42):
         self.settings = settings
+        self.seed = seed
         self.generator = self._initialize_generator()
 
-    def _initialize_generator(self):
+    def _initialize_generator(self) -> BaseGenerator:
         """
         Initialize the external generator.
         """
@@ -39,6 +48,8 @@ class ExternalGeneratorAdapter:
         elements = self.settings.elements
         if not elements:
             elements = [self.settings.target_element]
+
+        validate_elements(elements)
 
         # Create PhysicsConstraints (using defaults or deriving)
         constraints = PhysicsConstraints()
@@ -63,7 +74,7 @@ class ExternalGeneratorAdapter:
         logger.debug(f"Initialized external config: {external_config}")
 
         # Use Factory
-        return GeneratorFactory.get_generator(external_config, seed=42)
+        return GeneratorFactory.get_generator(external_config, seed=self.seed)
 
     def generate(self) -> Atoms:
         """

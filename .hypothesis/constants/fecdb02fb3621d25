@@ -1,0 +1,4 @@
+# file: /app/src/external/mlip_struc_gen/src/nnp_gen/core/physics.py
+# hypothesis_version: 6.148.7
+
+[0.0, 1e-09, 0.0001, 0.74, 1.0, 2.0, 4.0, 5.0, 8.0, 'H', 'a', 'bcc', 'diamond', 'fcc', 'ij', 'max', 'sc', 'symmetry']

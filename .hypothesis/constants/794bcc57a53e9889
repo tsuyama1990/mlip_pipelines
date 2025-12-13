@@ -1,0 +1,4 @@
+# file: /app/src/external/mlip_struc_gen/src/nnp_gen/generators/ionic.py
+# hypothesis_version: 6.148.7
+
+[0.0, 0.25, 0.5, 2.0, 3.0, 4.0, 'Ag', 'Al', 'Ba', 'Be', 'Br', 'Ca', 'Cd', 'Cl', 'Cs', 'F', 'F-43m', 'Fm-3m', 'Ga', 'I', 'In', 'K', 'La', 'Li', 'Mg', 'N', 'Na', 'NaCl', 'O', 'P', 'Pm-3m', 'Rb', 'S', 'Sc', 'Se', 'Sr', 'Te', 'VI', 'X', 'Y', 'Zn', 'config_source', 'cscl', 'fluorite', 'rocksalt', 'strict_mode', 'zincblende']

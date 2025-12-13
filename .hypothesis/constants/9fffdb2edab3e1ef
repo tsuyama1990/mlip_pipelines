@@ -1,0 +1,4 @@
+# file: /app/src/core/generators/adapter.py
+# hypothesis_version: 6.148.7
+
+[0.01, 0.95, 1.05, 'alloy', 'external', 'mlip_struc_gen', 'random', 'src']
