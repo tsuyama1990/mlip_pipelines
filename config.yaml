@@ -1,0 +1,25 @@
+experiment:
+  name: "Si_AL_Test"
+  max_cycles: 5
+  box_size: 10.0
+  work_dir: "experiments/test_run"
+
+system:
+  device: "cuda"  # or cpu
+  # Command to run QE. Can include mpirun.
+  dft_command: "pw.x"
+  # Path to the SSSP directory
+  sssp_dir: "data/sssp"
+  # SSSP JSON filename
+  sssp_json: "SSSP_1.3.0_PBE_precision.json"
+
+training:
+  energy_weight: 1.0
+  forces_weight: 10.0
+  lr: 0.01
+  batch_size: 4
+
+exploration:
+  md_steps: 1000
+  temperature: 300
+  uncertainty_threshold: 1.2 # Relative to u_max
