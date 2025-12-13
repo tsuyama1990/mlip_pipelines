@@ -1,0 +1,3 @@
+[submodule "src/external/mlip_struc_gen"]
+	path = src/external/mlip_struc_gen
+	url = https://github.com/tsuyama1990/mlip_struc_generator.git
