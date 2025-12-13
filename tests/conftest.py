@@ -13,13 +13,19 @@ from ase import Atoms
 class MockMACE(nn.Module):
     """
     Minimal Mock MACE model that mimics the structure required by MacePotential.
+    Includes a 'backbone' to test freezing.
     """
     def __init__(self):
         super().__init__()
-        # Mock readouts: A list containing a module that processes features
+
+        # Backbone: Simple linear layer
+        self.backbone = nn.Linear(16, 16)
+
+        # Readouts: A list containing a module that processes features
         self.readouts = nn.ModuleList([
-            nn.Linear(16, 1) # Simple linear layer as readout
+            nn.Linear(16, 1)
         ])
+
         # Attributes expected by AtomicData conversion
         self.r_max = 5.0
         self.atomic_numbers = [1, 6, 8, 29] # H, C, O, Cu
@@ -29,26 +35,22 @@ class MockMACE(nn.Module):
         # Deterministic feature generation based on positions
         if 'positions' in data:
             pos = data['positions'] # (N, 3)
-            # Simple projection to 16 dim to fake features
-            # We use a fixed matrix to project 3 -> 16
             proj = torch.arange(3*16, dtype=torch.float32).view(3, 16).to(pos.device)
-            # Normalize proj to avoid explosion
             proj = proj / 100.0
-
             node_feats = torch.matmul(pos, proj)
-            # Normalize or sine to make it non-linear/bounded
             node_feats = torch.sin(node_feats)
         else:
-            # Fallback
             num_nodes = data['node_attrs'].shape[0] if 'node_attrs' in data else 1
             node_feats = torch.zeros(num_nodes, 16)
 
+        # Pass through backbone
+        node_feats = self.backbone(node_feats)
+
         # Pass through readout
-        # atomic_energies: (N, 1)
         atomic_energies = self.readouts[0](node_feats)
 
         # Construct output
-        energy = torch.sum(atomic_energies).view(1) # Total energy
+        energy = torch.sum(atomic_energies).view(1)
         num_nodes = node_feats.shape[0]
         forces = torch.zeros(num_nodes, 3).to(node_feats.device)
         stress = torch.zeros(1, 3, 3).to(node_feats.device)

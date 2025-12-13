@@ -3,7 +3,7 @@ import numpy as np
 from ase import Atoms
 from mace.data import config_from_atoms
 from mace.tools import torch_geometric, torch_tools
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Dict
 from src.interfaces import AbstractPotential
 
 class MacePotential(AbstractPotential):
@@ -12,45 +12,16 @@ class MacePotential(AbstractPotential):
     """
     def __init__(self, model_path: str, device: str = "cpu"):
         self.device = torch.device(device)
-        self.model = torch.load(model_path, map_location=self.device)
-        self.model.to(self.device)
-        self.model.eval()  # Default to eval mode
+        self.model_path = model_path
 
-        # Uncertainty components
-        self.inv_covariance = None
-        self.phi_hook = None
-        self._hook_handle = None
-
-        # We need to identify the readout layer to attach the hook.
-        # Typically model.readouts is a ModuleList.
-        # We want the last one, or we want the features *before* the final linear projection?
-        # The spec says: "readout module (usually model.readouts[-1] or model.atomic_energies_fn is just before)"
-        # "Capture node_feats (usually 128 or 256 dim)"
-        # Looking at MACE code structure (standard):
-        # Readout blocks usually take node features and output energy.
-        # If we hook `model.readouts[-1]`, we need to inspect its forward.
-        # Or we can hook the input to the last readout.
-
-        # Let's try to find `readouts`.
-        if hasattr(self.model, "readouts") and len(self.model.readouts) > 0:
-             self.target_module = self.model.readouts[-1]
-        else:
-            # Fallback or error? For now assume standard MACE structure.
-            # Some MACE versions structure differently.
-            # If loaded from 'mace_mp', it might be wrapped.
-            # Assuming standard structure for now.
-            raise ValueError("Could not find readouts in MACE model.")
-
-        self._register_hook()
+        # Load logic handled here to support init from path
+        self.load(model_path)
 
     def _register_hook(self):
         """Register forward hook to capture last layer features."""
         def hook_fn(module, input, output):
             # Input to readout is typically (node_feats, ...)
             # We want node_feats.
-            # Verify input structure.
-            # MACE Readout forward signature: forward(self, x, ...) or similar.
-            # input is a tuple. input[0] should be node features.
             if isinstance(input, tuple):
                 self.phi_hook = input[0].detach()  # Capture features
             else:
@@ -73,9 +44,6 @@ class MacePotential(AbstractPotential):
                 from mace.tools.utils import AtomicNumberTable
                 z_table = AtomicNumberTable([int(z) for z in zs])
             else:
-                # If no z_table found, we might fail or infer.
-                # For robustness, let's infer from data if possible, but MACE needs fixed table.
-                # Assuming model has it for now as per MACE standard.
                 raise ValueError("Model does not have z_table or atomic_numbers defined.")
 
         cutoff = getattr(self.model, "r_max", 5.0)
@@ -110,7 +78,6 @@ class MacePotential(AbstractPotential):
             param.requires_grad = False
 
         # Unfreeze Readout parameters
-        # We unfreeze the LAST readout.
         for param in self.target_module.parameters():
             param.requires_grad = True
 
@@ -119,33 +86,20 @@ class MacePotential(AbstractPotential):
 
         self.model.train()
 
-        # Simple training loop (e.g., 10 epochs for demonstration/simplicity,
-        # or just one pass if "fine-tune" implies a single update?
-        # The spec implies "Fine-tune ... with new data", likely a few steps.
-        # But for 'train' method in Active Learning, usually we fit to the new data.
-        # I will do a few epochs (e.g. 10).
-
         batch_data = self._atoms_to_batch(training_data)
 
-        # Reference values (labels)
-        # Assuming atoms in training_data have calculated energy/forces
         ref_energies = []
         ref_forces = []
 
         for a in training_data:
-            # Check if calc exists and has results
-            # The spec doesn't strictly say how labels are passed,
-            # but usually they are in the atoms object or calculator.
-            # We'll assume atoms.get_potential_energy() and atoms.get_forces() work.
             ref_energies.append(a.get_potential_energy())
             ref_forces.append(a.get_forces())
 
         ref_energy_tensor = torch.tensor(ref_energies, device=self.device, dtype=torch.float32)
         ref_forces_tensor = torch.tensor(np.concatenate(ref_forces), device=self.device, dtype=torch.float32)
 
-        # Loss weights
         w_e = 1.0
-        w_f = 10.0 # Common ratio
+        w_f = 10.0
 
         # Epochs
         for _ in range(5):
@@ -163,34 +117,25 @@ class MacePotential(AbstractPotential):
             optimizer.step()
 
         # 2. Covariance Matrix Update (LLU)
-        # Switch to eval to capture features without gradients
         self.model.eval()
 
-        # Collect phi for all training atoms
-        # We can reuse batch_data
         _ = self.model(batch_data) # Trigger hook
-        # self.phi_hook contains features for all atoms in the batch (N_total, D)
-
         phi = self.phi_hook # (N_atoms_total, D)
 
-        # C = sum phi * phi^T
-        # Efficiently: C = phi.T @ phi
         C = torch.matmul(phi.T, phi)
 
         # Regularization
         lambda_reg = 1e-4
         C_reg = C + lambda_reg * torch.eye(C.shape[0], device=self.device)
 
-        # Inverse
-        # self.inv_covariance = torch.linalg.inv(C_reg)
-        # Using pinv might be safer, but inv is faster if stable. Spec suggested inv or pinv.
-        self.inv_covariance = torch.linalg.inv(C_reg)
+        # Robust Inverse using solve is better than inv, but we need C^-1 explicitly to compute u(x) later efficiently
+        # u = phi^T * C^-1 * phi.
+        # So we do need C^-1.
+        # Use pinv for stability if C is singular even with regularization (unlikely but safe).
+        self.inv_covariance = torch.linalg.pinv(C_reg)
 
     def get_uncertainty(self, atoms: Atoms) -> np.ndarray:
         if self.inv_covariance is None:
-            # If not trained yet, return zeros or raise?
-            # Return zeros or high uncertainty?
-            # Let's return zeros with a warning or just zeros.
             return np.zeros(len(atoms))
 
         self.model.eval()
@@ -199,22 +144,55 @@ class MacePotential(AbstractPotential):
         _ = self.model(batch_data) # Trigger hook
         phi = self.phi_hook # (N_atoms, D)
 
-        # u = phi^T * C^-1 * phi
-        # We want diagonal of (phi @ C^-1 @ phi.T)
-        # Efficient: sum((phi @ C^-1) * phi, dim=1)
-
         temp = torch.matmul(phi, self.inv_covariance) # (N, D)
         uncertainty = torch.sum(temp * phi, dim=1) # (N,)
 
         return uncertainty.detach().cpu().numpy()
 
     def save(self, path: str) -> None:
-        torch.save(self.model, path)
+        """
+        Save the model and uncertainty state.
+        We save a dictionary wrapper to ensure persistence of inv_covariance.
+        """
+        # Remove hook before saving to avoid pickling errors with local functions
+        if self._hook_handle:
+            self._hook_handle.remove()
+            self._hook_handle = None
+
+        state = {
+            "model": self.model,
+            "inv_covariance": self.inv_covariance
+        }
+        torch.save(state, path)
+
+        # Restore hook after save so this instance remains usable
+        self._register_hook()
 
     def load(self, path: str) -> None:
-        self.model = torch.load(path, map_location=self.device)
+        """
+        Load the model and uncertainty state.
+        Handles both raw model files (legacy) and our wrapper dict.
+        """
+        loaded = torch.load(path, map_location=self.device)
+
+        if isinstance(loaded, dict) and "model" in loaded:
+            self.model = loaded["model"]
+            self.inv_covariance = loaded.get("inv_covariance", None)
+        else:
+            # Assume it's just the model
+            self.model = loaded
+            self.inv_covariance = None
+
+        self.model.to(self.device)
         self.model.eval()
+
+        self.phi_hook = None
+        self._hook_handle = None
+
         # Re-register hook
         if hasattr(self.model, "readouts") and len(self.model.readouts) > 0:
              self.target_module = self.model.readouts[-1]
+        else:
+             raise ValueError("Could not find readouts in MACE model.")
+
         self._register_hook()

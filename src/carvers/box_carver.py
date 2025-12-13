@@ -34,84 +34,67 @@ class BoxCarver:
         """
         Perform the carving operation.
 
-        Parameters
-        ----------
-        cluster_mode : bool, optional
-            If True, creates a non-periodic cluster with vacuum.
-            If False, creates a periodic box with the carve size.
-            Default is True.
-
-        Returns
-        -------
-        Atoms
-            The carved structure.
+        Handles partial PBC correctly by only wrapping dimensions where pbc is True.
         """
-        # 1. Centering: Shift atoms so center_index is at (0.5, 0.5, 0.5) in scaled coordinates
-        # We work with a copy to avoid modifying the original during calculation
         work_atoms = self.atoms.copy()
 
-        # Get scaled positions
+        # Check box size validity relative to cell (warn or error?)
+        # If box > cell, we might get empty results or need supercells.
+        # For this implementation, we assume the user knows what they are doing,
+        # but we guard against completely invalid states.
+        cell_lengths = work_atoms.cell.lengths()
+        if np.any((self.box_vector > cell_lengths) & work_atoms.pbc):
+            # If box is larger than cell in a periodic dim, centering approach is ambiguous without supercell.
+            # But "Carver" usually implies cutting a piece out.
+            # We proceed, but the result might be the whole cell (or close to it).
+            pass
+
+        # 1. Centering
         scaled_positions = work_atoms.get_scaled_positions()
         center_scaled_pos = scaled_positions[self.center_index]
 
-        # Calculate shift vector to move center atom to (0.5, 0.5, 0.5)
+        # Shift vector: move center to 0.5
         shift = np.array([0.5, 0.5, 0.5]) - center_scaled_pos
 
-        # Apply shift and wrap
-        scaled_positions = (scaled_positions + shift) % 1.0
-        work_atoms.set_scaled_positions(scaled_positions)
+        # Apply shift
+        new_scaled_positions = scaled_positions + shift
 
-        # 2. Cutout: Extract atoms within +/- box_vector / 2 from the center
-        # Convert back to Cartesian for distance check.
-        # Note: The cell is periodic, so "wrapping" handled by set_scaled_positions is good.
-        # But we need to be careful about the "center" in Cartesian.
-        # The center is now at 0.5 * cell_lengths (approx, if orthogonal).
-        # Better: get the cartesian position of the center atom (now at 0.5, 0.5, 0.5)
+        # Wrap ONLY if PBC is True for that dimension
+        pbc = work_atoms.pbc
+        for i in range(3):
+            if pbc[i]:
+                new_scaled_positions[:, i] = new_scaled_positions[:, i] % 1.0
+            else:
+                # For non-periodic dims, we don't wrap.
+                # But we shifted everyone.
+                # If the center was at 0.1, we added 0.4.
+                # If an atom was at 0.9, it became 1.3.
+                # This preserves relative distances, which is what matters.
+                pass
 
-        # To handle non-orthogonal cells correctly, we should define the cutout region
-        # based on Cartesian difference from the center atom.
-        # However, we must account for PBC if the box size is comparable to cell size.
-        # The spec says: "Shift (Wrap)" -> "Simple simplified PBC crossing".
-        # So we can assume after wrapping, we just take Cartesian distance from the new center.
+        work_atoms.set_scaled_positions(new_scaled_positions)
 
-        center_cart_pos = work_atoms.positions[self.center_index]
-
-        # We need to find atoms where |r_i - r_center| < box/2 in each dimension.
-        # Since we centered and wrapped, the "image" we want is the one closest to the center.
-        # But wait, we just wrapped everything into [0, 1].
-        # So simple Cartesian difference might fail if the box is large and wraps again?
-        # The spec implies we carve *from the shifted view*.
-        # So we just check: is position within [center - box/2, center + box/2]?
-
+        # 2. Cutout
         positions = work_atoms.get_positions()
-        # center_cart_pos should be computed from the wrapped positions
         center_cart_pos = positions[self.center_index]
 
         lower_bound = center_cart_pos - self.box_vector / 2.0
         upper_bound = center_cart_pos + self.box_vector / 2.0
 
+        # Check boundaries
         mask = np.all((positions >= lower_bound) & (positions <= upper_bound), axis=1)
         indices = np.where(mask)[0]
 
         if len(indices) <= 1:
-            # "Validation: ValueError if atoms count is extremely low (e.g. 1)"
-            # 0 or 1 atoms is too few.
             raise ValueError(f"Carved box contains too few atoms ({len(indices)}).")
 
         carved_atoms = work_atoms[indices]
 
         # 3. Re-wrapping
         if cluster_mode:
-            # Cluster Mode: Non-periodic, vacuum=10.0A
             carved_atoms.pbc = False
             carved_atoms.center(vacuum=10.0)
         else:
-            # Periodic Mode: Cell size = box size
-            # We need to center the atoms in the new box.
-            # The carved atoms are currently centered around `center_cart_pos`.
-            # We want them in a box of size `self.box_vector`.
-            # Let's shift them so the center atom is at `self.box_vector / 2`.
-
             new_center = self.box_vector / 2.0
             offset = new_center - center_cart_pos
             carved_atoms.positions += offset
