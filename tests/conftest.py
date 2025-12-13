@@ -31,7 +31,7 @@ class MockMACE(nn.Module):
         self.atomic_numbers = [1, 6, 8, 29] # H, C, O, Cu
         self.z_table = AtomicNumberTable(self.atomic_numbers)
 
-    def forward(self, data):
+    def forward(self, data, compute_force=True, **kwargs):
         # Deterministic feature generation based on positions
         if 'positions' in data:
             pos = data['positions'] # (N, 3)
