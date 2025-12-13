@@ -1,7 +1,7 @@
 [project]
-name = "mlip-pipelines"
-version = "0.1.0"
-description = "MACE-based structure optimization pipeline"
+name = "ace_active_carver_v2"
+version = "0.2.0"
+description = "ACE Active Carver v2: MACE-based structure optimization pipeline"
 requires-python = ">=3.10"
 readme = "README.md"
 authors = [
@@ -9,22 +9,17 @@ authors = [
 ]
 dependencies = [
     "torch>=2.0.0",
-    "torchvision",
     "mace-torch>=0.3.4",
-    "ase>=3.23.0",
-    "pydantic>=2.0",
+    "ase>=3.22.1",
+    "numpy<2.0.0",
+    "scipy",
+    "pydantic",
+    "hydra-core",
     "pydantic-settings",
     "loguru",
-    "numpy",
-    "scipy",
-    "hydra-core",
     "omegaconf",
     "pymatgen",
     "python-dotenv",
-    "pyxtal",
-    "param",
-    "panel",
-    "pytest>=9.0.2",
 ]
 
 [project.optional-dependencies]
@@ -56,76 +51,15 @@ filterwarnings = [
 ]
 
 [tool.ruff]
-# Target Python version
 target-version = "py310"
-# Exclude commonly ignored directories
-exclude = [
-    ".bzr",
-    ".direnv",
-    ".eggs",
-    ".git",
-    ".git-rewrite",
-    ".hg",
-    ".ipynb_checkpoints",
-    ".mypy_cache",
-    ".nox",
-    ".pants.d",
-    ".pyenv",
-    ".pytest_cache",
-    ".pytype",
-    ".ruff_cache",
-    ".svn",
-    ".tox",
-    ".venv",
-    ".vscode",
-    "__pypackages__",
-    "_build",
-    "buck-out",
-    "build",
-    "dist",
-    "node_modules",
-    "site-packages",
-    "venv",
-]
 line-length = 88
-indent-width = 4
-
-[tool.ruff.lint]
-# Enable rules:
-# F: Pyflakes
-# E, W: pycodestyle
-# I: isort
-# B: flake8-bugbear
-# UP: pyupgrade
-# N: pep8-naming
-# SIM: flake8-simplify
-select = ["F", "E", "W", "I", "B", "UP", "N", "SIM"]
-ignore = []
-
-# Allow fix for all enabled rules (when `--fix` is provided).
-fixable = ["ALL"]
-unfixable = []
-
-# Allow unused variables when underscore-prefixed.
-dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
-
-[tool.ruff.format]
-quote-style = "double"
-indent-style = "space"
-skip-magic-trailing-comma = false
-line-ending = "auto"
+select = ["F", "E", "W", "I", "N", "UP", "B"]
 
 [tool.mypy]
 python_version = "3.10"
-# Strict mode
 strict = true
-# Ignore missing imports for libraries that don't have type stubs
 ignore_missing_imports = true
-# Pretty output
 pretty = true
-# Show error codes
 show_error_codes = true
-# Warn about unused configs
 warn_unused_configs = true
-# Disallow untyped definitions
 disallow_untyped_defs = true

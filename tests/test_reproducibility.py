@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 from src.config.settings import Settings, GeneratorSettings
-from src.core.generators.adapter import ExternalGeneratorAdapter
+from src.generators.adapter import ExternalGeneratorAdapter
 
 class TestReproducibility:
     def test_bit_identical_with_same_seed(self):
