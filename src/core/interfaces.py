@@ -5,7 +5,7 @@ from ase import Atoms
 
 class AbstractPotential(ABC):
     @abstractmethod
-    def train(self, training_data: list[Atoms], atomic_energies: Optional[Dict[str, float]] = None) -> None:
+    def train(self, training_data: list[Atoms], atomic_energies: Optional[Dict[str, float]] = None, energy_weight: float = 1.0, forces_weight: float = 10.0, **kwargs) -> None:
         """
         Fine-tune the model with new data.
 
@@ -15,6 +15,10 @@ class AbstractPotential(ABC):
             New structures for training.
         atomic_energies : Optional[Dict[str, float]]
             Dictionary of isolated atomic energies (E0) for referencing.
+        energy_weight : float
+            Weight for energy loss term.
+        forces_weight : float
+            Weight for forces loss term.
         """
         pass
 
