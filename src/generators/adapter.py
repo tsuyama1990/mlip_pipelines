@@ -7,9 +7,9 @@ from ase.data import atomic_numbers
 import omegaconf
 
 # Add external repo to sys.path
-# File path: src/core/generators/adapter.py
-# parents[0]=generators, parents[1]=core, parents[2]=src
-EXTERNAL_PATH = Path(__file__).resolve().parents[2] / "external" / "mlip_struc_gen" / "src"
+# File path: src/generators/adapter.py
+# parents[0]=generators, parents[1]=src
+EXTERNAL_PATH = Path(__file__).resolve().parents[1] / "external" / "mlip_struc_gen" / "src"
 if str(EXTERNAL_PATH) not in sys.path:
     sys.path.append(str(EXTERNAL_PATH))
     logger.debug(f"Added {EXTERNAL_PATH} to sys.path")

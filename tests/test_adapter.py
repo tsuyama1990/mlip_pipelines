@@ -1,6 +1,6 @@
 import pytest
 from ase import Atoms
-from src.core.generators.adapter import ExternalGeneratorAdapter
+from src.generators.adapter import ExternalGeneratorAdapter
 
 def test_adapter_initialization(default_settings):
     """
