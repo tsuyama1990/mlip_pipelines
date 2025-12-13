@@ -35,7 +35,7 @@ class QeOracle(AbstractOracle):
         kpts_density : float
             K-point density in reciprocal Angstroms (1/A).
         nspin : int
-            Spin polarization (1=non-spin-polarized, 2=spin-polarized).
+            Default spin polarization (used if heuristic fails or for overrides).
         """
         self.dft_command = dft_command
         self.pseudo_dir = pseudo_dir
@@ -110,6 +110,37 @@ class QeOracle(AbstractOracle):
 
         return pseudos, max_ecutwfc, max_ecutrho
 
+    def _determine_magnetization(self, atoms: Atoms) -> tuple[int, dict]:
+        """
+        Determine spin polarization and starting magnetization.
+        Returns: (nspin, starting_magnetization_dict)
+        """
+        # Heuristic: Check for magnetic elements (3d transition metals + some others)
+        magnetic_elements = {
+            'Cr', 'Mn', 'Fe', 'Co', 'Ni', # 3d
+            'Gd', 'Dy', 'Tb', 'Ho', 'Er', 'Tm' # Rare earths (basic list)
+        }
+
+        symbols = set(atoms.get_chemical_symbols())
+        has_magnetic = not symbols.isdisjoint(magnetic_elements)
+
+        if not has_magnetic:
+            return 1, {}
+
+        # Magnetic case
+        # We need to map species index to magnetization, but ASE's Espresso calculator
+        # usually handles dicts if we pass `magnetic_moments` or we can set it in system.
+        # Actually, ASE maps `magmoms` or `initial_magmoms` to `starting_magnetization(i)`.
+        # Here we will return a dict that we can merge into system block.
+        # However, QE `starting_magnetization(i)` requires knowing the species index 'i'.
+        # ASE handles this if we set `atoms.set_initial_magnetic_moments(...)`.
+
+        # Strategy: We will set initial magnetic moments on the atoms object.
+        # The calculator will pick it up.
+        # But we also need to enforce nspin=2 in input_data.
+
+        return 2, {}
+
     def compute(self, atoms: Atoms) -> Atoms:
         """
         Executes SCF calculation using ASE Espresso Calculator.
@@ -124,6 +155,14 @@ class QeOracle(AbstractOracle):
         # 2. Setup Calculator Profile
         # dft_command e.g. "mpirun -np 4 pw.x" -> argv=['mpirun', '-np', '4', 'pw.x']
         profile = EspressoProfile(argv=self.dft_command.split())
+
+        # Determine Magnetism
+        calc_nspin, _ = self._determine_magnetization(atoms)
+
+        # If user forced nspin=2 in init, respect it?
+        # Or let heuristic decide? Prompt says "heuristic ... is incorporated".
+        # Let's use the max of init (default 1) and heuristic.
+        final_nspin = max(self.nspin, calc_nspin)
 
         # 3. Execution Context
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -145,13 +184,30 @@ class QeOracle(AbstractOracle):
                     'occupations': 'smearing',
                     'smearing': 'mv',
                     'degauss': 0.01,
-                    'nspin': self.nspin,
+                    'nspin': final_nspin,
                 },
                 'electrons': {
                     'mixing_beta': 0.7,
                     'conv_thr': 1.0e-6
                 }
             }
+
+            # Apply starting magnetization if nspin=2
+            # We set a default guess for all atoms if nspin=2 to help convergence/breaking symmetry
+            calc_atoms = atoms.copy()
+            if final_nspin == 2:
+                # Set a simple default initial moment for all atoms (e.g. 0.5)
+                # or just the magnetic ones.
+                # Heuristic: Set 1.0 for everyone to allow symmetry breaking.
+                # Or verify elements.
+                mag_elements = {'Cr', 'Mn', 'Fe', 'Co', 'Ni', 'Gd', 'Dy', 'Tb', 'Ho', 'Er', 'Tm'}
+                moms = []
+                for s in calc_atoms.get_chemical_symbols():
+                    if s in mag_elements:
+                        moms.append(2.0) # Strong start
+                    else:
+                        moms.append(0.0)
+                calc_atoms.set_initial_magnetic_moments(moms)
 
             # 5. Attach Calculator
             # Make a copy of atoms to not pollute the input instance with a transient calculator
