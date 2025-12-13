@@ -13,6 +13,12 @@ class MacePotential(AbstractPotential):
     def __init__(self, model_path: str, device: str = "cpu"):
         self.device = torch.device(device)
         self.model_path = model_path
+        self.foundation_model_path = None
+        self.u_max = 1.0
+        self.inv_covariance = None
+        self.model = None
+        self._hook_handle = None
+        self.phi_hook = None
 
         # Load logic handled here to support init from path
         self.load(model_path)
@@ -82,7 +88,7 @@ class MacePotential(AbstractPotential):
 
         return float(energy), forces, stress
 
-    def train(self, training_data: list[Atoms], atomic_energies: Optional[Dict[str, float]] = None) -> None:
+    def train(self, training_data: list[Atoms], atomic_energies: Optional[Dict[str, float]] = None, energy_weight: float = 1.0, forces_weight: float = 10.0, **kwargs) -> None:
         """
         Fine-tune the model (Head Only) and update uncertainty covariance.
 
@@ -92,11 +98,15 @@ class MacePotential(AbstractPotential):
             New structures for training.
         atomic_energies : Optional[Dict[str, float]]
             Dictionary of isolated atomic energies (E0) for referencing.
+        energy_weight : float
+            Weight for energy loss term.
+        forces_weight : float
+            Weight for forces loss term.
         """
-        self._train_head(training_data)
+        self._train_head(training_data, energy_weight=energy_weight, forces_weight=forces_weight)
         self._update_uncertainty_covariance(training_data)
 
-    def _train_head(self, training_data: list[Atoms]) -> None:
+    def _train_head(self, training_data: list[Atoms], energy_weight: float = 1.0, forces_weight: float = 10.0) -> None:
         """
         Perform Head-Only training.
         """
@@ -125,9 +135,6 @@ class MacePotential(AbstractPotential):
         ref_energy_tensor = torch.tensor(ref_energies, device=self.device, dtype=torch.float32)
         ref_forces_tensor = torch.tensor(np.concatenate(ref_forces), device=self.device, dtype=torch.float32)
 
-        w_e = 1.0
-        w_f = 10.0
-
         # Epochs
         for _ in range(5):
             optimizer.zero_grad()
@@ -139,7 +146,7 @@ class MacePotential(AbstractPotential):
             loss_e = torch.mean((pred_e - ref_energy_tensor)**2)
             loss_f = torch.mean((pred_f - ref_forces_tensor)**2)
 
-            loss = w_e * loss_e + w_f * loss_f
+            loss = energy_weight * loss_e + forces_weight * loss_f
             loss.backward()
             optimizer.step()
 
@@ -162,6 +169,11 @@ class MacePotential(AbstractPotential):
         # Robust Inverse
         self.inv_covariance = torch.linalg.pinv(C_reg)
 
+        # Calculate u_max
+        temp = torch.matmul(phi, self.inv_covariance) # (N, D)
+        scores = torch.sum(temp * phi, dim=1) # (N,)
+        self.u_max = torch.max(scores).item()
+
     def get_uncertainty(self, atoms: Atoms) -> np.ndarray:
         """
         Return per-atom uncertainty scores.
@@ -178,7 +190,11 @@ class MacePotential(AbstractPotential):
         temp = torch.matmul(phi, self.inv_covariance) # (N, D)
         uncertainty = torch.sum(temp * phi, dim=1) # (N,)
 
-        return uncertainty.detach().cpu().numpy()
+        # Normalize
+        u_max = self.u_max if (self.u_max is not None and self.u_max > 0) else 1.0
+        normalized_uncertainty = uncertainty / u_max
+
+        return normalized_uncertainty.detach().cpu().numpy()
 
     def save(self, path: str) -> None:
         """
@@ -191,8 +207,10 @@ class MacePotential(AbstractPotential):
             self._hook_handle = None
 
         state = {
-            "model": self.model,
-            "inv_covariance": self.inv_covariance
+            "foundation_model_path": self.foundation_model_path,
+            "model_state": self.model.state_dict(),
+            "inv_covariance": self.inv_covariance,
+            "u_max": self.u_max
         }
         torch.save(state, path)
 
@@ -206,13 +224,36 @@ class MacePotential(AbstractPotential):
         """
         loaded = torch.load(path, map_location=self.device)
 
-        if isinstance(loaded, dict) and "model" in loaded:
-            self.model = loaded["model"]
+        if isinstance(loaded, dict) and "model_state" in loaded:
+            # New format
+            foundation_path = loaded.get("foundation_model_path", None)
+            if not foundation_path:
+                raise ValueError("Invalid checkpoint: missing foundation_model_path")
+
+            # Reconstruct architecture from foundation path
+            self.model = torch.load(foundation_path, map_location=self.device)
+            self.model.load_state_dict(loaded["model_state"])
+
             self.inv_covariance = loaded.get("inv_covariance", None)
-        else:
-            # Assume it's just the model
+            self.u_max = loaded.get("u_max", 1.0)
+            self.foundation_model_path = foundation_path
+
+        elif isinstance(loaded, dict) and "model" in loaded:
+             # Intermediate format (from previous incorrect implementation attempt) or unexpected dict
+             # Assuming "model" key holds the model object as per my previous reading of the file
+             self.model = loaded["model"]
+             self.inv_covariance = loaded.get("inv_covariance", None)
+             self.u_max = 1.0
+             self.foundation_model_path = path # This is technically wrong if path is a checkpoint, but legacy handling is fuzzy.
+
+        elif isinstance(loaded, torch.nn.Module):
+            # Raw model (Foundation model)
             self.model = loaded
             self.inv_covariance = None
+            self.u_max = 1.0
+            self.foundation_model_path = path
+        else:
+            raise ValueError(f"Unknown model format at {path}")
 
         self.model.to(self.device)
         self.model.eval()

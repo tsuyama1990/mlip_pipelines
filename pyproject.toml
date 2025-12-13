@@ -9,7 +9,7 @@ authors = [
 ]
 dependencies = [
     "torch>=2.0.0",
-    "mace-torch>=0.3.4",
+    "mace-torch==0.3.14",
     "ase>=3.22.1",
     "numpy<2.0.0",
     "scipy",
