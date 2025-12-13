@@ -1,10 +1,12 @@
-import torch
+
 import numpy as np
+import torch
 from ase import Atoms
 from mace.data import config_from_atoms
-from mace.tools import torch_geometric, torch_tools
-from typing import List, Optional, Tuple, Dict
+from mace.tools import torch_geometric
+
 from src.core.interfaces import AbstractPotential
+
 
 class MacePotential(AbstractPotential):
     """
@@ -37,7 +39,7 @@ class MacePotential(AbstractPotential):
 
         self._hook_handle = self.target_module.register_forward_hook(hook_fn)
 
-    def _atoms_to_batch(self, atoms_list: List[Atoms]) -> Dict:
+    def _atoms_to_batch(self, atoms_list: list[Atoms]) -> dict:
         """
         Convert ASE Atoms to MACE batch.
 
@@ -64,6 +66,8 @@ class MacePotential(AbstractPotential):
                 raise ValueError("Model does not have z_table or atomic_numbers defined.")
 
         cutoff = getattr(self.model, "r_max", 5.0)
+        if isinstance(cutoff, torch.Tensor):
+            cutoff = cutoff.item()
 
         from mace.data import AtomicData
         data_list = [AtomicData.from_config(c, z_table=z_table, cutoff=cutoff) for c in configs]
@@ -84,11 +88,16 @@ class MacePotential(AbstractPotential):
 
         energy = out["energy"].detach().cpu().numpy()[0] # Scalar? or shape (1,)
         forces = out["forces"].detach().cpu().numpy()    # (N, 3)
-        stress = out["stress"].detach().cpu().numpy()[0] # (3, 3)
+
+        stress = out.get("stress")
+        if stress is not None:
+             stress = stress.detach().cpu().numpy()[0] # (3, 3)
+        else:
+             stress = np.zeros((3, 3))
 
         return float(energy), forces, stress
 
-    def train(self, training_data: list[Atoms], atomic_energies: Optional[Dict[str, float]] = None, energy_weight: float = 1.0, forces_weight: float = 10.0, **kwargs) -> None:
+    def train(self, training_data: list[Atoms], atomic_energies: dict[str, float] | None = None, energy_weight: float = 1.0, forces_weight: float = 10.0, **kwargs) -> None:
         """
         Fine-tune the model (Head Only) and update uncertainty covariance.
 
@@ -110,45 +119,58 @@ class MacePotential(AbstractPotential):
         """
         Perform Head-Only training.
         """
-        # Freeze all parameters
-        for param in self.model.parameters():
-            param.requires_grad = False
+        # Remove hook during training to prevent graph retention issues
+        if self._hook_handle:
+            self._hook_handle.remove()
+            self._hook_handle = None
 
-        # Unfreeze Readout parameters
-        for param in self.target_module.parameters():
-            param.requires_grad = True
+        try:
+            # Freeze all parameters
+            for param in self.model.parameters():
+                param.requires_grad = False
 
-        # Optimization loop setup
-        optimizer = torch.optim.Adam(self.target_module.parameters(), lr=1e-3)
+            # Unfreeze Readout parameters
+            for param in self.target_module.parameters():
+                param.requires_grad = True
 
-        self.model.train()
+            # Optimization loop setup
+            optimizer = torch.optim.Adam(self.target_module.parameters(), lr=1e-3)
 
-        batch_data = self._atoms_to_batch(training_data)
+            self.model.train()
 
-        ref_energies = []
-        ref_forces = []
+            ref_energies = []
+            ref_forces = []
 
-        for a in training_data:
-            ref_energies.append(a.get_potential_energy())
-            ref_forces.append(a.get_forces())
+            for a in training_data:
+                ref_energies.append(a.get_potential_energy())
+                ref_forces.append(a.get_forces())
 
-        ref_energy_tensor = torch.tensor(ref_energies, device=self.device, dtype=torch.float32)
-        ref_forces_tensor = torch.tensor(np.concatenate(ref_forces), device=self.device, dtype=torch.float32)
+            ref_energy_tensor = torch.tensor(ref_energies, device=self.device, dtype=torch.float32)
+            ref_forces_tensor = torch.tensor(np.concatenate(ref_forces), device=self.device, dtype=torch.float32)
 
-        # Epochs
-        for _ in range(5):
-            optimizer.zero_grad()
-            out = self.model(batch_data)
+            # Epochs
+            for _ in range(5):
+                batch_data = self._atoms_to_batch(training_data)
+                optimizer.zero_grad()
 
-            pred_e = out["energy"]
-            pred_f = out["forces"]
+                # Pass 1: Energy only (avoids graph retention issues from forces calc)
+                out_e = self.model(batch_data, compute_force=False)
+                pred_e = out_e["energy"]
+                loss_e = torch.mean((pred_e - ref_energy_tensor)**2)
 
-            loss_e = torch.mean((pred_e - ref_energy_tensor)**2)
-            loss_f = torch.mean((pred_f - ref_forces_tensor)**2)
+                # Pass 2: Forces (creates separate graph branch)
+                # Note: We must recreate batch_data because MACE modifies it in-place
+                batch_data_f = self._atoms_to_batch(training_data)
+                out_f = self.model(batch_data_f, compute_force=True)
+                pred_f = out_f["forces"]
+                loss_f = torch.mean((pred_f - ref_forces_tensor)**2)
 
-            loss = energy_weight * loss_e + forces_weight * loss_f
-            loss.backward()
-            optimizer.step()
+                loss = energy_weight * loss_e + forces_weight * loss_f
+                loss.backward()
+                optimizer.step()
+        finally:
+            # Re-register hook
+            self._register_hook()
 
     def _update_uncertainty_covariance(self, training_data: list[Atoms]) -> None:
         """
@@ -160,14 +182,14 @@ class MacePotential(AbstractPotential):
         _ = self.model(batch_data) # Trigger hook
         phi = self.phi_hook # (N_atoms_total, D)
 
-        C = torch.matmul(phi.T, phi)
+        cov = torch.matmul(phi.T, phi)
 
         # Regularization
         lambda_reg = 1e-4
-        C_reg = C + lambda_reg * torch.eye(C.shape[0], device=self.device)
+        cov_reg = cov + lambda_reg * torch.eye(cov.shape[0], device=self.device)
 
         # Robust Inverse
-        self.inv_covariance = torch.linalg.pinv(C_reg)
+        self.inv_covariance = torch.linalg.pinv(cov_reg)
 
         # Calculate u_max
         temp = torch.matmul(phi, self.inv_covariance) # (N, D)
