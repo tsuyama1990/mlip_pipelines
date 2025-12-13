@@ -1,11 +1,11 @@
 [project]
-name = "ace_active_carver_v2"
+name = "mlip_pipelines"
 version = "0.2.0"
 description = "ACE Active Carver v2: MACE-based structure optimization pipeline"
 requires-python = ">=3.10"
 readme = "README.md"
 authors = [
-    { name = "Jules", email = "jules@example.com" }
+    { name = "Tomo", email = "tomoyuki.tsuyaman@gmail.com" }
 ]
 dependencies = [
     "torch>=2.0.0",
