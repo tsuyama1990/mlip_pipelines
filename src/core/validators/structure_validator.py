@@ -8,12 +8,17 @@ def validate_no_atomic_clash(atoms: Atoms, min_distance_ratio: float = MIN_DISTA
     """
     Verify no atoms are closer than min_distance_ratio * sum of covalent radii.
 
-    Args:
-        atoms: ASE Atoms object
-        min_distance_ratio: Minimum allowed distance as fraction of covalent radii sum
+    Parameters
+    ----------
+    atoms : Atoms
+        ASE Atoms object.
+    min_distance_ratio : float, optional
+        Minimum allowed distance as fraction of covalent radii sum, by default MIN_DISTANCE_RATIO.
 
-    Raises:
-        InvalidStructureError: If atomic clash detected
+    Raises
+    ------
+    InvalidStructureError
+        If atomic clash detected or coordinates contain NaN/Inf.
     """
     if len(atoms) <= 1:
         return
@@ -44,6 +49,16 @@ def validate_no_atomic_clash(atoms: Atoms, min_distance_ratio: float = MIN_DISTA
 def validate_cell(atoms: Atoms) -> None:
     """
     Ensure cell matrix is non-singular and valid.
+
+    Parameters
+    ----------
+    atoms : Atoms
+        ASE Atoms object.
+
+    Raises
+    ------
+    InvalidStructureError
+        If cell volume is degenerate or cell contains NaN/Inf values.
     """
     if not np.any(atoms.pbc):
         return # Non-periodic systems don't strictly need a valid cell volume in same way
@@ -57,7 +72,19 @@ def validate_cell(atoms: Atoms) -> None:
         raise InvalidStructureError(f"Degenerate cell: volume = {volume:.2e} Å³")
 
 def validate_structure(atoms: Atoms) -> None:
-    """Run all structure validations."""
+    """
+    Run all structure validations.
+
+    Parameters
+    ----------
+    atoms : Atoms
+        ASE Atoms object.
+
+    Raises
+    ------
+    InvalidStructureError
+        If any validation fails or structure is empty.
+    """
     if len(atoms) == 0:
         raise InvalidStructureError("Empty structure (0 atoms)")
 

@@ -26,24 +26,51 @@ except ImportError as e:
     raise
 
 def validate_elements(elements: List[str]) -> None:
+    """
+    Validate that all elements in the list are valid chemical symbols.
+
+    Parameters
+    ----------
+    elements : List[str]
+        List of chemical symbols (e.g., ["Si", "Ge"]).
+
+    Raises
+    ------
+    ValueError
+        If any element is not a valid chemical symbol.
+    """
     for elem in elements:
         if elem not in atomic_numbers:
             raise ValueError(f"Invalid element: {elem}")
 
 class ExternalGeneratorAdapter:
+    """
+    Adapter for the external structure generator submodule.
+    """
     def __init__(self, settings: GeneratorSettings, seed: int = 42):
+        """
+        Initialize the adapter.
+
+        Parameters
+        ----------
+        settings : GeneratorSettings
+            Configuration for structure generation.
+        seed : int, optional
+            Random seed for reproducibility, by default 42.
+        """
         self.settings = settings
         self.seed = seed
         self.generator = self._initialize_generator()
 
-    def _initialize_generator(self) -> BaseGenerator:
+    def _create_external_config(self) -> AlloySystemConfig:
         """
-        Initialize the external generator.
-        """
-        # Map GeneratorSettings to AlloySystemConfig (or others based on type)
-        # For MVP we stick to Alloy as per prompt assumption, but can expand.
+        Map local GeneratorSettings to external AlloySystemConfig.
 
-        # Construct config object
+        Returns
+        -------
+        AlloySystemConfig
+            Configuration object for the external generator.
+        """
         # Note: External code expects 'elements' list.
         elements = self.settings.elements
         if not elements:
@@ -57,8 +84,7 @@ class ExternalGeneratorAdapter:
         # Instantiate AlloySystemConfig
         # We need to map our simple settings to the complex external config
         # Assuming AlloySystemConfig for now.
-
-        external_config = AlloySystemConfig(
+        config = AlloySystemConfig(
             type="alloy",
             elements=elements,
             constraints=constraints,
@@ -70,7 +96,18 @@ class ExternalGeneratorAdapter:
             vol_scale_range=[0.95, 1.05],
             n_initial_structures=1
         )
+        return config
 
+    def _initialize_generator(self) -> BaseGenerator:
+        """
+        Initialize the external generator using the factory.
+
+        Returns
+        -------
+        BaseGenerator
+            An initialized generator instance.
+        """
+        external_config = self._create_external_config()
         logger.debug(f"Initialized external config: {external_config}")
 
         # Use Factory
@@ -78,7 +115,19 @@ class ExternalGeneratorAdapter:
 
     def generate(self) -> Atoms:
         """
-        Generate a structure.
+        Generate a single structure.
+
+        Returns
+        -------
+        Atoms
+            Generated structure as an ASE Atoms object.
+
+        Raises
+        ------
+        RuntimeError
+            If the external generator returns an empty list.
+        Exception
+            If any error occurs during generation.
         """
         logger.info("Calling external generator...")
         try:

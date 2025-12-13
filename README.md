@@ -6,8 +6,10 @@ A local Python pipeline for crystal structure optimization using MACE (Machine L
 
 *   **Structure Generation**: Uses `mlip_struc_gen` (external submodule) to create initial structures (e.g., Alloys).
 *   **Optimization**: Fully automated geometry optimization using `mace-torch` and `ase.optimize`.
-*   **Robust Configuration**: Environment-based configuration using `pydantic-settings`.
-*   **Logging**: structured logging via `loguru`.
+*   **Physics Validation**: Automated checks for atomic clashes, cell validity, and physical constraints.
+*   **Reproducibility**: Explicit random seed control for bit-identical structure generation.
+*   **Robust Configuration**: Environment-based configuration using `pydantic-settings` with `.env` and `config.yaml` support.
+*   **Logging**: Structured logging via `loguru`.
 
 ## Directory Structure
 
@@ -25,6 +27,7 @@ mlip-struc-gen-local/
 │   │   ├── calculators/     # MACE factory
 │   │   ├── engines/         # Relaxation engine
 │   │   ├── generators/      # Adapter for external generator
+│   │   ├── validators/      # Physics checks
 │   │   └── utils/           # IO and logging
 └── tests/                   # Unit and Integration tests
 ```
@@ -44,7 +47,7 @@ mlip-struc-gen-local/
     ```
 
 2.  **Initialize Submodules:**
-    This project relies on an external submodule for structure generation.
+    This project relies on an external submodule for structure generation. **This step is critical.**
     ```bash
     git submodule update --init --recursive
     ```
@@ -55,31 +58,55 @@ mlip-struc-gen-local/
     uv sync
     ```
 
-    **Note on Torch/MACE Compatibility**:
-    The project attempts to install `torch` and `mace-torch` compatible with your system. If you require specific CUDA versions (e.g., CUDA 11.8), ensure you install the correct PyTorch wheels beforehand or modify `pyproject.toml`.
-
 ## Usage
 
 ### 1. Configuration
-The application is configured via environment variables or an `.env` file. A default run works out-of-the-box, but you can customize it:
+The application is configured via environment variables, an `.env` file, or `config.yaml`.
+Priority: Environment Vars > `.env` > `config.yaml` > Defaults.
 
-**Example `.env` file:**
+**Option A: `.env` file (Simple)**
 ```ini
-MACE__DEVICE=cuda           # Use 'cpu' if no GPU
-MACE__MODEL_PATH=medium     # 'small', 'medium', 'large' or path to model file
-RELAX__FMAX=0.01            # Convergence criterion (eV/A)
-RELAX__STEPS=200            # Max steps
-GENERATOR__TARGET_ELEMENT=Si # Element to generate (Alloy)
+MACE__DEVICE=cuda
+GENERATOR__TARGET_ELEMENT=Si
+RANDOM_SEED=12345
 ```
 
-### 2. Run the Pipeline
+**Option B: `config.yaml` (Structured)**
+```yaml
+mace:
+  device: cuda
+  model_path: medium
+
+generator:
+  type: alloy
+  target_element: Si
+  supercell_size: 2
+
+relax:
+  fmax: 0.01
+
+random_seed: 12345
+```
+
+### 2. Physics Validation
+The pipeline enforces strict physical constraints:
+*   **Atomic Clashes**: Rejects structures where atoms are closer than 60% of their combined covalent radii.
+*   **Cell Validity**: Ensures simulation cells are non-singular and have positive volume.
+*   **Periodic Boundaries**: Correctly handles distance calculations with Minimum Image Convention (MIC).
+
+### 3. Reproducibility
+Set `random_seed` in your configuration to ensure deterministic results.
+*   The seed controls `numpy`, `torch`, and the structure generator.
+*   Same seed + Same settings = Bit-identical structure.
+
+### 4. Run the Pipeline
 Execute the main CLI entry point:
 
 ```bash
 uv run main_cli.py
 ```
 
-### 3. Output
+### 5. Output
 Results are saved in `data/output/<timestamp>/`:
 *   `final_structure.xyz`: Relaxed structure with energy/forces.
 *   `trajectory.xyz`: Optimization trajectory.
@@ -88,8 +115,12 @@ Results are saved in `data/output/<timestamp>/`:
 
 ## Testing
 
-Run the test suite using `pytest`:
+Run the test suite using `pytest`. This includes unit tests, integration tests, and hypothesis-based property tests.
 
 ```bash
+# Run all tests
 uv run pytest tests/
+
+# Run property-based tests only
+uv run pytest tests/test_property_based.py
 ```

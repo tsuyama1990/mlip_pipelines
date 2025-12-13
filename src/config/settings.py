@@ -1,7 +1,14 @@
-from typing import Literal, Optional, List, Dict
+from typing import Literal, Optional, List, Dict, Any, Tuple
 from pathlib import Path
+import yaml
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import (
+    BaseSettings,
+    SettingsConfigDict,
+    PydanticBaseSettingsSource,
+    YamlConfigSettingsSource,
+    PyprojectTomlConfigSettingsSource
+)
 import torch
 
 class MACESettings(BaseSettings):
@@ -13,7 +20,8 @@ class MACESettings(BaseSettings):
     @classmethod
     def validate_device(cls, v):
         if v == "cuda" and not torch.cuda.is_available():
-            print("Warning: CUDA requested but not available. Falling back to CPU.")
+            # print("Warning: CUDA requested but not available. Falling back to CPU.")
+            # Side effect in validator is not ideal, but acceptable for CLI feedback
             return "cpu"
         if v not in ["cpu", "cuda"]:
              # Allow specific cuda devices like cuda:0
@@ -55,4 +63,26 @@ class Settings(BaseSettings):
     output_dir: Path = Field(Path("data/output"), description="Base output directory")
     random_seed: int = Field(42, description="Global random seed for reproducibility")
 
-    model_config = SettingsConfigDict(env_file=".env", env_nested_delimiter="__")
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_nested_delimiter="__",
+        yaml_file="config.yaml",
+        extra="ignore"
+    )
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> Tuple[PydanticBaseSettingsSource, ...]:
+        return (
+            init_settings,
+            env_settings,
+            dotenv_settings,
+            YamlConfigSettingsSource(settings_cls),
+            file_secret_settings,
+        )

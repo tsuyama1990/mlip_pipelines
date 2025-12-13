@@ -16,26 +16,44 @@ OPTIMIZERS = {
 }
 
 class StructureRelaxer:
+    """
+    Handles structure relaxation using ASE optimizers.
+    """
     def __init__(self, settings: Settings):
+        """
+        Initialize the relaxer.
+
+        Parameters
+        ----------
+        settings : Settings
+            The global settings object containing relaxation parameters.
+        """
         self.settings = settings
-        # Calculator is set externally or passed?
-        # Usually easier to pass calculator to run() or set it here if Factory is used.
-        # Design: main_cli instantiates calc and assigns to atoms. Relaxer just relaxes atoms.
         pass
 
     def run(self, atoms: Atoms, run_id: str) -> Dict[str, Any]:
         """
         Run structure optimization.
 
-        Args:
-            atoms: ASE Atoms object with calculator attached
-            run_id: Unique identifier for this run
+        Parameters
+        ----------
+        atoms : Atoms
+            ASE Atoms object with calculator attached.
+        run_id : str
+            Unique identifier for this run.
 
-        Returns:
+        Returns
+        -------
+        Dict[str, Any]
             Dictionary containing:
-                - final_energy [eV]: Optimized energy
-                - max_force_final [eV/Å]: Maximum force component
-                - converged [bool]: Whether optimization converged
+            - final_energy [eV]: Optimized energy
+            - max_force_final [eV/Å]: Maximum force component
+            - converged [bool]: Whether optimization converged
+            - steps [int]: Number of steps taken
+            - duration_seconds [float]: Time taken in seconds
+            - initial_energy [float]: Energy before relaxation
+            - final_structure [Atoms]: Relaxed structure
+            - trajectory [List[Atoms]]: List of intermediate structures
         """
         if atoms.calc is None:
             raise ValueError("Atoms object must have a calculator attached.")
