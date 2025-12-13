@@ -19,7 +19,9 @@ dependencies = [
     "python-dotenv",
     "pyxtal",
     "param",
-    "panel"
+    "panel",
+    "pytest",
+    "pytest-mock"
 ]
 
 [build-system]

@@ -25,8 +25,8 @@ class MACESettings(BaseSettings):
         return v
 
 class RelaxationSettings(BaseSettings):
-    fmax: float = Field(0.01, description="Force convergence criterion (eV/A)")
-    steps: int = Field(200, description="Maximum number of optimization steps")
+    fmax: float = Field(0.01, gt=0.0, description="Force convergence criterion (eV/A)")
+    steps: int = Field(200, gt=0, description="Maximum number of optimization steps")
     optimizer: str = Field("LBFGS", description="Optimizer class name from ase.optimize")
 
 class GeneratorSettings(BaseSettings):
