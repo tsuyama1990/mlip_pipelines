@@ -1,11 +1,21 @@
 from abc import ABC, abstractmethod
+from typing import Optional, Dict
 import numpy as np
 from ase import Atoms
 
 class AbstractPotential(ABC):
     @abstractmethod
-    def train(self, training_data: list[Atoms]) -> None:
-        """Fine-tune the model with new data."""
+    def train(self, training_data: list[Atoms], atomic_energies: Optional[Dict[str, float]] = None) -> None:
+        """
+        Fine-tune the model with new data.
+
+        Parameters
+        ----------
+        training_data : list[Atoms]
+            New structures for training.
+        atomic_energies : Optional[Dict[str, float]]
+            Dictionary of isolated atomic energies (E0) for referencing.
+        """
         pass
 
     @abstractmethod

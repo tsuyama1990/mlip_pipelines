@@ -68,9 +68,18 @@ class MacePotential(AbstractPotential):
 
         return float(energy), forces, stress
 
-    def train(self, training_data: list[Atoms]) -> None:
+    def train(self, training_data: list[Atoms], atomic_energies: Optional[Dict[str, float]] = None) -> None:
         """
         Fine-tune the model (Head Only) and update uncertainty covariance.
+
+        Parameters
+        ----------
+        training_data : list[Atoms]
+            New structures for training.
+        atomic_energies : Optional[Dict[str, float]]
+            Dictionary of isolated atomic energies (E0) for referencing.
+            If provided, MACE model might need to use them (not fully implemented in Head-Only for now,
+            but signature matches interface).
         """
         # 1. Head Only Training Setup
         # Freeze all parameters
