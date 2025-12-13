@@ -1,5 +1,5 @@
 [project]
-name = "mlip-struc-gen-local"
+name = "mlip-pipelines"
 version = "0.1.0"
 description = "MACE-based structure optimization pipeline"
 requires-python = ">=3.10"
@@ -23,13 +23,16 @@ dependencies = [
     "python-dotenv",
     "pyxtal",
     "param",
-    "panel"
+    "panel",
+    "pytest>=9.0.2",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest",
     "pytest-mock",
+    "pytest-cov",
+    "hypothesis",
     "ruff",
     "mypy"
 ]
