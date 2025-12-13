@@ -1,0 +1,4 @@
+# file: /app/src/external/mlip_struc_gen/src/nnp_gen/generators/knowledge.py
+# hypothesis_version: 6.148.7
+
+[0.0, 0.01, 0.5, 0.8, 1.2, 1.5, 230, 'amount', 'atomic_radius', 'avg_en', 'elements', 'structure']

@@ -1,0 +1,4 @@
+# file: /app/src/external/mlip_struc_gen/src/nnp_gen/generators/covalent.py
+# hypothesis_version: 6.148.7
+
+[0.0, 231, 'config_source', 'supercell_size']

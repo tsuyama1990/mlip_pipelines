@@ -6,6 +6,7 @@ from ase import Atoms
 from ase.optimize import LBFGS, BFGS, FIRE
 from loguru import logger
 from src.config.settings import Settings
+from src.core.validators.structure_validator import validate_structure
 
 # Map optimizer string to class
 OPTIMIZERS = {
@@ -15,19 +16,50 @@ OPTIMIZERS = {
 }
 
 class StructureRelaxer:
+    """
+    Handles structure relaxation using ASE optimizers.
+    """
     def __init__(self, settings: Settings):
+        """
+        Initialize the relaxer.
+
+        Parameters
+        ----------
+        settings : Settings
+            The global settings object containing relaxation parameters.
+        """
         self.settings = settings
-        # Calculator is set externally or passed?
-        # Usually easier to pass calculator to run() or set it here if Factory is used.
-        # Design: main_cli instantiates calc and assigns to atoms. Relaxer just relaxes atoms.
         pass
 
     def run(self, atoms: Atoms, run_id: str) -> Dict[str, Any]:
         """
         Run structure optimization.
+
+        Parameters
+        ----------
+        atoms : Atoms
+            ASE Atoms object with calculator attached.
+        run_id : str
+            Unique identifier for this run.
+
+        Returns
+        -------
+        Dict[str, Any]
+            Dictionary containing:
+            - final_energy [eV]: Optimized energy
+            - max_force_final [eV/Å]: Maximum force component
+            - converged [bool]: Whether optimization converged
+            - steps [int]: Number of steps taken
+            - duration_seconds [float]: Time taken in seconds
+            - initial_energy [float]: Energy before relaxation
+            - final_structure [Atoms]: Relaxed structure
+            - trajectory [List[Atoms]]: List of intermediate structures
         """
         if atoms.calc is None:
             raise ValueError("Atoms object must have a calculator attached.")
+
+        # Physics Validation (Pre-Relaxation)
+        validate_structure(atoms)
 
         logger.info(f"Starting relaxation for Run ID: {run_id}")
 
@@ -70,6 +102,13 @@ class StructureRelaxer:
         final_energy = atoms.get_potential_energy()
         final_forces = atoms.get_forces()
         max_force_final = np.sqrt((final_forces**2).sum(axis=1).max())
+
+        # Physics Validation (Post-Relaxation)
+        # We should also validate result, although LBFGS shouldn't create clashes usually.
+        try:
+            validate_structure(atoms)
+        except Exception as e:
+             logger.warning(f"Post-relaxation structure validation failed: {e}")
 
         logger.info(f"Final Energy: {final_energy:.4f} eV")
         logger.info(f"Final Max Force: {max_force_final:.4f} eV/A")

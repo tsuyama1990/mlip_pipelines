@@ -1,0 +1,4 @@
+# file: /app/src/external/mlip_struc_gen/src/nnp_gen/core/interfaces.py
+# hypothesis_version: 6.148.7
+
+['default_magmoms', 'utf-8']

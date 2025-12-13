@@ -1,0 +1,4 @@
+# file: /app/src/external/mlip_struc_gen/src/nnp_gen/core/validation.py
+# hypothesis_version: 6.148.7
+
+[1e-24, 1.6605390666e-24, 1e-09, 2.0, 1000.0, 'ijd']

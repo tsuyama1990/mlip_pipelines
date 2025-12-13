@@ -1,0 +1,4 @@
+# file: /app/src/external/mlip_struc_gen/src/nnp_gen/generators/random_gen.py
+# hypothesis_version: 6.148.7
+
+[0.0, 1.0, 221, 225, 229, 'balanced', 'bcc', 'config_source', 'fcc', 'fixed', 'generated_spacegroup', 'random_generator', 'random_list', 'range', 'sc']

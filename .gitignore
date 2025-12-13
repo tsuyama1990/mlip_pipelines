@@ -27,3 +27,4 @@ data/
 build/
 dist/
 *.egg-info/
+.hypothesis/

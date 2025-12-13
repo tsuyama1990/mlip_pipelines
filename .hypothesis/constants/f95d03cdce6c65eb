@@ -1,0 +1,4 @@
+# file: /app/src/core/utils/io.py
+# hypothesis_version: 6.148.7
+
+['cif', 'config.json', 'dict', 'extxyz', 'final_structure', 'final_structure.cif', 'final_structure.xyz', 'model_dump', 'results.json', 'trajectory', 'trajectory.xyz', 'w']

@@ -1,0 +1,4 @@
+# file: /app/src/external/mlip_struc_gen/src/nnp_gen/core/zbl.py
+# hypothesis_version: 6.148.7
+
+[-0.5, 0.0, 0.0001, 0.02817, 0.1818, 0.2016, 0.23, 0.2802, 0.4029, 0.5099, 0.529177, 0.8854, 0.9423, 1.0, 2.0, 3.2, 14.3996, 'energy', 'forces', 'ijdD', 'stress']

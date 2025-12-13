@@ -1,0 +1,4 @@
+# file: /app/src/core/validators/structure_validator.py
+# hypothesis_version: 6.148.7
+
+[1e-06]

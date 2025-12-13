@@ -1,0 +1,4 @@
+# file: /app/src/core/engines/relaxer.py
+# hypothesis_version: 6.148.7
+
+['BFGS', 'FIRE', 'LBFGS', 'converged', 'duration_seconds', 'final_energy', 'final_structure', 'initial_energy', 'max_force_final', 'max_force_initial', 'run_id', 'steps', 'trajectory']
