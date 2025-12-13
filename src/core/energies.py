@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import List, Dict, Callable, Optional, Any
 from ase import Atoms
 from loguru import logger
-from src.utils.sssp import load_sssp_db, validate_pseudopotentials
+from src.core.sssp import load_sssp_db, validate_pseudopotentials
 
 class AtomicEnergyManager:
     """
@@ -28,8 +28,6 @@ class AtomicEnergyManager:
         self.calculator_factory = calculator_factory
 
         # Load and validate SSSP availability (light check)
-        # Note: We validate per-element on demand or here?
-        # Let's load db here.
         self.sssp_db = load_sssp_db(str(self.sssp_json_path))
 
     def get_atomic_energies(self, elements: List[str]) -> Dict[str, float]:
@@ -72,6 +70,18 @@ class AtomicEnergyManager:
     def _compute_energy(self, element: str, cache_file: Path) -> float:
         """
         Compute energy for a single isolated atom and save to cache.
+
+        Parameters
+        ----------
+        element : str
+            Chemical symbol.
+        cache_file : Path
+            Path to save the result.
+
+        Returns
+        -------
+        float
+            The computed energy (E0).
         """
         logger.info(f"Computing E0 for {element}...")
 

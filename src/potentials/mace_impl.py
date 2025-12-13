@@ -4,7 +4,7 @@ from ase import Atoms
 from mace.data import config_from_atoms
 from mace.tools import torch_geometric, torch_tools
 from typing import List, Optional, Tuple, Dict
-from src.interfaces import AbstractPotential
+from src.core.interfaces import AbstractPotential
 
 class MacePotential(AbstractPotential):
     """
@@ -17,11 +17,10 @@ class MacePotential(AbstractPotential):
         # Load logic handled here to support init from path
         self.load(model_path)
 
-    def _register_hook(self):
+    def _register_hook(self) -> None:
         """Register forward hook to capture last layer features."""
         def hook_fn(module, input, output):
             # Input to readout is typically (node_feats, ...)
-            # We want node_feats.
             if isinstance(input, tuple):
                 self.phi_hook = input[0].detach()  # Capture features
             else:
@@ -32,8 +31,20 @@ class MacePotential(AbstractPotential):
 
         self._hook_handle = self.target_module.register_forward_hook(hook_fn)
 
-    def _atoms_to_batch(self, atoms_list: List[Atoms]):
-        """Convert ASE Atoms to MACE batch."""
+    def _atoms_to_batch(self, atoms_list: List[Atoms]) -> Dict:
+        """
+        Convert ASE Atoms to MACE batch.
+
+        Parameters
+        ----------
+        atoms_list : List[Atoms]
+            List of ASE atoms objects.
+
+        Returns
+        -------
+        Dict
+            MACE batch dictionary.
+        """
         configs = [config_from_atoms(a) for a in atoms_list]
 
         # Extract z_table and cutoff from model if available
@@ -56,6 +67,9 @@ class MacePotential(AbstractPotential):
         return batch.to_dict()
 
     def predict(self, atoms: Atoms) -> tuple[float, np.ndarray, np.ndarray]:
+        """
+        Return (energy [eV], forces [eV/A], stress [eV/A^3]).
+        """
         self.model.eval()
         batch_data = self._atoms_to_batch([atoms])
 
@@ -78,10 +92,14 @@ class MacePotential(AbstractPotential):
             New structures for training.
         atomic_energies : Optional[Dict[str, float]]
             Dictionary of isolated atomic energies (E0) for referencing.
-            If provided, MACE model might need to use them (not fully implemented in Head-Only for now,
-            but signature matches interface).
         """
-        # 1. Head Only Training Setup
+        self._train_head(training_data)
+        self._update_uncertainty_covariance(training_data)
+
+    def _train_head(self, training_data: list[Atoms]) -> None:
+        """
+        Perform Head-Only training.
+        """
         # Freeze all parameters
         for param in self.model.parameters():
             param.requires_grad = False
@@ -125,8 +143,12 @@ class MacePotential(AbstractPotential):
             loss.backward()
             optimizer.step()
 
-        # 2. Covariance Matrix Update (LLU)
+    def _update_uncertainty_covariance(self, training_data: list[Atoms]) -> None:
+        """
+        Update the covariance matrix for LLU.
+        """
         self.model.eval()
+        batch_data = self._atoms_to_batch(training_data)
 
         _ = self.model(batch_data) # Trigger hook
         phi = self.phi_hook # (N_atoms_total, D)
@@ -137,13 +159,13 @@ class MacePotential(AbstractPotential):
         lambda_reg = 1e-4
         C_reg = C + lambda_reg * torch.eye(C.shape[0], device=self.device)
 
-        # Robust Inverse using solve is better than inv, but we need C^-1 explicitly to compute u(x) later efficiently
-        # u = phi^T * C^-1 * phi.
-        # So we do need C^-1.
-        # Use pinv for stability if C is singular even with regularization (unlikely but safe).
+        # Robust Inverse
         self.inv_covariance = torch.linalg.pinv(C_reg)
 
     def get_uncertainty(self, atoms: Atoms) -> np.ndarray:
+        """
+        Return per-atom uncertainty scores.
+        """
         if self.inv_covariance is None:
             return np.zeros(len(atoms))
 
