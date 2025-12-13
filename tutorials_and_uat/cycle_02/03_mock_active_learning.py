@@ -3,6 +3,12 @@ import sys
 
 import numpy as np
 import torch
+# PyTorch > 2.6 defaults weights_only=True. e3nn 0.4.4 needs 'slice' in safe globals
+# to load its constants.pt.
+try:
+    torch.serialization.add_safe_globals([slice])
+except AttributeError:
+    pass # Older pytorch versions don't have this function
 from ase.build import bulk
 from e3nn import o3
 from loguru import logger
