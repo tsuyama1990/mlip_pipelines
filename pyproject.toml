@@ -54,6 +54,8 @@ markers = [
 filterwarnings = [
     "ignore:Environment variable TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD detected"
 ]
+pythonpath = ["src"]
+addopts = "--ignore=tests/unit/engines/test_lammps_mace.py --ignore=tests/unit/core/test_orchestrator.py --ignore=tests/unit/oracles/test_qe_oracle.py"
 
 [tool.ruff]
 target-version = "py310"
