@@ -106,8 +106,10 @@ class ActiveLearningOrchestrator:
         # Setup LAMMPS Driver
         driver = LammpsMaceDriver(self.potential, threshold=threshold)
 
-        # Define standard NVT script
-        script = f"fix 1 all nvt temp {temp} {temp} 0.1"
+        # Define MD script (Custom or Default NVT)
+        script = self.config.exploration.get("lammps_script")
+        if not script:
+            script = f"fix 1 all nvt temp {temp} {temp} 0.1"
 
         logger.info(f"Starting MD exploration on structure {start_idx} for {steps} steps...")
 
