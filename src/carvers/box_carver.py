@@ -8,6 +8,7 @@ from ase.optimize import BFGS
 from loguru import logger
 from ase.calculators.calculator import Calculator
 import tempfile
+from carvers.chemistry import StoichiometryGuard
 
 class BoxCarver:
     """
@@ -41,7 +42,7 @@ class BoxCarver:
             if self.box_vector.shape != (3,):
                  raise ValueError("box_vector must be a float or a list of 3 floats.")
 
-    def carve(self, cluster_mode: bool = True, skin_depth: int = 1, calculator: Optional[Calculator] = None) -> Atoms:
+    def carve(self, cluster_mode: bool = True, skin_depth: int = 1, calculator: Optional[Calculator] = None, stoichiometry: Optional[str] = None) -> Atoms:
         """
         Perform the carving operation with Smart Carving logic.
 
@@ -53,6 +54,8 @@ class BoxCarver:
             Number of neighbor layers to expand connectivity. Default is 1.
         calculator : Calculator, optional
             ASE calculator for pre-relaxation. Default is None.
+        stoichiometry : str, optional
+            Target stoichiometry formula (e.g., "NaCl") to enforce.
 
         Returns
         -------
@@ -80,11 +83,43 @@ class BoxCarver:
              raise ValueError(f"Carved box contains too few atoms ({len(final_indices)}).")
 
         final_indices.sort()
+        # Create intermediate cluster
         carved_atoms = work_atoms[final_indices]
+
+        # 2.5 Stoichiometry Correction
+        if stoichiometry:
+            try:
+                guard = StoichiometryGuard(stoichiometry)
+
+                # Determine center index in the local cluster
+                try:
+                    center_local_idx = final_indices.index(self.center_index)
+                except ValueError:
+                    center_local_idx = None
+
+                corrected_atoms, kept_local_indices = guard.correct(carved_atoms, center_index=center_local_idx)
+
+                # Update final_indices based on what was kept
+                # kept_local_indices refers to indices in 'carved_atoms' (which corresponds to final_indices)
+                new_final_indices = [final_indices[i] for i in kept_local_indices]
+                final_indices = new_final_indices
+                final_indices.sort()
+
+                carved_atoms = corrected_atoms
+
+            except Exception as e:
+                logger.warning(f"Stoichiometry correction failed or skipped: {e}")
 
         self._check_stoichiometry(carved_atoms)
 
         # 3. Re-wrapping / Cluster Setup
+        # Note: We must work with a new Atoms object constructed from final_indices of work_atoms
+        # because _finalize_cell modifies positions/cell.
+        # But wait, carved_atoms IS that object.
+        # However, _finalize_cell expects the atoms to be in the frame of work_atoms (for periodic)
+        # or relative to center.
+        # If we modified carved_atoms in guard, we removed atoms. The positions are preserved.
+
         self._finalize_cell(carved_atoms, cluster_mode, center_cart_pos)
 
         # 4. Pre-relaxation
@@ -172,6 +207,9 @@ class BoxCarver:
 
         bulk_total = len(bulk_syms)
         cluster_total = len(cluster_syms)
+
+        if cluster_total == 0:
+            return
 
         for elem, count in bulk_counts.items():
             bulk_ratio = count / bulk_total

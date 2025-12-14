@@ -13,6 +13,27 @@ system:
   # SSSP JSON filename
   sssp_json: "SSSP_1.3.0_PBE_precision.json"
 
+potential:
+  arch: "linear_ace"  # Switchable: "mace" or "linear_ace"
+
+  mace:
+    model_path: "medium"
+
+  linear_ace:
+    basis_size: 500
+    cutoff: 5.0
+    model_path: "linear_ace.yace"
+
+  delta_learning:
+    enabled: true
+    baseline: "lj"
+    lj_params: {sigma: 2.0, epsilon: 0.1}
+
+carving:
+  method: "connectivity"
+  stoichiometry: "NaCl"
+  enforce_charge: true
+
 training:
   energy_weight: 1.0
   forces_weight: 10.0
@@ -22,4 +43,4 @@ training:
 exploration:
   md_steps: 1000
   temperature: 300
-  uncertainty_threshold: 1.2 # Relative to u_max
+  uncertainty_threshold: 1.2

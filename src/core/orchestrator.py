@@ -11,6 +11,7 @@ from carvers.box_carver import BoxCarver
 from core.exceptions import OracleComputationError
 from core.interfaces import AbstractOracle, AbstractPotential
 from engines.lammps_mace import LammpsMaceDriver
+from potentials.factory import load_potential
 
 # Assuming Generator interface exists or we pass it dynamically
 # Cycle 2 memory says "src/generators/adapter.py" but prompt calls it StructureGenerator.
@@ -20,14 +21,18 @@ class ActiveLearningOrchestrator:
     def __init__(
         self,
         config: DictConfig,
-        potential: AbstractPotential,
         oracle: AbstractOracle,
-        generator: Any  # Duck-typed generator
+        generator: Any,  # Duck-typed generator
+        potential: AbstractPotential = None
     ):
         self.config = config
-        self.potential = potential
         self.oracle = oracle
         self.generator = generator
+
+        if potential is not None:
+            self.potential = potential
+        else:
+            self.potential = load_potential(config)
 
         self.dataset: list[Atoms] = []
         self.cycle_count = 0
@@ -126,8 +131,9 @@ class ActiveLearningOrchestrator:
 
                 try:
                     # Instantiate BoxCarver for the specific cut
+                    stoichiometry = self.config.carving.get("stoichiometry")
                     carver = BoxCarver(final_atoms, center_idx, box_size)
-                    cluster = carver.carve()
+                    cluster = carver.carve(stoichiometry=stoichiometry)
                     candidates.append(cluster)
                 except Exception as e:
                     logger.warning(f"Carving failed: {e}")
