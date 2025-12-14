@@ -1,3 +1,4 @@
+
 [project]
 name = "mlip_pipelines"
 version = "0.2.0"
@@ -38,6 +39,10 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src"]
+
+[tool.hatch.build.targets.sdist]
+include = ["/src"]
+
 
 # --- Tool Configurations ---
 
