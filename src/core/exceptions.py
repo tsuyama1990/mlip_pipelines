@@ -13,3 +13,7 @@ class InvalidStructureError(MLIPPipelineError):
 class ConvergenceError(MLIPPipelineError):
     """Optimization failed to converge"""
     pass
+
+class OracleComputationError(MLIPPipelineError):
+    """Oracle calculation failed"""
+    pass

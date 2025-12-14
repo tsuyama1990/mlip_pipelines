@@ -1,10 +1,13 @@
 import json
-import os
+from collections.abc import Callable
 from pathlib import Path
-from typing import List, Dict, Callable, Optional, Any
+from typing import Any
+
 from ase import Atoms
 from loguru import logger
-from src.core.sssp import load_sssp_db, validate_pseudopotentials
+
+from src.utils.sssp import load_sssp_db, validate_pseudopotentials
+
 
 class AtomicEnergyManager:
     """
@@ -30,7 +33,7 @@ class AtomicEnergyManager:
         # Load and validate SSSP availability (light check)
         self.sssp_db = load_sssp_db(str(self.sssp_json_path))
 
-    def get_atomic_energies(self, elements: List[str]) -> Dict[str, float]:
+    def get_atomic_energies(self, elements: list[str]) -> dict[str, float]:
         """
         Get E0 for a list of elements. Computes or loads from cache.
 
@@ -55,7 +58,7 @@ class AtomicEnergyManager:
 
             if cache_file.exists():
                 try:
-                    with open(cache_file, 'r') as f:
+                    with open(cache_file) as f:
                         data = json.load(f)
                         energies[elem] = data["energy"]
                         logger.debug(f"Loaded E0 for {elem} from cache.")

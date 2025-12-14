@@ -21,6 +21,7 @@ dependencies = [
     "omegaconf",
     "pymatgen",
     "python-dotenv",
+    "requests",
 ]
 
 [project.optional-dependencies]
