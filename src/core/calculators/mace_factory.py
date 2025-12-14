@@ -3,7 +3,7 @@ from loguru import logger
 from ase.calculators.calculator import Calculator
 from mace.calculators import mace_mp
 
-from src.config.settings import MACESettings
+from config.settings import MACESettings
 
 def get_mace_calculator(settings: MACESettings) -> Calculator:
     """

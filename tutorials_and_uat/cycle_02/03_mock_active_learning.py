@@ -18,9 +18,9 @@ from mace.modules.blocks import RealAgnosticInteractionBlock
 # Add src to path
 sys.path.append(os.path.abspath(os.path.join(os.getcwd(), '../..')))
 
-from src.carvers.box_carver import BoxCarver
-from src.oracles.mock_oracle import MockOracle
-from src.potentials.mace_impl import MacePotential
+from carvers.box_carver import BoxCarver
+from oracles.mock_oracle import MockOracle
+from potentials.mace_impl import MacePotential
 
 # Setup Logger
 logger.remove()

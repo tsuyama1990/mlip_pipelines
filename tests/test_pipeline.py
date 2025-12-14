@@ -1,9 +1,9 @@
 import pytest
 import shutil
 from pathlib import Path
-from src.core.calculators.mace_factory import get_mace_calculator
-from src.core.engines.relaxer import StructureRelaxer
-from src.core.utils.io import save_results
+from core.calculators.mace_factory import get_mace_calculator
+from core.engines.relaxer import StructureRelaxer
+from core.utils.io import save_results
 
 @pytest.mark.slow
 def test_pipeline_integration(tmp_path, default_settings, test_atoms):

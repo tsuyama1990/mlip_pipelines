@@ -5,7 +5,7 @@ from ase import Atoms
 from mace.data import config_from_atoms
 from mace.tools import torch_geometric
 
-from src.core.interfaces import AbstractPotential
+from core.interfaces import AbstractPotential
 
 
 class MacePotential(AbstractPotential):

@@ -6,18 +6,20 @@ from loguru import logger
 import torch
 import numpy as np
 from ase import Atoms
+import os
 
 # Add src to path if running as script
-sys.path.append(str(Path(__file__).parent))
+# Patch for src-layout: Add src directory to sys.path
+sys.path.append(os.path.join(os.path.dirname(__file__), "src"))
 
-from src.config.settings import Settings
-from src.core.utils.logging import setup_logging
-from src.core.utils.io import save_results
-from src.core.generators.adapter import ExternalGeneratorAdapter
-from src.core.calculators.mace_factory import get_mace_calculator
-from src.core.engines.relaxer import StructureRelaxer
-from src.core.exceptions import MLIPPipelineError
-from src.core.constants import RATTLE_AMPLITUDE_ANGSTROM
+from config.settings import Settings
+from core.utils.logging import setup_logging
+from core.utils.io import save_results
+from generators.adapter import ExternalGeneratorAdapter
+from core.calculators.mace_factory import get_mace_calculator
+from core.engines.relaxer import StructureRelaxer
+from core.exceptions import MLIPPipelineError
+from core.constants import RATTLE_AMPLITUDE_ANGSTROM
 
 def main():
     # 1. Initialize Settings

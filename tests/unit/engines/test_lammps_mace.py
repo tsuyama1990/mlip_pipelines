@@ -10,8 +10,8 @@ import ctypes
 sys.modules['lammps'] = MagicMock()
 
 # Use absolute imports to match the application code
-from src.engines.lammps_mace import LammpsMaceDriver
-from src.core.exceptions import UncertaintyInterrupt
+from engines.lammps_mace import LammpsMaceDriver
+from core.exceptions import UncertaintyInterrupt
 
 @pytest.fixture
 def mock_potential():
@@ -114,7 +114,7 @@ def test_callback_sorting(lammps_driver, mock_potential):
     expected_f = np.array([[2.0, 2.0, 2.0], [1.0, 1.0, 1.0]])
     assert np.allclose(f_np, expected_f)
 
-@patch('src.engines.lammps_mace.lammps')
+@patch('engines.lammps_mace.lammps')
 def test_lammps_configuration(mock_lammps_constructor, mock_potential):
     """Test that the LAMMPS instance is configured correctly."""
     mock_lmp = MagicMock()
@@ -123,13 +123,15 @@ def test_lammps_configuration(mock_lammps_constructor, mock_potential):
     driver = LammpsMaceDriver(potential=mock_potential)
     atoms = Atoms('H2', positions=[[0,0,0], [0,0,1]], cell=[10,10,10])
     script = "fix 1 all nvt temp 300 300 0.1"
+    steps = 100
 
     with patch.object(driver, '_callback', autospec=True) as mock_callback:
         try:
-            driver.run_md(atoms, script, 1.0)
+            driver.run_md(atoms, script, steps)
         except Exception:
             pass
 
         mock_lmp.command.assert_any_call("pair_style none")
         mock_lmp.command.assert_any_call("fix MACE_FORCE all external pf/callback 1 1")
         mock_lmp.set_fix_external_callback.assert_called_once_with("MACE_FORCE", mock_callback, driver)
+        mock_lmp.command.assert_any_call(f"run {steps}")

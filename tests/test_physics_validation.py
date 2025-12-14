@@ -2,7 +2,7 @@ import pytest
 import numpy as np
 from ase import Atoms
 from ase.build import bulk
-from src.core.validators.structure_validator import (
+from core.validators.structure_validator import (
     validate_no_atomic_clash,
     validate_cell,
     validate_structure,

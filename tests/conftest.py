@@ -139,5 +139,5 @@ def minimal_mace_model_path(tmp_path, mocker):
 @pytest.fixture
 def mock_potential(minimal_mace_model_path):
     """Fixture to provide a MacePotential initialized with the mock."""
-    from src.potentials.mace_impl import MacePotential
+    from potentials.mace_impl import MacePotential
     return MacePotential(minimal_mace_model_path)

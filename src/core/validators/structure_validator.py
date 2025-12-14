@@ -1,8 +1,8 @@
 import numpy as np
 from ase import Atoms
 from ase.data import covalent_radii
-from src.core.exceptions import InvalidStructureError
-from src.core.constants import MIN_DISTANCE_RATIO
+from core.exceptions import InvalidStructureError
+from core.constants import MIN_DISTANCE_RATIO
 
 def validate_no_atomic_clash(atoms: Atoms, min_distance_ratio: float = MIN_DISTANCE_RATIO) -> None:
     """

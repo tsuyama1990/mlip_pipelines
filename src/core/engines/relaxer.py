@@ -5,8 +5,8 @@ import numpy as np
 from ase import Atoms
 from ase.optimize import LBFGS, BFGS, FIRE
 from loguru import logger
-from src.config.settings import Settings
-from src.core.validators.structure_validator import validate_structure
+from config.settings import Settings
+from core.validators.structure_validator import validate_structure
 
 # Map optimizer string to class
 OPTIMIZERS = {
