@@ -7,9 +7,9 @@ from ase.calculators.espresso import Espresso, EspressoProfile
 from ase.calculators.singlepoint import SinglePointCalculator
 from loguru import logger
 
-from src.core.exceptions import OracleComputationError
-from src.core.interfaces import AbstractOracle
-from src.utils.sssp import load_sssp_db, validate_pseudopotentials
+from core.exceptions import OracleComputationError
+from core.interfaces import AbstractOracle
+from utils.sssp import load_sssp_db, validate_pseudopotentials
 
 
 class QeOracle(AbstractOracle):

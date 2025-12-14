@@ -3,14 +3,14 @@ from typing import Any
 
 import numpy as np
 from ase import Atoms
-from ase.md.langevin import Langevin
 from ase.units import fs
 from loguru import logger
 from omegaconf import DictConfig
 
-from src.carvers.box_carver import BoxCarver
-from src.core.exceptions import OracleComputationError
-from src.core.interfaces import AbstractOracle, AbstractPotential
+from carvers.box_carver import BoxCarver
+from core.exceptions import OracleComputationError
+from core.interfaces import AbstractOracle, AbstractPotential
+from engines.lammps_mace import LammpsMaceDriver
 
 # Assuming Generator interface exists or we pass it dynamically
 # Cycle 2 memory says "src/generators/adapter.py" but prompt calls it StructureGenerator.
@@ -94,55 +94,50 @@ class ActiveLearningOrchestrator:
         # Pick 1 random structure to explore
         start_idx = np.random.randint(0, len(self.dataset))
         atoms = self.dataset[start_idx].copy()
-        atoms.calc = self.potential # Potential must be an ASE calculator compatible object or wrapped
 
         # MD Parameters
         steps = self.config.exploration.md_steps
         temp = self.config.exploration.temperature
-        interval = 10 # Check uncertainty every 10 steps
-        uncertainty_threshold = self.config.exploration.uncertainty_threshold
 
-        # Setup Langevin
-        dyn = Langevin(atoms, timestep=2.0 * fs, temperature_K=temp, friction=0.01 / fs)
+        # Get threshold ratio from config, default to 2.0 if missing
+        threshold = self.config.get("active_learning", {}).get("threshold_ratio",
+                    self.config.get("exploration", {}).get("threshold", 2.0))
 
-        # We need to know u_max to normalize uncertainty if threshold is relative
-        # Assuming potential tracks u_max internally or we assume absolute.
-        # Prompt: "uncertainty_threshold: 1.2 # Relative to u_max"
-        # The potential interface has `get_uncertainty(atoms)`.
-        # Usually u_max is stored in the potential. Let's assume get_uncertainty returns raw,
-        # and we need to compare against stored u_max?
-        # Or maybe the potential handles normalization?
-        # Memory says "Uncertainty is normalized by u_max".
-        # So `get_uncertainty` likely returns normalized scores.
-        # If so, threshold 1.2 means 1.2 * 1.0 = 1.2.
+        # Setup LAMMPS Driver
+        driver = LammpsMaceDriver(self.potential, threshold=threshold)
 
+        # Define standard NVT script
+        script = f"fix 1 all nvt temp {temp} {temp} 0.1"
 
         logger.info(f"Starting MD exploration on structure {start_idx} for {steps} steps...")
 
-        for i in range(0, steps, interval):
-            dyn.run(interval)
+        try:
+            final_atoms, status = driver.run_md(atoms, script, steps)
 
-            # Check uncertainty
-            # get_uncertainty returns per-atom uncertainty
-            uncertainties = self.potential.get_uncertainty(atoms)
-            max_u = np.max(uncertainties)
+            if status == "UNCERTAIN":
+                logger.info("Uncertainty interrupt triggered.")
 
-            if max_u > uncertainty_threshold:
-                logger.info(f"High uncertainty detected (max_u={max_u:.3f} > {uncertainty_threshold}) at step {i}")
-
-                # Carve
+                # Check uncertainty to find center (redundant check, but safe)
+                uncertainties = self.potential.get_uncertainty(final_atoms)
                 center_idx = int(np.argmax(uncertainties))
                 box_size = self.config.experiment.box_size
 
                 try:
                     # Instantiate BoxCarver for the specific cut
-                    carver = BoxCarver(atoms, center_idx, box_size)
+                    carver = BoxCarver(final_atoms, center_idx, box_size)
                     cluster = carver.carve()
                     candidates.append(cluster)
-                    break # Stop MD after finding one candidate
                 except Exception as e:
                     logger.warning(f"Carving failed: {e}")
-                    # Continue MD if carving failed
+
+            elif status == "FINISHED":
+                logger.info("Exploration converged without uncertainty. Restarting exploration...")
+                # We return empty list so the loop continues
+                return []
+
+        except Exception as e:
+            logger.error(f"MD failed: {e}")
+            return []
 
         return candidates
 

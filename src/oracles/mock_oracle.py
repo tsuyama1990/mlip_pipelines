@@ -2,7 +2,7 @@ import time
 import numpy as np
 from ase import Atoms
 from ase.calculators.singlepoint import SinglePointCalculator
-from src.core.interfaces import AbstractOracle
+from core.interfaces import AbstractOracle
 
 class MockOracle(AbstractOracle):
     """

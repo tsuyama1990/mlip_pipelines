@@ -1,6 +1,6 @@
 import pytest
 from pydantic import ValidationError
-from src.config.settings import Settings, RelaxationSettings, MACESettings
+from config.settings import Settings, RelaxationSettings, MACESettings
 
 def test_default_settings():
     """Test that default settings are valid."""

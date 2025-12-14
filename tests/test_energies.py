@@ -1,7 +1,7 @@
 import json
 import pytest
 from pathlib import Path
-from src.core.energies import AtomicEnergyManager
+from core.energies import AtomicEnergyManager
 from ase.calculators.calculator import Calculator, all_changes
 from ase import Atoms
 

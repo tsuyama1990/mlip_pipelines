@@ -1,7 +1,7 @@
 import pytest
 import numpy as np
 from ase import Atoms
-from src.core.engines.relaxer import StructureRelaxer
+from core.engines.relaxer import StructureRelaxer
 
 def test_relaxer_run_mocked(mocker, default_settings, test_atoms):
     """

@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 from ase import Atoms
-from src.potentials.mace_impl import MacePotential
+from potentials.mace_impl import MacePotential
 import torch
 import os
 from ase.calculators.singlepoint import SinglePointCalculator

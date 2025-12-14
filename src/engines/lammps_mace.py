@@ -4,7 +4,7 @@ from ase import Atoms
 from lammps import lammps
 import ctypes
 
-from src.core.exceptions import UncertaintyInterrupt
+from core.exceptions import UncertaintyInterrupt
 
 class LammpsMaceDriver:
     def __init__(self, potential, threshold=0.1):
@@ -71,9 +71,15 @@ class LammpsMaceDriver:
         f_array = np.ctypeslib.as_array(f, shape=(nlocal, 3))
         f_array[sort_indices] = forces
 
-    def run_md(self, atoms, lammps_script, threshold=None):
+    def run_md(self, atoms, lammps_script, steps, threshold=None):
         """
         Run MD using the provided atoms and LAMMPS script.
+
+        Parameters:
+            atoms: ASE Atoms object.
+            lammps_script: String containing LAMMPS commands (fixes, etc.).
+            steps: Number of MD steps to run.
+            threshold: Uncertainty threshold ratio (optional).
         """
         if threshold is not None:
             self.threshold = threshold
@@ -126,10 +132,15 @@ class LammpsMaceDriver:
         self.lmp.command("fix MACE_FORCE all external pf/callback 1 1")
         self.lmp.set_fix_external_callback("MACE_FORCE", self._callback, self)
 
-        # Run user script
+        # Run user script, stripping any existing 'run' commands
         try:
             for line in lammps_script.strip().split('\n'):
-                self.lmp.command(line.strip())
+                stripped = line.strip()
+                if not stripped.startswith("run"):
+                    self.lmp.command(stripped)
+
+            # Explicitly run
+            self.lmp.command(f"run {steps}")
 
             return self.current_atoms, "FINISHED"
 

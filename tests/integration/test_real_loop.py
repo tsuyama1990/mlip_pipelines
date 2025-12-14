@@ -8,9 +8,9 @@ from omegaconf import OmegaConf
 
 # We need a potential implementation. For the test we can mock it or use a dummy.
 # But the orchestrator expects AbstractPotential.
-from src.core.interfaces import AbstractPotential
-from src.core.orchestrator import ActiveLearningOrchestrator
-from src.oracles.qe_oracle import QeOracle
+from core.interfaces import AbstractPotential
+from core.orchestrator import ActiveLearningOrchestrator
+from oracles.qe_oracle import QeOracle
 
 
 # Mock Generator

@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 from ase import Atoms
 from ase.calculators.singlepoint import SinglePointCalculator
-from src.potentials.mace_impl import MacePotential
+from potentials.mace_impl import MacePotential
 import torch
 
 def test_mace_consistency(minimal_mace_model_path):

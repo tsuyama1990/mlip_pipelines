@@ -14,7 +14,7 @@ if str(EXTERNAL_PATH) not in sys.path:
     sys.path.append(str(EXTERNAL_PATH))
     logger.debug(f"Added {EXTERNAL_PATH} to sys.path")
 
-from src.config.settings import GeneratorSettings
+from config.settings import GeneratorSettings
 
 # Import from external (wrapped in try-except to handle potential import errors gracefully)
 try:

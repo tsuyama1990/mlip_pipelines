@@ -6,7 +6,7 @@ from typing import Any
 from ase import Atoms
 from loguru import logger
 
-from src.utils.sssp import load_sssp_db, validate_pseudopotentials
+from utils.sssp import load_sssp_db, validate_pseudopotentials
 
 
 class AtomicEnergyManager:

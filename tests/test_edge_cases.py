@@ -1,7 +1,7 @@
 import pytest
 import numpy as np
 from ase import Atoms
-from src.core.validators.structure_validator import validate_structure, validate_no_atomic_clash, InvalidStructureError
+from core.validators.structure_validator import validate_structure, validate_no_atomic_clash, InvalidStructureError
 
 class TestEdgeCases:
     def test_empty_system(self):
