@@ -14,20 +14,22 @@ system:
   sssp_json: "SSSP_1.3.0_PBE_precision.json"
 
 potential:
-  arch: "linear_ace"  # Switchable: "mace" or "linear_ace"
+  arch: "pyace"  # Switchable: "mace" or "pyace"
 
   mace:
     model_path: "medium"
 
-  linear_ace:
+  pyace:
     basis_size: 500
     cutoff: 5.0
-    model_path: "linear_ace.yace"
-
-  delta_learning:
-    enabled: true
-    baseline: "lj"
-    lj_params: {sigma: 2.0, epsilon: 0.1}
+    model_path: "pyace.yace"
+    delta_learning:
+      enabled: true
+      baseline: "lj"
+      lj_params:
+        sigma: 2.0
+        epsilon: 0.1
+        cutoff: 5.0
 
 carving:
   method: "connectivity"

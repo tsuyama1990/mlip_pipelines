@@ -4,14 +4,15 @@ import numpy as np
 from ase import Atoms
 from unittest.mock import MagicMock, patch
 import importlib
+import os
 
 # Ensure src is in path
-import os
 sys.path.append(os.path.join(os.path.dirname(__file__), "../src"))
 
 from carvers.chemistry import StoichiometryGuard
 from potentials.factory import load_potential
 from omegaconf import OmegaConf
+from potentials.shifted_lj import ShiftedLennardJones
 
 def test_stoichiometry_guard_basic():
     try:
@@ -19,11 +20,9 @@ def test_stoichiometry_guard_basic():
     except ImportError:
         pytest.skip("pymatgen not installed")
 
-    # 1. Perfect match
     a1 = Atoms("NaCl", positions=[[0,0,0], [2,0,0]])
     assert guard.check(a1)
 
-    # 2. Excess Na
     a2 = Atoms("Na2Cl", positions=[[0,0,0], [1,0,0], [2,0,0]])
     assert not guard.check(a2)
 
@@ -34,73 +33,85 @@ def test_stoichiometry_guard_correction():
         pytest.skip("pymatgen not installed")
 
     # Na at 0 (center), Na at 10 (far), Cl at 2
-    # Excess Na -> Remove furthest Na (at 10)
     a3 = Atoms("NaNaCl", positions=[[0,0,0], [10,0,0], [2,0,0]])
 
-    # Center index 0 (Na at 0,0,0)
     corrected, kept = guard.correct(a3, center_index=0)
 
     assert len(corrected) == 2
-    # Formula order depends on ASE version/settings (NaCl vs ClNa)
     assert corrected.get_chemical_formula() in ["NaCl", "ClNa"]
-    # Indices in original: 0=Na, 1=Na(far), 2=Cl.
-    # We expect 1 to be removed.
     assert 1 not in kept
     assert 0 in kept
     assert 2 in kept
 
-def test_linear_ace_logic():
-    # Mock pyace
+def test_shifted_lj():
+    # Sigma=1.0, Epsilon=1.0, Cutoff=2.0
+    calc = ShiftedLennardJones(sigma=1.0, epsilon=1.0, cutoff=2.0)
+
+    # At r=1.0 (min of unshifted LJ)
+    # V_unshifted(1.0) = 4*1*(1 - 1) = 0? No!
+    # V = 4*eps*((s/r)^12 - (s/r)^6).
+    # r=1.0, s=1.0 -> 1^12 - 1^6 = 0.
+    # Ah, standard LJ crosses 0 at sigma. Min is at 2^(1/6)*sigma.
+
+    # At r=sigma=1.0, V_unshifted = 0.
+    # V_shifted = 0 - V(rc).
+
+    atoms = Atoms("Ar2", positions=[[0,0,0], [1.0,0,0]])
+    atoms.calc = calc
+    e = atoms.get_potential_energy()
+
+    # Calculate expected V(rc)
+    # rc=2.0. s/rc = 0.5.
+    sr6 = 0.5**6 # 1/64
+    sr12 = 0.5**12 # 1/4096
+    v_rc = 4 * 1.0 * (sr12 - sr6)
+
+    expected = 0.0 - v_rc
+    assert np.isclose(e, expected)
+
+    # At cutoff
+    atoms_rc = Atoms("Ar2", positions=[[0,0,0], [2.0,0,0]])
+    atoms_rc.calc = calc
+    e_rc = atoms_rc.get_potential_energy()
+    assert np.isclose(e_rc, 0.0)
+
+def test_pyace_logic():
     mock_pyace = MagicMock()
-
     with patch.dict(sys.modules, {'pyace': mock_pyace}):
-        # Reload to pick up mock
-        import potentials.linear_ace_impl
-        importlib.reload(potentials.linear_ace_impl)
-        from potentials.linear_ace_impl import LinearACEPotential
+        import potentials.pyace_impl
+        importlib.reload(potentials.pyace_impl)
+        from potentials.pyace_impl import PyACEPotential
 
-        # Init
-        pot = LinearACEPotential("model.yace", {}, {"sigma":2.0, "epsilon":0.1})
+        pot = PyACEPotential("model.yace", {}, {"sigma":1.0, "epsilon":1.0, "cutoff":2.0})
 
-        # Test Baseline (LJ)
-        # Pair of atoms at distance 2.0 (sigma)
-        # LJ at sigma is 0? No, 4*eps*((1)^12 - (1)^6) = 0.
+        # Baseline check (Shifted LJ)
         atoms = Atoms("Ar2", positions=[[0,0,0], [2.0, 0, 0]])
+        e_base, f_base = pot._compute_baseline(atoms)
+        assert np.isclose(e_base, 0.0) # At cutoff
+
+        # Predict
+        pot.ace_calc = MagicMock()
+        pot.ace_calc.get_potential_energy.return_value = 5.0
+        pot.ace_calc.get_forces.return_value = np.zeros((2,3))
 
         e, f, s = pot.predict(atoms)
-        # LJ at r=sigma is 0. But due to cutoff corrections, it might deviate slightly.
-        assert np.abs(e) < 0.01
+        assert np.isclose(e, 5.0 + 0.0)
 
-        # At distance < sigma, should be positive (repulsive)
-        atoms_close = Atoms("Ar2", positions=[[0,0,0], [1.8, 0, 0]])
-        e_close, _, _ = pot.predict(atoms_close)
-        assert e_close > 0.0
-
-        # At r_min = 2^(1/6)*sigma approx 1.122*2.0 = 2.244
-        atoms_min = Atoms("Ar2", positions=[[0,0,0], [2.244, 0, 0]])
-        e_min, _, _ = pot.predict(atoms_min)
-        # Should be approx -epsilon (-0.1)
-        assert np.isclose(e_min, -0.1, atol=0.01)
-
-def test_potential_factory():
+def test_potential_factory_pyace():
     conf = OmegaConf.create({
         "potential": {
-            "arch": "linear_ace",
-            "linear_ace": {"model_path": "test.yace"},
-            "delta_learning": {"lj_params": {"sigma": 1.0, "epsilon": 1.0}}
+            "arch": "pyace",
+            "pyace": {
+                "model_path": "test.yace",
+                "delta_learning": {
+                    "enabled": True,
+                    "lj_params": {"sigma": 1.0, "epsilon": 1.0, "cutoff": 5.0}
+                }
+            },
         },
         "device": "cpu"
     })
 
-    # Reload factory to ensure it sees the reloaded linear_ace_impl from previous test if shared?
-    # Pytest runs in one process usually.
-    # If previous test patched sys.modules, context manager exit should restore it.
-    # But importlib.reload might have permanently affected potentials.linear_ace_impl module object in memory.
-
-    # We'll just run factory. If LinearACEPotential imports pyace and fails, it logs warning but instantiates.
-    # Since we are not patching here, pyace will be None (real env).
-    # LinearACEPotential.__init__ checks if pyace is None.
-
     pot = load_potential(conf)
-    # Check class name to avoid reload issues in test suite
-    assert type(pot).__name__ == "LinearACEPotential"
+    assert type(pot).__name__ == "PyACEPotential"
+    assert pot.lj_params["sigma"] == 1.0
