@@ -22,6 +22,7 @@ dependencies = [
     "pymatgen",
     "python-dotenv",
     "requests",
+    "lammps>=2025.7.22.2.0",
 ]
 
 [project.optional-dependencies]
