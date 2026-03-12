@@ -1,0 +1,18 @@
+[project]
+name = "mlip-pipelines"
+version = "0.1.0"
+description = "automatic mlip builder"
+authors = [
+    { name = "tomoyuki tsuyama", email = "[tomoyuki.tsuyaman@gmail.com]" },
+]
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "mypy>=1.19.1",
+    "pytest>=9.0.2",
+    "pytest-cov>=7.0.0",
+    "ruff>=0.15.6",
+]
