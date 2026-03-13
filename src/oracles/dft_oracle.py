@@ -59,7 +59,7 @@ class DFTManager:
         embedded.set_pbc(True)  # type: ignore[no-untyped-call]
         return embedded
 
-    def _get_calculator(self, atoms: Atoms, work_dir: Path) -> Espresso:
+    def _get_calculator(self, atoms: Atoms, work_dir: Path) -> Espresso:  # noqa: C901
         """Creates the ESPRESSO calculator with self-healing parameters."""
         # Determine pseudopotentials from elements
         import re
@@ -72,6 +72,9 @@ class DFTManager:
         # Use strict resolution to ensure the base directory exists and is canonical
         try:
             pseudo_dir_path = Path(self.config.pseudo_dir).resolve(strict=True)
+            if not pseudo_dir_path.is_absolute() or not pseudo_dir_path.is_dir():
+                msg = f"Pseudopotential directory must be an absolute path to a valid directory: {self.config.pseudo_dir}"
+                raise ValueError(msg)
         except FileNotFoundError as e:
             msg = f"Pseudopotential directory not found: {self.config.pseudo_dir}"
             raise FileNotFoundError(msg) from e
@@ -79,7 +82,10 @@ class DFTManager:
         for el in symbols:
             # Validate element names strictly against a whitelist of valid chemical symbols structure
             # to prevent path traversal attacks (e.g. element name "../malicious")
-            if not re.match(r"^[A-Z][a-z]?$", el) or el not in atomic_numbers:
+            if not re.match(r"^[A-Z][a-z]?$", el):
+                msg = "Invalid element name"
+                raise ValueError(msg)
+            if el not in atomic_numbers:
                 msg = f"Invalid chemical symbol detected: {el}"
                 raise ValueError(msg)
 

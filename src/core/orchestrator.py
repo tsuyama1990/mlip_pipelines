@@ -43,12 +43,18 @@ class Orchestrator:
 
             # Directory traversal vulnerability fix
             if not latest_pot.is_relative_to(pot_dir.resolve()):
-                logging.error("Path traversal attempt detected resolving potential files.")
-                return None
+                msg = "Invalid potential path"
+                raise ValueError(msg)
 
             # Validate format strictly to ensure file integrity
+            # Use fcntl to lock the file preventing race conditions on access
+            import fcntl
             with Path.open(latest_pot) as f:
-                content = f.read(100)
+                fcntl.flock(f, fcntl.LOCK_SH)
+                try:
+                    content = f.read(100)
+                finally:
+                    fcntl.flock(f, fcntl.LOCK_UN)
         except (ValueError, OSError):
             logging.exception("Failed to load or validate latest potential")
             return None

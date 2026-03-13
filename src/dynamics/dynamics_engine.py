@@ -17,7 +17,7 @@ class MDInterface:
         self.config = config
         self.system_config = system_config
 
-    def run_exploration(self, potential: Path | None, work_dir: Path) -> dict[str, Any]:
+    def run_exploration(self, potential: Path | None, work_dir: Path) -> dict[str, Any]:  # noqa: C901, PLR0915
         """Runs LAMMPS exploration and monitors for high uncertainty."""
         work_dir.mkdir(parents=True, exist_ok=True)
         dump_file = work_dir / "dump.lammps"
@@ -34,7 +34,6 @@ class MDInterface:
         zbl_elements = get_zbl_mapping(self.system_config.elements)
 
         import os
-        import shlex
         import shutil
         import tempfile
 
@@ -42,6 +41,12 @@ class MDInterface:
         try:
             with os.fdopen(fd, "w") as tmp_in_file:
                 if potential is None:
+                    import re
+                    dump_name = dump_file.name
+                    if not re.match(r"^[-a-zA-Z0-9_.]+$", dump_name):
+                        msg = "Dump file name contains invalid characters"
+                        raise ValueError(msg)
+
                     # Cold start logic: Run MD using only the ZBL baseline potential
                     tmp_in_file.write(f"""
 units metal
@@ -53,7 +58,7 @@ pair_style zbl 1.0 2.0
 pair_coeff * * {zbl_elements}
 
 # Force dump to extract structures for initial training
-dump 1 all custom 10 {shlex.quote(dump_file.name)} id type x y z
+dump 1 all custom 10 {dump_name} id type x y z
 run {min(self.config.md_steps, 1000)}  # Short run for cold start
 """)
                 else:
@@ -63,7 +68,17 @@ run {min(self.config.md_steps, 1000)}  # Short run for cold start
                         msg = "Potential path must end with .yace"
                         raise ValueError(msg)
 
-                    safe_pot_path = shlex.quote(pot_path_str)
+                    import re
+                    # Validate path safe for lammps without shlex quotes to avoid LAMMPS syntax errors
+                    # using strict whitelist
+                    if not re.match(r"^[-a-zA-Z0-9_./]+$", pot_path_str):
+                        msg = "Potential path contains invalid characters for LAMMPS"
+                        raise ValueError(msg)
+
+                    dump_name = dump_file.name
+                    if not re.match(r"^[-a-zA-Z0-9_.]+$", dump_name):
+                        msg = "Dump file name contains invalid characters"
+                        raise ValueError(msg)
 
                     tmp_in_file.write(f"""
 units metal
@@ -71,14 +86,14 @@ boundary p p p
 atom_style atomic
 
 pair_style hybrid/overlay pace zbl 1.0 2.0
-pair_coeff * * pace {safe_pot_path}
+pair_coeff * * pace {pot_path_str}
 pair_coeff * * zbl {zbl_elements}
 
 compute pace_gamma all pace gamma_mode=1
 variable max_gamma equal max(c_pace_gamma)
 fix watchdog all halt 10 v_max_gamma > {self.config.uncertainty_threshold} error hard
 
-dump 1 all custom 10 {shlex.quote(dump_file.name)} id type x y z
+dump 1 all custom 10 {dump_name} id type x y z c_pace_gamma
 run {self.config.md_steps}
 """)
             # Atomically rename to target input file
@@ -131,6 +146,20 @@ run {self.config.md_steps}
             msg = f"No structures read from dump file: {dump_file}"
             raise ValueError(msg)
 
-        # In a real dump, we'd filter atoms where gamma > threshold.
-        # Here we just return the last snapshot for now.
-        return [traj[-1]]
+        # Filter high gamma structures out of trajectory dump frames
+        high_gamma = []
+        for atoms in traj:
+            if "c_pace_gamma" in atoms.arrays:
+                # Find maximum gamma over atoms
+                gamma_array = atoms.arrays["c_pace_gamma"]
+                import numpy as np
+                if np.max(gamma_array) > threshold:
+                    high_gamma.append(atoms)
+            else:
+                # Default to last frame if gamma is not mapped, e.g. for mock testing or cold start
+                pass
+
+        if not high_gamma:
+            return [traj[-1]]
+
+        return high_gamma

@@ -48,14 +48,12 @@ class PacemakerWrapper:
             out_file = td_path / "selected.extxyz"
             write(str(in_file), all_atoms, format="extxyz")
 
-            import shlex
-
             cmd = [
                 "pace_activeset",
                 "--input",
-                shlex.quote(str(in_file)),
+                str(in_file),
                 "--output",
-                shlex.quote(str(out_file)),
+                str(out_file),
                 "--n",
                 str(n),
             ]
@@ -90,25 +88,31 @@ class PacemakerWrapper:
         resolved_output_dir.mkdir(parents=True, exist_ok=True)
         out_pot = resolved_output_dir / "output_potential.yace"
 
-        import shlex
+        import re
+        if not re.match(r"^[a-zA-Z0-9_.-]+$", self.config.baseline_potential):
+            msg = "Invalid baseline potential format"
+            raise ValueError(msg)
+        if not re.match(r"^[a-zA-Z0-9_.-]+$", self.config.regularization):
+            msg = "Invalid regularization format"
+            raise ValueError(msg)
 
         cmd = [
             "pace_train",
             "--dataset",
-            shlex.quote(str(dataset.resolve())),
+            str(dataset.resolve()),
             "--max_num_epochs",
             str(self.config.max_epochs),
             "--active_set_size",
             str(self.config.active_set_size),
             "--baseline_potential",
-            shlex.quote(self.config.baseline_potential),
+            self.config.baseline_potential,
             "--regularization",
-            shlex.quote(self.config.regularization),
+            self.config.regularization,
             "--output_dir",
-            shlex.quote(str(resolved_output_dir)),
+            str(resolved_output_dir),
         ]
         if initial_potential and initial_potential.exists():
-            cmd.extend(["--initial_potential", shlex.quote(str(initial_potential.resolve()))])
+            cmd.extend(["--initial_potential", str(initial_potential.resolve())])
 
         try:
             subprocess.run(cmd, check=True, capture_output=True, text=True, shell=False)  # noqa: S603

@@ -1,7 +1,12 @@
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from src.domain_models.config import ValidatorConfig
 from src.domain_models.dtos import ValidationReport
+
+if TYPE_CHECKING:
+    from ase import Atoms
+    from ase.calculators.calculator import Calculator
 
 
 class Validator:
@@ -10,7 +15,7 @@ class Validator:
     def __init__(self, config: ValidatorConfig) -> None:
         self.config = config
 
-    def _check_phonopy_stability(self, atoms, calc) -> bool:  # type: ignore[no-untyped-def]
+    def _check_phonopy_stability(self, atoms: 'Atoms', calc: 'Calculator') -> bool:
         import phonopy
         from phonopy.structure.atoms import PhonopyAtoms
 
@@ -80,6 +85,8 @@ class Validator:
 
         try:
             from pyacemaker.calculator import pyacemaker
+            if not hasattr(pyacemaker, "__version__"):
+                logging.info("pyacemaker module found, skipping explicit version check.")
         except ImportError:
             logging.exception("pyacemaker dependency missing. Proceeding with fallback safety.")
             msg = "pyacemaker dependency is missing, cannot compute validation."
