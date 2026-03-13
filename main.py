@@ -4,12 +4,12 @@ import sys
 from pathlib import Path
 
 import yaml
-from src.core.orchestrator import ActiveLearningOrchestrator
-from src.generators.structure_generator import StructureGenerator
-from src.oracles.dft_oracle import DFTOracle
 
+from src.core.orchestrator import ActiveLearningOrchestrator
 from src.domain_models.config import PipelineConfig
 from src.dynamics.dynamics_engine import DynamicsEngine
+from src.generators.structure_generator import StructureGenerator
+from src.oracles.dft_oracle import DFTOracle
 from src.trainers.ace_trainer import ACETrainer
 from src.validators.validator import Validator
 
