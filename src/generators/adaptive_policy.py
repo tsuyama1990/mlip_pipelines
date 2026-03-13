@@ -6,7 +6,7 @@ class AdaptiveExplorationPolicyEngine:
 
     def decide_policy(self, features: MaterialFeatures) -> ExplorationStrategy:
         # Default strategy
-        strategy = ExplorationStrategy(policy_name="Standard", md_mc_ratio=0.0, t_max=0.5 * features.melting_point)
+        strategy = ExplorationStrategy(policy_name="Standard", md_mc_ratio=0.0, t_max=0.5 * features.melting_point, n_defects=0.0, strain_range=0.0)
 
         # Rule 1: High Initial Uncertainty -> Cautious Exploration
         if features.initial_gamma_variance > 1.0:

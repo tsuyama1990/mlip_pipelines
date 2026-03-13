@@ -47,7 +47,7 @@ pair_style hybrid/overlay pace zbl 1.0 2.0
 pair_coeff * * pace {potential.absolute()}
 # pair_coeff * * zbl 26 78  # Needs elements dynamically
 
-compute pace_gamma all pace ... gamma_mode=1
+compute pace_gamma all pace gamma_mode=1
 variable max_gamma equal max(c_pace_gamma)
 fix watchdog all halt 10 v_max_gamma > {self.config.uncertainty_threshold} error hard
 
@@ -59,8 +59,9 @@ run {self.config.md_steps}
             # Lammps command line execution
             # 'lmp' or 'lmp_mpi' is standard
             # if we get an error, it might be the watchdog
-            subprocess.run(["lmp", "-in", "in.lammps"], cwd=work_dir, check=True, capture_output=True)
-            return {"halted": False, "dump_file": None}
+            import shutil
+            lmp_bin = shutil.which("lmp") or "lmp"
+            subprocess.run([lmp_bin, "-in", "in.lammps"], cwd=work_dir, check=True, capture_output=True, shell=False)
         except subprocess.CalledProcessError:
             # If LAMMPS halted due to error hard
             logging.warning("LAMMPS halted, possibly due to uncertainty watchdog.")
@@ -68,9 +69,11 @@ run {self.config.md_steps}
             if not dump_file.exists():
                 dump_file.write_text("dummy") # Fallback to continue logic if dump wasn't written
             return {"halted": True, "dump_file": dump_file}
+        else:
+            return {"halted": False, "dump_file": None}
         except FileNotFoundError:
             # lmp not installed, fallback logic for CI
-            logging.exception("LAMMPS executable not found. Creating dummy dump.")
+            logging.warning("LAMMPS executable not found. Creating dummy dump.")
             dump_file.write_text("dummy")
             return {"halted": True, "dump_file": dump_file}
 

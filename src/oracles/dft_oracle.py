@@ -44,7 +44,12 @@ class DFTManager:
     def _get_calculator(self, atoms: Atoms, work_dir: Path) -> Espresso:
         """Creates the ESPRESSO calculator with self-healing parameters."""
         # Determine pseudopotentials from elements
-        pseudos = {el: f"{el}.upf" for el in set(atoms.get_chemical_symbols())}
+        symbols = set(atoms.get_chemical_symbols())
+        pseudos = {el: f"{el}.upf" for el in symbols}
+
+        # Check for transition metals
+        transition_metals = {"Fe", "Co", "Ni", "Mn", "Cr", "V"}
+        has_tm = any(el in transition_metals for el in symbols)
 
         # K-points from Kspacing
         cell = atoms.get_cell()
@@ -52,28 +57,46 @@ class DFTManager:
         b = np.linalg.norm(cell, axis=0) # roughly real lattice vectors lengths
         kpts = [int(np.ceil(2 * np.pi / (self.config.kspacing * x))) if x > 0 else 1 for x in b]
 
-        calc = Espresso(
+        # Validated smearing
+        degauss = self.config.smearing_width if self.config.smearing_width > 0.0 else 0.02
+
+        input_data = {
+            "control": {
+                "calculation": "scf"
+            },
+            "system": {
+                "ecutwfc": 40.0,
+                "ecutrho": 320.0,
+                "occupations": "smearing",
+                "smearing": "mv",
+                "degauss": degauss
+            },
+            "electrons": {
+                "mixing_beta": 0.7,
+                "diagonalization": "david"
+            }
+        }
+
+        if has_tm:
+            input_data["system"]["nspin"] = 2
+
+            # Start magnetisation heuristics
+            start_mag = {}
+            for i, el in enumerate(atoms.get_chemical_symbols()):
+                if el in transition_metals:
+                    start_mag[el] = 1.0 # High spin initialization
+
+            input_data["system"]["starting_magnetization"] = start_mag
+
+        return Espresso(
             pseudopotentials=pseudos,
             pseudo_dir=self.config.pseudo_dir,
             tstress=True,
             tprnfor=True,
             kpts=kpts,
             directory=str(work_dir),
-            input_data={
-                "system": {
-                    "ecutwfc": 40.0,
-                    "ecutrho": 320.0,
-                    "occupations": "smearing",
-                    "smearing": "mv",
-                    "degauss": self.config.smearing_width
-                },
-                "electrons": {
-                    "mixing_beta": 0.7,
-                    "diagonalization": "david"
-                }
-            }
+            input_data=input_data
         )
-        return calc
 
     def compute_batch(self, structures: list[Atoms], calc_dir: Path) -> list[Atoms]:
         """Runs DFT on a batch of structures with self-healing."""
@@ -92,9 +115,9 @@ class DFTManager:
                 # Calculate properties.
                 # Since ASE just executes pw.x, we assume pw.x is in PATH.
                 # If not, ASE will fail. We need to handle this robustly.
-                energy = embedded_atoms.get_potential_energy()
-                forces = embedded_atoms.get_forces()
-                stress = embedded_atoms.get_stress()
+                embedded_atoms.get_potential_energy()
+                embedded_atoms.get_forces()
+                embedded_atoms.get_stress()
 
                 results.append(embedded_atoms)
 

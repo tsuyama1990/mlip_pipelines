@@ -8,6 +8,7 @@ from ase import Atoms
 from src.domain_models.config import ProjectConfig
 from src.dynamics.dynamics_engine import MDInterface
 from src.generators.adaptive_policy import AdaptiveExplorationPolicyEngine
+from src.generators.structure_generator import StructureGenerator
 from src.oracles.dft_oracle import DFTManager
 from src.trainers.ace_trainer import PacemakerWrapper
 from src.validators.validator import Validator
@@ -23,6 +24,7 @@ class Orchestrator:
         self.trainer = PacemakerWrapper(config.trainer)
         self.validator = Validator(config.validator)
         self.policy_engine = AdaptiveExplorationPolicyEngine()
+        self.structure_generator = StructureGenerator()
         self.iteration = 0
 
     def get_latest_potential(self) -> Path | None:
@@ -46,7 +48,11 @@ class Orchestrator:
         # Build directory mapping
         base_dir = self.config.project_root / "active_learning"
         work_dir = base_dir / f"iter_{self.iteration:03d}"
-        work_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            work_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            logging.exception(f"Failed to create working directory {work_dir}: {e}")
+            return "ERROR"
 
         cycle_successful = False
 
@@ -72,12 +78,7 @@ class Orchestrator:
 
             def candidate_generator() -> Iterator[list[Atoms]]:
                 for s0 in high_gamma_atoms:
-                    candidates = []
-                    for i in range(20):
-                        c = s0.copy()  # type: ignore[no-untyped-call]
-                        c.rattle(stdev=0.05, seed=42+i)
-                        candidates.append(c)
-
+                    candidates = self.structure_generator.generate_local_candidates(s0, n=20)
                     yield self.trainer.select_local_active_set(
                         candidates, anchor=s0, n=5
                     )

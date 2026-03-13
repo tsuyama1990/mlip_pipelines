@@ -56,7 +56,7 @@ class ProjectConfig(BaseSettings):
         extra="forbid",
     )
 
-    project_root: Path = Field(default_factory=Path.cwd)
+    project_root: Path = Field(..., description="Root directory of the project")
     system: SystemConfig
     dynamics: DynamicsConfig
     oracle: OracleConfig
