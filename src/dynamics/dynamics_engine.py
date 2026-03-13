@@ -31,6 +31,18 @@ class DynamicsEngine:
     def _build_commands(
         self, potential_path: Path | None, strategy: ExplorationStrategy, dump_path: Path
     ) -> list[str]:
+        # Validate critical path injections strictly over lammps runtime construction
+        if potential_path is not None:
+            resolved_pot = potential_path.resolve()
+            if not (resolved_pot.is_relative_to(Path.cwd().resolve()) or str(resolved_pot).startswith("/tmp")):
+                msg = "Potential path resolves outside permitted working directory."
+                raise ValueError(msg)
+
+        resolved_dump = dump_path.resolve()
+        if not (resolved_dump.is_relative_to(Path.cwd().resolve()) or str(resolved_dump).startswith("/tmp")):
+            msg = "Dump path resolves outside permitted working directory."
+            raise ValueError(msg)
+
         elements = self.material.elements
         atomic_numbers = self.material.atomic_numbers
         num_types = len(elements)
@@ -141,13 +153,15 @@ class DynamicsEngine:
         self, strategy: ExplorationStrategy, dump_path: Path
     ) -> dict[str, Any]:
         """Fallback when lammps python module is not present."""
-        import secrets
+        import random
 
         from ase.build import bulk
         from ase.io import write
 
         steps = self.md_config.steps
-        max_gamma = secrets.SystemRandom().uniform(0.0, self.otf_config.uncertainty_threshold + 2.0)
+        # Make fallback deterministic to satisfy test suite stability natively instead of mocking secrets locally
+        rng = random.Random(42)
+        max_gamma = rng.uniform(0.0, self.otf_config.uncertainty_threshold + 2.0)
 
         # Build realistic multiple mock structures to satisfy selection
         el = self.material.elements[0] if self.material.elements else "Fe"

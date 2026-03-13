@@ -41,7 +41,9 @@ def test_pipeline_skeleton(mock_pipeline_config: PipelineConfig, tmp_path: Path)
         patch("src.validators.validator.Validator._check_phonons", return_value=True),
         patch("ase.Atoms.get_potential_energy", return_value=-100.0),
         patch("ase.Atoms.get_forces", return_value=__import__("numpy").zeros((2, 3))),
+            patch("shutil.copy"),
     ):
+            # We mock shutil.copy to prevent it blowing up since our subprocess.run mock skips actually creating output_potential.yace
         # For Lammps halt loop
         mock_lammps = sys.modules["lammps"]
         lmp_instance = MagicMock()

@@ -74,7 +74,7 @@ def test_dynamics_engine_run_exploration_fallback(
         engine = DynamicsEngine(md_config, otf_config, material)
         strategy = ExplorationStrategy()
 
-        with patch("secrets.SystemRandom.uniform", return_value=6.0):
+        with patch("random.Random.uniform", return_value=6.0):
             result = engine.run_exploration(Path("dummy.yace"), strategy, tmp_path)
 
         assert result["halted"] is True
