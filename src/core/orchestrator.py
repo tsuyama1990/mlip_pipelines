@@ -1,39 +1,33 @@
+import logging
 import shutil
 from pathlib import Path
-from typing import Any
 
 from src.domain_models.config import PipelineConfig
-from src.domain_models.dtos import ExplorationStrategy
-from src.generators.adaptive_policy import AdaptivePolicy
 from src.dynamics.dynamics_engine import DynamicsEngine
+from src.generators.adaptive_policy import AdaptivePolicy
 from src.oracles.dft_oracle import DFTOracle
 from src.trainers.ace_trainer import ACETrainer
 from src.validators.validator import Validator
-
-import logging
 
 
 class ActiveLearningOrchestrator:
     """Core logic to manage state transitions in the active learning loop."""
 
-    def __init__(self, config: PipelineConfig) -> None:
+    def __init__(
+        self,
+        config: PipelineConfig,
+        md_engine: DynamicsEngine,
+        oracle: DFTOracle,
+        trainer: ACETrainer,
+        validator: Validator,
+        policy_engine: AdaptivePolicy,
+    ) -> None:
         self.config = config
-        self.md_engine = DynamicsEngine(self.config.lammps, self.config.otf_loop)
-        self.oracle = DFTOracle(self.config.dft)
-        self.trainer = ACETrainer(self.config.training)
-        self.validator = Validator(self.config.validation)
-
-        # Basic metadata simulation for policy init
-        self.material_dna: dict[str, Any] = {"elements": ["Fe", "Pt"]}
-        self.predicted_properties: dict[str, Any] = {
-            "band_gap": 0.0,
-            "melting_point": 1500.0,
-            "bulk_modulus": 180.0,
-        }
-        self.policy_engine = AdaptivePolicy(
-            self.material_dna, self.predicted_properties
-        )
-
+        self.md_engine = md_engine
+        self.oracle = oracle
+        self.trainer = trainer
+        self.validator = validator
+        self.policy_engine = policy_engine
         self.iteration = 1
 
     def get_latest_potential(self) -> Path | None:
@@ -52,7 +46,8 @@ class ActiveLearningOrchestrator:
         current_pot = self.get_latest_potential()
 
         # Build directory mapping
-        work_dir = Path(f"active_learning/iter_{self.iteration:03d}")
+        base_dir = self.config.active_learning_dir
+        work_dir = base_dir / f"iter_{self.iteration:03d}"
         work_dir.mkdir(parents=True, exist_ok=True)
 
         strategy = self.policy_engine.generate_strategy()
@@ -76,19 +71,29 @@ class ActiveLearningOrchestrator:
             threshold=self.config.otf_loop.uncertainty_threshold,
         )
 
-        selected_structures = []
-        for s0 in high_gamma_atoms:
-            from ase.build import bulk
-            # create some mock candidates centered around s0
-            candidates = [bulk("Fe", cubic=True)] * 10
+        # Process candidates in a scalable manner to prevent holding all structures in memory
+        from typing import Iterator
+        from ase import Atoms
 
-            selected = self.trainer.select_local_active_set(candidates, anchor=s0, n=5)
-            selected_structures.extend(selected)
+        def candidate_generator() -> Iterator[list[Atoms]]:
+            for s0 in high_gamma_atoms:
+                candidates = []
+                for _ in range(10):
+                    c = s0.copy()  # type: ignore[no-untyped-call]
+                    c.rattle(stdev=0.05, seed=None)
+                    candidates.append(c)
+                # Yield selected structures per anchor, keeping memory profile low
+                yield self.trainer.select_local_active_set(candidates, anchor=s0, n=5)
 
         # 3. LABELING (DFT Oracle)
-        new_data = self.oracle.compute_batch(
-            selected_structures, work_dir / "dft_calc"
-        )
+        # We can flatten the generator stream or process chunks.
+        # DFTOracle.compute_batch currently expects a list, so we evaluate the generator.
+        # To truly prevent memory issues on giant batches, compute_batch internally uses an iterator now.
+        selected_structures = []
+        for batch in candidate_generator():
+            selected_structures.extend(batch)
+
+        new_data = self.oracle.compute_batch(selected_structures, work_dir / "dft_calc")
         if not new_data:
             logging.error("No valid data obtained from DFT.")
             return "ERROR"

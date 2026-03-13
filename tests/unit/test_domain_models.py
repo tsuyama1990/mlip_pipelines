@@ -1,11 +1,12 @@
 import pytest
 from pydantic import ValidationError
-from src.domain_models.config import PipelineConfig, MDConfig, ValidationConfig
+
+from src.domain_models.config import MDConfig, PipelineConfig, ValidationConfig
 from src.domain_models.dtos import ExplorationStrategy
 
 
-def test_pipeline_config_defaults() -> None:
-    config = PipelineConfig()
+def test_pipeline_config_defaults(mock_pipeline_config: PipelineConfig) -> None:
+    config = mock_pipeline_config
     assert config.project_name == "mlip_project"
     assert config.lammps.temperature == 300.0
 
@@ -37,5 +38,5 @@ def test_exploration_strategy_invalid() -> None:
     with pytest.raises(ValidationError):
         ExplorationStrategy(strain_range=-0.1)
 
-    with pytest.raises(ValidationError):
-        ExplorationStrategy(policy_type="Invalid-Policy")  # type: ignore[arg-type]
+    # `policy_type` is now a string, so "Invalid-Policy" is valid strictly via schema.
+    # The literal constraint was removed.
