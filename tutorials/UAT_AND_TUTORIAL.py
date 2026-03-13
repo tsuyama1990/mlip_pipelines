@@ -1,11 +1,8 @@
 try:
     import marimo
 except ImportError:
-    print(
-        "Marimo is not installed. Please install it using 'uv pip install marimo' or 'pip install marimo'."
-    )
+    print("Marimo is not installed. Please install it using 'uv pip install marimo' or 'pip install marimo'.")
     import sys
-
     sys.exit(1)
 
 __generated_with = "0.20.4"
@@ -59,6 +56,7 @@ def __():
 def __(USE_MOCK, mo):
     import sys as _sys
     import unittest.mock as _mock
+    from pathlib import Path
 
     if USE_MOCK:
         # Conditionally patch heavy missing dependencies for the mock environment
@@ -70,15 +68,21 @@ def __(USE_MOCK, mo):
         if "lammps" not in _sys.modules:
             _sys.modules["lammps"] = _mock.MagicMock()
 
-    from pathlib import Path
+    # Robustly find project root and inject src/ into sys.path
+    # This prevents ModuleNotFoundError if running from outside the project root
+    _current = Path.cwd().resolve()
+    _project_root = _current
+    while _current != _current.parent:
+        if (_current / "src" / "core").exists():
+            _project_root = _current
+            break
+        _current = _current.parent
 
-    # Path patching for headless test execution directly
-    # Ensure current working directory is available for src imports
-    if str(Path.cwd()) not in _sys.path:
-        _sys.path.insert(0, str(Path.cwd()))
+    if (_project_root / "src").exists() and str(_project_root) not in _sys.path:
+        _sys.path.insert(0, str(_project_root))
 
     # Attempt to load config models, handle CI missing src/ errors gracefully
-    has_src = True
+    has_src_config = True
     config_error = None
     try:
         from src.domain_models.config import (
@@ -93,19 +97,18 @@ def __(USE_MOCK, mo):
         config = ProjectConfig(
             system=SystemConfig(elements=["Fe", "Pt", "Mg", "O"], baseline_potential="zbl"),
             dynamics=DynamicsConfig(uncertainty_threshold=5.0, md_steps=1000),
-            oracle=OracleConfig(kspacing=0.1, smearing_width=0.02, pseudo_dir=str(Path.cwd())),
+            oracle=OracleConfig(kspacing=0.1, smearing_width=0.02, pseudo_dir=str(_project_root)),
             trainer=TrainerConfig(max_epochs=2, active_set_size=10),
             validator=ValidatorConfig(energy_rmse_threshold=0.05),
-            project_root=Path.cwd(),
+            project_root=_project_root,
         )
     except ModuleNotFoundError as e:
-        has_src = False
-        config_error = mo.md(
-            f"**Error Loading Configuration:** `src/` module not found in python path ({e}). The tutorial is running in a limited fallback mode."
-        )
+        has_src_config = False
+        config_error = mo.md(f"**Error Loading Configuration:** `src/` module not found ({e}). The tutorial is running via a dummy MockOrchestrator.")
         config = _mock.MagicMock()
+        config.project_root = Path.cwd()
 
-    return config, has_src, config_error
+    return config, has_src_config, config_error
 
 
 @app.cell
@@ -115,14 +118,15 @@ def __(config_error):
 
 
 @app.cell
-def __(USE_MOCK, config, has_src, mo):
+def __(USE_MOCK, config, has_src_config, mo):
     import tempfile
     import unittest.mock as _mock
+
+    has_src = has_src_config
 
     # Safely import ASE
     try:
         from ase import Atoms
-
         has_ase = True
     except ImportError:
         has_ase = False
@@ -131,7 +135,6 @@ def __(USE_MOCK, config, has_src, mo):
     # Safely import Matplotlib
     try:
         import matplotlib.pyplot as plt
-
         has_plt = True
     except ImportError:
         has_plt = False
@@ -139,15 +142,18 @@ def __(USE_MOCK, config, has_src, mo):
 
     # Safely import src modules
     if has_src:
-        from src.core.orchestrator import Orchestrator
-        from src.domain_models.dtos import ValidationReport
+        try:
+            from src.core.orchestrator import Orchestrator
+            from src.domain_models.dtos import ValidationReport
+        except ImportError:
+            has_src = False
+            Orchestrator = _mock.MagicMock
+            ValidationReport = _mock.MagicMock
     else:
         Orchestrator = _mock.MagicMock
         ValidationReport = _mock.MagicMock
 
-    init_msg = mo.md(
-        "Orchestrator Initialized" if has_src else "Mock Orchestrator Initialized (Fallback Mode)"
-    )
+    init_msg = mo.md("Orchestrator Initialized" if has_src else "Mock Orchestrator Initialized (Fallback Mode)")
     orchestrator_error = None
     orchestrator = None
 
@@ -155,15 +161,12 @@ def __(USE_MOCK, config, has_src, mo):
         # We will build a mock Orchestrator setup if USE_MOCK is True
         if USE_MOCK and has_src and has_ase:
             # We patch the entire dependent classes to avoid instantiating real heavy dependencies
-            with (
-                _mock.patch("src.core.orchestrator.DynamicsEngine") as MockDynamics,
-                _mock.patch("src.core.orchestrator.DFTOracle") as MockOracle,
-                _mock.patch("src.core.orchestrator.ACETrainer") as MockTrainer,
-                _mock.patch("src.core.orchestrator.Validator") as MockValidator,
-            ):
-                mock_atoms = Atoms(
-                    "FePt", positions=[(0, 0, 0), (1, 1, 1)], cell=[2, 2, 2], pbc=True
-                )
+            with _mock.patch("src.core.orchestrator.DynamicsEngine") as MockDynamics, \
+                 _mock.patch("src.core.orchestrator.DFTOracle") as MockOracle, \
+                 _mock.patch("src.core.orchestrator.ACETrainer") as MockTrainer, \
+                 _mock.patch("src.core.orchestrator.Validator") as MockValidator:
+
+                mock_atoms = Atoms("FePt", positions=[(0, 0, 0), (1, 1, 1)], cell=[2, 2, 2], pbc=True)
 
                 mock_dynamics_instance = MockDynamics.return_value
                 halt_info = {
@@ -185,11 +188,8 @@ def __(USE_MOCK, config, has_src, mo):
                 def mock_train(dataset, initial_potential, output_dir):
                     output_dir.mkdir(parents=True, exist_ok=True)
                     pot_path = output_dir / "output_potential.yace"
-                    pot_path.write_text(
-                        "version: 1\nelements: [Fe, Pt, Mg, O]\n# Mocked ACE potential with D-Optimality active sets"
-                    )
+                    pot_path.write_text("version: 1\nelements: [Fe, Pt, Mg, O]\n# Mocked ACE potential with D-Optimality active sets")
                     return pot_path
-
                 mock_trainer_instance.train.side_effect = mock_train
 
                 mock_validator_instance = MockValidator.return_value
@@ -205,37 +205,30 @@ def __(USE_MOCK, config, has_src, mo):
 
                 with _mock.patch("src.validators.reporter.ValidationReporter") as MockReporter:
                     mock_reporter_instance = MockReporter.return_value
-
                     def mock_report(res, path):
                         path.parent.mkdir(parents=True, exist_ok=True)
-                        path.write_text(
-                            "<html><body><h1>Validation Passed (Mock)</h1><p>RMSE < 0.05 eV/atom</p></body></html>"
-                        )
-
+                        path.write_text("<html><body><h1>Validation Passed (Mock)</h1><p>RMSE < 0.05 eV/atom</p></body></html>")
                     mock_reporter_instance.generate_html_report.side_effect = mock_report
 
                     orchestrator = Orchestrator(config)
         elif has_src:
             orchestrator = Orchestrator(config)
         else:
-            orchestrator = _mock.MagicMock()
-            orchestrator.iteration = 1
-            orchestrator.run_cycle.return_value = "mock_potential.yace"
+            # Complete mock Orchestrator fallback when src/ is completely unavailable
+            class FallbackMockOrchestrator:
+                def __init__(self, cfg):
+                    self.config = cfg
+                    self.iteration = 1
+
+                def run_cycle(self):
+                    return "mock_potential.yace"
+
+            orchestrator = FallbackMockOrchestrator(config)
+
     except Exception as e:
         orchestrator_error = mo.md(f"**Error Initializing Orchestrator:** {e}")
 
-    return (
-        Atoms,
-        Orchestrator,
-        ValidationReport,
-        has_ase,
-        has_plt,
-        init_msg,
-        orchestrator,
-        orchestrator_error,
-        plt,
-        tempfile,
-    )
+    return Atoms, Orchestrator, ValidationReport, has_ase, has_plt, has_src, init_msg, orchestrator, orchestrator_error, plt, tempfile
 
 
 @app.cell
@@ -273,7 +266,7 @@ def __(USE_MOCK, orchestrator, plt, has_plt, mo):
 
             if USE_MOCK:
                 calculated_interface_energy = 1.25  # Simulated value for FePt/MgO
-                calculated_order_parameter = 0.85  # Simulated value for FePt L1_0
+                calculated_order_parameter = 0.85   # Simulated value for FePt L1_0
             else:
                 calculated_interface_energy = 1.25  # Replace with actual physics call
                 calculated_order_parameter = 0.85
@@ -283,7 +276,7 @@ def __(USE_MOCK, orchestrator, plt, has_plt, mo):
     output = {
         "status": "Success" if result_pot else "Failed",
         "final_potential": str(result_pot),
-        "iteration": getattr(orchestrator, "iteration", 1) if orchestrator else 1,
+        "iteration": getattr(orchestrator, 'iteration', 1) if orchestrator else 1,
         "FePt/MgO Interface Energy (J/m²)": calculated_interface_energy,
         "FePt Order Parameter": calculated_order_parameter,
         "Data Source": "Mock Simulation" if USE_MOCK else "Real Calculation",
@@ -293,7 +286,6 @@ def __(USE_MOCK, orchestrator, plt, has_plt, mo):
     ax = None
     timesteps = list(range(0, 460, 10))
     import math
-
     gammas = [1.0 + math.exp((t - 400) / 20) if t > 350 else 1.0 + (t / 1000) for t in timesteps]
 
     if has_plt:
@@ -305,10 +297,7 @@ def __(USE_MOCK, orchestrator, plt, has_plt, mo):
         ax.set_ylabel(r"Max $\gamma$")
         ax.legend()
     else:
-        mock_warning = mo.md(
-            str(mock_warning)
-            + "\n\n**Note:** Matplotlib is not available. Visual plots are disabled."
-        )
+        mock_warning = mo.md(str(mock_warning) + "\n\n**Note:** Matplotlib is not available. Visual plots are disabled.")
 
     return (
         ax,
@@ -407,7 +396,7 @@ def __(orchestrator, has_src, mo):
             else:
                 val_html = "<html><body>Validation report not generated.</body></html>"
         else:
-            val_html = "<html><body>Validation skipped (Fallback Mode).</body></html>"
+             val_html = "<html><body>Validation skipped (Fallback Mode).</body></html>"
 
     except Exception as e:
         val_html = f"<html><body>Error loading report: {e!s}</body></html>"
