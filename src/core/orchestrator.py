@@ -19,12 +19,12 @@ class Orchestrator:
 
     def __init__(self, config: ProjectConfig) -> None:
         self.config = config
-        self.md_engine = MDInterface(config.dynamics)
+        self.md_engine = MDInterface(config.dynamics, config.system)
         self.oracle = DFTManager(config.oracle)
         self.trainer = PacemakerWrapper(config.trainer)
         self.validator = Validator(config.validator)
-        self.policy_engine = AdaptiveExplorationPolicyEngine()
-        self.structure_generator = StructureGenerator()
+        self.policy_engine = AdaptiveExplorationPolicyEngine(config.policy)
+        self.structure_generator = StructureGenerator(config.structure_generator)
         self.iteration = 0
 
     def get_latest_potential(self) -> Path | None:
@@ -50,8 +50,8 @@ class Orchestrator:
         work_dir = base_dir / f"iter_{self.iteration:03d}"
         try:
             work_dir.mkdir(parents=True, exist_ok=True)
-        except OSError as e:
-            logging.exception(f"Failed to create working directory {work_dir}: {e}")
+        except OSError:
+            logging.exception(f"Failed to create working directory {work_dir}")
             return "ERROR"
 
         cycle_successful = False

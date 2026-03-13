@@ -48,7 +48,7 @@ class DFTManager:
         pseudos = {el: f"{el}.upf" for el in symbols}
 
         # Check for transition metals
-        transition_metals = {"Fe", "Co", "Ni", "Mn", "Cr", "V"}
+        transition_metals = set(self.config.transition_metals)
         has_tm = any(el in transition_metals for el in symbols)
 
         # K-points from Kspacing

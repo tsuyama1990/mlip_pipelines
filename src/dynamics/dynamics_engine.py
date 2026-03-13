@@ -4,16 +4,18 @@ from pathlib import Path
 from typing import Any
 
 from ase import Atoms
+from ase.data import atomic_numbers
 from ase.io import read
 
-from src.domain_models.config import DynamicsConfig
+from src.domain_models.config import DynamicsConfig, SystemConfig
 
 
 class MDInterface:
     """Manages LAMMPS execution using the python module or subprocess."""
 
-    def __init__(self, config: DynamicsConfig) -> None:
+    def __init__(self, config: DynamicsConfig, system_config: SystemConfig) -> None:
         self.config = config
+        self.system_config = system_config
 
     def run_exploration(self, potential: Path | None, work_dir: Path) -> dict[str, Any]:
         """Runs LAMMPS exploration and monitors for high uncertainty."""
@@ -35,6 +37,8 @@ class MDInterface:
         # But without a real input structure and `potential.yace`, running LAMMPS fails immediately.
 
         in_file = work_dir / "in.lammps"
+        zbl_elements = " ".join(str(atomic_numbers.get(el, 1)) for el in self.system_config.elements)
+
         in_file.write_text(f"""
 units metal
 boundary p p p
@@ -45,7 +49,7 @@ atom_style atomic
 # We will just write the pair style commands required by spec.
 pair_style hybrid/overlay pace zbl 1.0 2.0
 pair_coeff * * pace {potential.absolute()}
-# pair_coeff * * zbl 26 78  # Needs elements dynamically
+pair_coeff * * zbl {zbl_elements}
 
 compute pace_gamma all pace gamma_mode=1
 variable max_gamma equal max(c_pace_gamma)
@@ -69,13 +73,13 @@ run {self.config.md_steps}
             if not dump_file.exists():
                 dump_file.write_text("dummy") # Fallback to continue logic if dump wasn't written
             return {"halted": True, "dump_file": dump_file}
-        else:
-            return {"halted": False, "dump_file": None}
         except FileNotFoundError:
             # lmp not installed, fallback logic for CI
             logging.warning("LAMMPS executable not found. Creating dummy dump.")
             dump_file.write_text("dummy")
             return {"halted": True, "dump_file": dump_file}
+        else:
+            return {"halted": False, "dump_file": None}
 
     def extract_high_gamma_structures(self, dump_file: Path, threshold: float) -> list[Atoms]:
         """Extracts structures with high gamma from LAMMPS dump."""

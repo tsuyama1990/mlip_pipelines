@@ -80,8 +80,8 @@ class PacemakerWrapper:
             "--dataset", str(dataset),
             "--max_num_epochs", str(self.config.max_epochs),
             "--active_set_size", str(self.config.active_set_size),
-            "--baseline_potential", "zbl",
-            "--regularization", "L2",
+            "--baseline_potential", self.config.baseline_potential,
+            "--regularization", self.config.regularization,
             "--output_dir", str(output_dir)
         ]
         if initial_potential and initial_potential.exists():

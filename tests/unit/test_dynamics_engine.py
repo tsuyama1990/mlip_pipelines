@@ -1,18 +1,20 @@
 from pathlib import Path
 
-from src.domain_models.config import DynamicsConfig
+from src.domain_models.config import DynamicsConfig, SystemConfig
 from src.dynamics.dynamics_engine import MDInterface
 
 
 def test_md_interface_initialization():
     config = DynamicsConfig(uncertainty_threshold=6.0, md_steps=1000, temperature=300.0)
-    engine = MDInterface(config)
+    sys_config = SystemConfig(elements=["Fe", "Pt"])
+    engine = MDInterface(config, sys_config)
     assert engine.config.uncertainty_threshold == 6.0
 
 
 def test_md_run_exploration_mock(monkeypatch, tmp_path):
     config = DynamicsConfig()
-    engine = MDInterface(config)
+    sys_config = SystemConfig(elements=["Fe", "Pt"])
+    engine = MDInterface(config, sys_config)
 
     # Mock LAMMPS run
     def mock_run(*args, **kwargs):
