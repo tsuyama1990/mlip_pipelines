@@ -1,16 +1,19 @@
+from pathlib import Path
+
+import pytest
 from ase import Atoms
 
 from src.domain_models.config import TrainerConfig
 from src.trainers.ace_trainer import PacemakerWrapper
 
 
-def test_pacemaker_initialization():
+def test_pacemaker_initialization() -> None:
     config = TrainerConfig(max_epochs=10, active_set_size=200)
     wrapper = PacemakerWrapper(config)
     assert wrapper.config.max_epochs == 10
 
 
-def test_update_dataset(tmp_path):
+def test_update_dataset(tmp_path: Path) -> None:
     config = TrainerConfig()
     wrapper = PacemakerWrapper(config)
 
@@ -23,18 +26,37 @@ def test_update_dataset(tmp_path):
     assert str(dataset_path).endswith(".extxyz")
 
 
-def test_select_local_active_set():
+def test_select_local_active_set(monkeypatch: pytest.MonkeyPatch) -> None:
     config = TrainerConfig()
     wrapper = PacemakerWrapper(config)
 
     anchor = Atoms("Fe", positions=[(0, 0, 0)])
     candidates = [Atoms("Fe", positions=[(i * 0.1, 0, 0)]) for i in range(1, 21)]
 
+    import subprocess
+    from collections.abc import Sequence
+    from typing import Any
+
+    def mock_run(cmd: Sequence[str], *args: Any, **kwargs: Any) -> subprocess.CompletedProcess[Any]:
+        # Unpack quotes due to shlex.quote mock
+        out_file_str = cmd[4].strip("'\"")
+        out_file = Path(out_file_str)
+        from ase.io import write
+
+        # Write dummy
+        write(str(out_file), [anchor, *candidates[:4]], format="extxyz")
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", mock_run)
+
+    import shutil
+    def mock_which(cmd: str) -> str:
+        return "/fake/path/to/" + cmd
+    monkeypatch.setattr(shutil, "which", mock_which)
+
     selected = wrapper.select_local_active_set(candidates, anchor=anchor, n=5)
 
     # Must include anchor
     assert len(selected) == 5
-    # Since we can't run pace_activeset without actual ACE features, we just assert the interface returns a list of atoms
-    # For unit tests, we'll probably have to mock pace_activeset subprocess call or just rely on a dummy selection strategy inside the mock.
 
     assert isinstance(selected[0], Atoms)
