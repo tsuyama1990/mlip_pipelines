@@ -171,11 +171,6 @@ def main():
 
     gamma = 0.0
 
-    import os
-    if os.environ.get('MOCK_EON_HALT') == '1':
-        write_bad_structure("bad_structure.cfg", atoms)
-        sys.exit(100)
-
     try:
         energy = atoms.get_potential_energy()
         forces = atoms.get_forces()

@@ -157,7 +157,7 @@ class MDInterface:
                 shell=False,
             )
         except subprocess.CalledProcessError:
-            pass  # error soft doesn't trigger CalledProcessError usually
+            logging.info("LAMMPS run completed with a CalledProcessError (possibly soft halt).")
         except FileNotFoundError as e:
             msg = "LAMMPS executable not found."
             raise RuntimeError(msg) from e
@@ -329,7 +329,7 @@ write_data {work_dir.resolve()}/data.lammps
                 shell=False,
             )
         except subprocess.CalledProcessError:
-            pass
+            logging.info("LAMMPS resume run completed with a CalledProcessError.")
         except FileNotFoundError as e:
             msg = "LAMMPS executable not found."
             raise RuntimeError(msg) from e
@@ -364,7 +364,7 @@ write_data {work_dir.resolve()}/data.lammps
                     high_gamma.append(atoms)
             else:
                 # Default to last frame if gamma is not mapped, e.g. for mock testing or cold start
-                pass
+                continue
 
         if not high_gamma:
             return [traj[-1]]

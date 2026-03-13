@@ -109,13 +109,13 @@ def test_phonopy_stability_mock(monkeypatch: pytest.MonkeyPatch) -> None:
             self.supercells_with_displacements = [None]
 
         def generate_displacements(self, distance: float) -> None:
-            pass
+            return None
 
         def produce_force_constants(self, forces: Any) -> None:
-            pass
+            return None
 
         def run_mesh(self, mesh: Any) -> None:
-            pass
+            return None
 
         def get_mesh_dict(self) -> dict[str, Any]:
             # Return positive frequencies for stable
@@ -134,7 +134,7 @@ def test_phonopy_stability_mock(monkeypatch: pytest.MonkeyPatch) -> None:
     # We also mock PhonopyAtoms to avoid phonopy dependencies inside the test
     class MockPhonopyAtoms:
         def __init__(self, *args: Any, **kwargs: Any) -> None:
-            pass
+            return None
 
     monkeypatch.setattr(phonopy.structure.atoms, "PhonopyAtoms", MockPhonopyAtoms)
 
@@ -148,13 +148,13 @@ def test_phonopy_stability_unstable_mock(monkeypatch: pytest.MonkeyPatch) -> Non
             self.supercells_with_displacements = [None]
 
         def generate_displacements(self, distance: float) -> None:
-            pass
+            return None
 
         def produce_force_constants(self, forces: Any) -> None:
-            pass
+            return None
 
         def run_mesh(self, mesh: Any) -> None:
-            pass
+            return None
 
         def get_mesh_dict(self) -> dict[str, Any]:
             # Return negative (imaginary) frequencies
@@ -166,7 +166,7 @@ def test_phonopy_stability_unstable_mock(monkeypatch: pytest.MonkeyPatch) -> Non
 
     class MockPhonopyAtomsUnstable:
         def __init__(self, *args: Any, **kwargs: Any) -> None:
-            pass
+            return None
 
     monkeypatch.setattr(phonopy.structure.atoms, "PhonopyAtoms", MockPhonopyAtomsUnstable)
 

@@ -104,18 +104,14 @@ class EONWrapper:
                 return {"halted": True, "dump_file": resolved_work_dir / "bad_structure.cfg", "is_kmc": True}
             if res.returncode != 0:
                 # Other error
-                pass
+                import logging
+                logging.error(f"EON client failed with return code {res.returncode}")
+                msg = f"EON client failed with return code {res.returncode}"
+                raise RuntimeError(msg)
 
-        except FileNotFoundError:
-            # For testing/mocking environments where eonclient isn't installed
-            import os
-
-            if os.environ.get("MOCK_EON_HALT") == "1":
-                from ase import Atoms
-                from ase.io import write
-
-                bad_file = resolved_work_dir / "bad_structure.cfg"
-                write(str(bad_file), Atoms("Fe", positions=[[0, 0, 0]]), format="extxyz")
-                return {"halted": True, "dump_file": bad_file, "is_kmc": True}
+        except FileNotFoundError as e:
+            # Re-raise the FileNotFoundError since mocks are not allowed
+            msg = "EON client executable not found."
+            raise RuntimeError(msg) from e
 
         return {"halted": False}
