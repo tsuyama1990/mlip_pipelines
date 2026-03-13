@@ -17,7 +17,7 @@ class MDInterface:
         self.config = config
         self.system_config = system_config
 
-    def run_exploration(self, potential: Path | None, work_dir: Path) -> dict[str, Any]:
+    def run_exploration(self, potential: Path | None, work_dir: Path) -> dict[str, Any]:  # noqa: C901, PLR0915
         """Runs LAMMPS exploration and monitors for high uncertainty."""
         work_dir.mkdir(parents=True, exist_ok=True)
         dump_file = work_dir / "dump.lammps"
@@ -33,13 +33,22 @@ class MDInterface:
 
         zbl_elements = get_zbl_mapping(self.system_config.elements)
 
+        import os
         import shutil
         import tempfile
 
-        with tempfile.NamedTemporaryFile(mode='w', dir=work_dir, delete=False) as tmp_in_file:
-            if potential is None:
-                # Cold start logic: Run MD using only the ZBL baseline potential
-                tmp_in_file.write(f"""
+        fd, tmp_path = tempfile.mkstemp(dir=work_dir, text=True)
+        try:
+            with os.fdopen(fd, "w") as tmp_in_file:
+                if potential is None:
+                    import re
+                    dump_name = dump_file.name
+                    if not re.match(r"^[-a-zA-Z0-9_.]+$", dump_name):
+                        msg = "Dump file name contains invalid characters"
+                        raise ValueError(msg)
+
+                    # Cold start logic: Run MD using only the ZBL baseline potential
+                    tmp_in_file.write(f"""
 units metal
 boundary p p p
 atom_style atomic
@@ -49,40 +58,58 @@ pair_style zbl 1.0 2.0
 pair_coeff * * {zbl_elements}
 
 # Force dump to extract structures for initial training
-dump 1 all custom 10 {dump_file.name} id type x y z
+dump 1 all custom 10 {dump_name} id type x y z
 run {min(self.config.md_steps, 1000)}  # Short run for cold start
 """)
-            else:
-                tmp_in_file.write(f"""
+                else:
+                    # Validate potential path ends with .yace and safely quote it
+                    pot_path_str = str(potential.resolve())
+                    if not pot_path_str.endswith(".yace"):
+                        msg = "Potential path must end with .yace"
+                        raise ValueError(msg)
+
+                    import re
+                    # Validate path safe for lammps without shlex quotes to avoid LAMMPS syntax errors
+                    # using strict whitelist
+                    if not re.match(r"^[-a-zA-Z0-9_./]+$", pot_path_str):
+                        msg = "Potential path contains invalid characters for LAMMPS"
+                        raise ValueError(msg)
+
+                    dump_name = dump_file.name
+                    if not re.match(r"^[-a-zA-Z0-9_.]+$", dump_name):
+                        msg = "Dump file name contains invalid characters"
+                        raise ValueError(msg)
+
+                    tmp_in_file.write(f"""
 units metal
 boundary p p p
 atom_style atomic
 
 pair_style hybrid/overlay pace zbl 1.0 2.0
-pair_coeff * * pace {potential.absolute()}
+pair_coeff * * pace {pot_path_str}
 pair_coeff * * zbl {zbl_elements}
 
 compute pace_gamma all pace gamma_mode=1
 variable max_gamma equal max(c_pace_gamma)
 fix watchdog all halt 10 v_max_gamma > {self.config.uncertainty_threshold} error hard
 
-dump 1 all custom 10 {dump_file.name} id type x y z
+dump 1 all custom 10 {dump_name} id type x y z c_pace_gamma
 run {self.config.md_steps}
 """)
-            tmp_path = tmp_in_file.name
-
-        # Atomically rename to target input file
-        Path(tmp_path).replace(in_file)
+            # Atomically rename to target input file
+            Path(tmp_path).replace(in_file)
+        except Exception:
+            Path(tmp_path).unlink(missing_ok=True)
+            raise
 
         # Execute lammps
         try:
             # Lammps command line execution
             # 'lmp' or 'lmp_mpi' is standard
             # if we get an error, it might be the watchdog
-            import shutil
 
             lmp_bin = shutil.which("lmp") or "lmp"
-            subprocess.run(
+            subprocess.run(  # noqa: S603
                 [lmp_bin, "-in", "in.lammps"],
                 cwd=work_dir,
                 check=True,
@@ -94,13 +121,12 @@ run {self.config.md_steps}
             logging.warning("LAMMPS halted, possibly due to uncertainty watchdog.")
             # For the pipeline logic, we assume it halted.
             if not dump_file.exists():
-                dump_file.write_text("dummy")  # Fallback to continue logic if dump wasn't written
+                msg = "LAMMPS halted but no dump file was generated."
+                raise RuntimeError(msg) from None
             return {"halted": True, "dump_file": dump_file}
-        except FileNotFoundError:
-            # lmp not installed, fallback logic for CI
-            logging.warning("LAMMPS executable not found. Creating dummy dump.")
-            dump_file.write_text("dummy")
-            return {"halted": True, "dump_file": dump_file}
+        except FileNotFoundError as e:
+            msg = "LAMMPS executable not found."
+            raise RuntimeError(msg) from e
         else:
             return {"halted": False, "dump_file": None}
 
@@ -108,14 +134,32 @@ run {self.config.md_steps}
         """Extracts structures with high gamma from LAMMPS dump."""
         # Read the trajectory.
         # This requires the dump to be in a readable format, e.g., custom format with gamma.
-        try:
-            traj = read(str(dump_file), index=":", format="lammps-dump-text")  # type: ignore[no-untyped-call]
-            if not isinstance(traj, list):
-                traj = [traj]
-        except Exception:
-            # Dummy fallback if file is mock dummy
-            return [Atoms("Fe", positions=[(0, 0, 0)])]
+        if not dump_file.exists():
+            msg = f"Dump file not found: {dump_file}"
+            raise FileNotFoundError(msg)
 
-        # In a real dump, we'd filter atoms where gamma > threshold.
-        # Here we just return the last snapshot for now.
-        return [traj[-1]]
+        traj = read(str(dump_file), index=":", format="lammps-dump-text")  # type: ignore[no-untyped-call]
+        if not isinstance(traj, list):
+            traj = [traj]
+
+        if not traj:
+            msg = f"No structures read from dump file: {dump_file}"
+            raise ValueError(msg)
+
+        # Filter high gamma structures out of trajectory dump frames
+        high_gamma = []
+        for atoms in traj:
+            if "c_pace_gamma" in atoms.arrays:
+                # Find maximum gamma over atoms
+                gamma_array = atoms.arrays["c_pace_gamma"]
+                import numpy as np
+                if np.max(gamma_array) > threshold:
+                    high_gamma.append(atoms)
+            else:
+                # Default to last frame if gamma is not mapped, e.g. for mock testing or cold start
+                pass
+
+        if not high_gamma:
+            return [traj[-1]]
+
+        return high_gamma
