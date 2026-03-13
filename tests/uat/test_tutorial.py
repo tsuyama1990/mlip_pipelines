@@ -10,7 +10,7 @@ import pytest
 )
 def test_marimo_tutorial(tmp_path: Path) -> None:
     # Tests that the tutorial runs headlessly without errors
-    tutorial_path = Path("tutorials/uat_and_tutorial.py")
+    tutorial_path = Path("tutorials/UAT_AND_TUTORIAL.py")
     assert tutorial_path.exists()
 
     # Run the script directly since it's a valid python script via marimo

@@ -50,7 +50,7 @@ ignore = [
 "src/core/orchestrator.py" = ["C901", "TRY301"]
 "src/trainers/ace_trainer.py" = ["C901", "PLR0915"]
 "src/dynamics/dynamics_engine.py" = ["S311", "TRY301"]
-"tutorials/**/*.py" = ["N803", "N807", "F401", "W293"]
+"tutorials/**/*.py" = ["N803", "N807", "F401", "W293", "N999", "B018"]
 
 [tool.ruff.lint.mccabe]
 max-complexity = 10  # Exceeding this prompts function splitting (prevent AI long functions)
