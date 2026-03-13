@@ -7,17 +7,30 @@ def test_tutorial_execution() -> None:
     Runs the UAT tutorial script in headless mode using marimo to ensure it executes without
     Python exceptions. This acts as our end-to-end user acceptance test.
     """
+    from pathlib import Path
+
+    # Securely resolve the script path
+    tutorial_path = Path("tutorials/uat_and_tutorial.py").resolve()
+    cwd = Path.cwd().resolve()
+
+    if not str(tutorial_path).startswith(str(cwd)):
+        msg = "Tutorial path is outside the allowed directory scope."
+        raise ValueError(msg)
+    if not tutorial_path.exists():
+        msg = f"Tutorial not found at {tutorial_path}"
+        raise FileNotFoundError(msg)
+
     # The command to run marimo script headlessly
     cmd = [
         sys.executable,
         "-m",
         "marimo",
         "run",
-        "tutorials/uat_and_tutorial.py",
+        str(tutorial_path),
         "--headless",
     ]
 
-    # Run the subprocess
+    # Run the subprocess safely
     result = subprocess.run(cmd, capture_output=True, text=True, check=False)  # noqa: S603
 
     # Ensure the script completed successfully

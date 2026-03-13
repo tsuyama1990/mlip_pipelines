@@ -23,7 +23,7 @@ Name                                Stmts   Miss  Cover   Missing
 -----------------------------------------------------------------
 src/__init__.py                         0      0   100%
 src/core/__init__.py                    0      0   100%
-src/core/orchestrator.py               68      0   100%
+src/core/orchestrator.py               71      0   100%
 src/domain_models/__init__.py           0      0   100%
 src/domain_models/config.py           101      1    99%   121
 src/domain_models/dtos.py               8      0   100%
@@ -38,7 +38,7 @@ src/trainers/ace_trainer.py           102     26    75%   28, 42-46, 81-85, 101,
 src/validators/__init__.py              0      0   100%
 src/validators/validator.py            53     18    66%   50-83, 92
 -----------------------------------------------------------------
-TOTAL                                 503     60    88%
-============================== 36 passed in 2.26s ==============================
+TOTAL                                 506     60    88%
+============================== 36 passed in 3.07s ==============================
 /app/.venv/lib/python3.12/site-packages/coverage/inorout.py:561: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.4/messages.html#warning-module-not-imported
   self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")

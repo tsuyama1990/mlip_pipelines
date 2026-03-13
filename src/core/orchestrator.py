@@ -32,10 +32,11 @@ class ActiveLearningOrchestrator:
 
     def get_latest_potential(self) -> Path | None:
         """Finds the most recent valid generation potential."""
-        pot_dir = Path("potentials")
+        pot_path_template = Path(self.config.potential_path_template)
+        pot_dir = pot_path_template.parent
         if not pot_dir.exists():
             return None
-        gens = list(pot_dir.glob("generation_*.yace"))
+        gens = list(pot_dir.glob(pot_path_template.name.replace("{iteration:03d}", "*")))
         if not gens:
             return None
         return max(gens)
@@ -86,21 +87,22 @@ class ActiveLearningOrchestrator:
                 # Yield selected structures per anchor, keeping memory profile low
                 yield self.trainer.select_local_active_set(candidates, anchor=s0, n=5)
 
-        # 3. LABELING (DFT Oracle)
-        # We can flatten the generator stream or process chunks.
-        # DFTOracle.compute_batch currently expects a list, so we evaluate the generator.
-        # To truly prevent memory issues on giant batches, compute_batch internally uses an iterator now.
-        selected_structures = []
-        for batch in candidate_generator():
-            selected_structures.extend(batch)
+        # 3. LABELING (DFT Oracle) & 4. TRAINING
+        # Process dynamically to prevent storing all structures in memory
+        has_new_data = False
+        dataset_path = Path(self.config.data_directory) / "accumulated.extxyz"
 
-        new_data = self.oracle.compute_batch(selected_structures, work_dir / "dft_calc")
-        if not new_data:
+        for i, batch in enumerate(candidate_generator()):
+            batch_calc_dir = work_dir / f"dft_calc_batch_{i}"
+            new_data = self.oracle.compute_batch(batch, batch_calc_dir)
+            if new_data:
+                dataset_path = self.trainer.update_dataset(new_data)
+                has_new_data = True
+
+        if not has_new_data:
             logging.error("No valid data obtained from DFT.")
             return "ERROR"
 
-        # 4. TRAINING
-        dataset_path = self.trainer.update_dataset(new_data)
         new_pot_path = self.trainer.train(
             dataset=dataset_path,
             initial_potential=current_pot,
@@ -114,9 +116,8 @@ class ActiveLearningOrchestrator:
             return "VALIDATION_FAILED"
 
         # 6. DEPLOYMENT (Scale-up step to save for resumption)
-        pot_dir = Path("potentials")
-        pot_dir.mkdir(parents=True, exist_ok=True)
-        final_dest = pot_dir / f"generation_{self.iteration:03d}.yace"
+        final_dest = Path(self.config.potential_path_template.format(iteration=self.iteration))
+        final_dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(new_pot_path, final_dest)
 
         self.iteration += 1

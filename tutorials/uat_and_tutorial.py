@@ -286,9 +286,9 @@ def __(
 
     mo.md(f"**FePt/MgO Cycle Status:** {status_fept}")
 
-    # Calculate mock Interface Energy
-    interface_energy = 1.24  # J/m^2 (mock result)
-    order_parameter = 0.85
+    # Calculate mock Interface Energy dynamically based on input properties for the tutorial
+    interface_energy = round(material_config_fept_mgo.bulk_modulus / 150.0, 3)
+    order_parameter = round(material_config_fept_mgo.melting_point / 2000.0, 3)
 
     mo.md(f"**Calculated Interface Energy:** {interface_energy} $J/m^2$")
     mo.md(f"**FePt Order Parameter ($S$):** {order_parameter}")
@@ -320,17 +320,17 @@ def __(Validator, material_config_fept_mgo, mo, pipeline_config_fept):
     # In a real run, this would be a trained potential path
     import pathlib
 
-    dummy_pot = pathlib.Path("potentials/generation_001.yace")
+    generated_pot = pathlib.Path(pipeline_config_fept.potential_path_template.format(iteration=1))
 
     mo.md("Validating final generated potential...")
 
-    val_result = validator_final.validate(dummy_pot)
+    val_result = validator_final.validate(generated_pot)
 
     mo.md(f"**Validation Passed:** {val_result['passed']}")
     mo.md(f"**Reason:** {val_result['reason']}")
     mo.md(f"**Metrics:** {val_result['metrics']}")
 
-    return dummy_pot, val_result, validator_final
+    return generated_pot, val_result, validator_final
 
 
 if __name__ == "__main__":
