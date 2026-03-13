@@ -46,7 +46,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*.py" = ["S101"]
+"tests/**/*.py" = ["S101", "S603"]  # Allow assert and subprocess in tests
 "tutorials/**/*.py" = ["N803", "N807", "F401", "W293"]
 
 [tool.ruff.lint.mccabe]
@@ -66,4 +66,3 @@ ignore_missing_imports = true
 module = "tutorials.*"
 ignore_errors = true
 [tool.ruff.lint.extend-per-file-ignores]
-"tests/**/*.py" = ["S101", "S603"]

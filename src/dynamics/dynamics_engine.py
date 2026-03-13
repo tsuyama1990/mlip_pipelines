@@ -65,6 +65,17 @@ class DynamicsEngine:
                     .replace("{threshold}", str(self.otf_config.uncertainty_threshold))
                 )
                 cmds.append(formatted_cmd)
+        elif potential_path.name == "none.yace" or not potential_path.exists():
+            cmds.extend(
+                [
+                    "pair_style zbl 1.0 2.0",
+                    f"pair_coeff * * {atomic_numbers_str}",
+                    "variable max_gamma equal 0.0",
+                    f"dump 1 all custom 100 {dump_path} id type x y z",
+                    f"fix 1 all nvt temp {strategy.t_schedule[0]} {strategy.t_schedule[1]} 0.1",
+                    f"run {self.md_config.steps}",
+                ]
+            )
         else:
             cmds.extend(
                 [

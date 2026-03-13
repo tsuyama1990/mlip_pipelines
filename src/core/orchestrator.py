@@ -43,12 +43,13 @@ class ActiveLearningOrchestrator:
     def run_cycle(self) -> str:
         """Runs one full loop: Exploration -> Selection -> DFT -> Update -> Resume."""
         logging.info(f"Starting iteration {self.iteration}")
-        current_pot = self.get_latest_potential()
 
-        # Build directory mapping
+        # Build directory mapping before getting potential
         base_dir = self.config.active_learning_dir
         work_dir = base_dir / f"iter_{self.iteration:03d}"
         work_dir.mkdir(parents=True, exist_ok=True)
+
+        current_pot = self.get_latest_potential()
 
         strategy = self.policy_engine.generate_strategy()
 
@@ -85,20 +86,24 @@ class ActiveLearningOrchestrator:
                         c.rattle(stdev=0.05, seed=None)
                         yield c
 
-                # Materialize just the subset needed for selection
-                candidates = list(_rattle_generator(s0))
-                yield self.trainer.select_local_active_set(candidates, anchor=s0, n=5)
+                # Yield from generator directly into selection
+                yield self.trainer.select_local_active_set(
+                    list(_rattle_generator(s0)), anchor=s0, n=5
+                )
 
         # 3. LABELING (DFT Oracle) & 4. TRAINING
         # Process dynamically to prevent storing all structures in memory
         has_new_data = False
+
+        # Determine the target dataset path directly from config
         dataset_path = Path(self.config.data_directory) / "accumulated.extxyz"
 
         for i, batch in enumerate(candidate_generator()):
             batch_calc_dir = work_dir / f"dft_calc_batch_{i}"
             new_data = self.oracle.compute_batch(batch, batch_calc_dir)
             if new_data:
-                dataset_path = self.trainer.update_dataset(new_data)
+                # Only accumulate the datasets into the same file without overwriting the path pointer
+                self.trainer.update_dataset(new_data)
                 has_new_data = True
 
         if not has_new_data:
@@ -118,7 +123,9 @@ class ActiveLearningOrchestrator:
             return "VALIDATION_FAILED"
 
         # 6. DEPLOYMENT (Scale-up step to save for resumption)
-        final_dest = Path(self.config.potential_path_template.format(iteration=self.iteration))
+        # explicitly format the path using the current iteration prior to incrementing
+        current_iteration = self.iteration
+        final_dest = Path(self.config.potential_path_template.format(iteration=current_iteration))
         final_dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(new_pot_path, final_dest)
 
