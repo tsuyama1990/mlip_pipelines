@@ -71,8 +71,8 @@ def check_mechanical_stability(atoms: "Atoms", calc: "Calculator") -> bool:  # n
         raise RuntimeError(msg) from e
 
     # Calculate bulk modulus (B = (C11 + 2C12)/3) using volumetric strain
-    strains_vol = [-0.02, -0.01, 0.0, 0.01, 0.02]
-    energies_vol = []
+    strains_vol: list[float] = [-0.02, -0.01, 0.0, 0.01, 0.02]
+    energies_vol: list[float] = []
     for s in strains_vol:
         if s == 0.0:
             energies_vol.append(E0)
@@ -87,13 +87,14 @@ def check_mechanical_stability(atoms: "Atoms", calc: "Calculator") -> bool:  # n
 
     # Fit E = E0 + 1/2 V0 * B * (3*s)^2 -> E = a + b * s + c * s^2
     # Where c = 1/2 V0 * 9 B
-    coeffs_vol = np.polyfit(strains_vol, energies_vol, 2)
-    B = 2 * coeffs_vol[0] / (9 * V0)
+    import numpy.typing as npt
+    coeffs_vol: npt.NDArray[np.float64] = np.polyfit(strains_vol, energies_vol, 2)  # type: ignore[no-untyped-call]
+    B: float = float(2 * coeffs_vol[0] / (9 * V0))
 
     # Calculate C11 - C12 using tetragonal strain (volume conserving)
     # Strain tensor: e1 = s, e2 = s, e3 = (1+s)^-2 - 1 ~ -2s + 3s^2
-    strains_tet = [-0.02, -0.01, 0.01, 0.02]
-    energies_tet = []
+    strains_tet: list[float] = [-0.02, -0.01, 0.01, 0.02]
+    energies_tet: list[float] = []
     for s in strains_tet:
         tet_atoms = atoms.copy()  # type: ignore[no-untyped-call]
         cell = tet_atoms.get_cell()  # type: ignore[no-untyped-call]
@@ -111,12 +112,12 @@ def check_mechanical_stability(atoms: "Atoms", calc: "Calculator") -> bool:  # n
     energies_tet.append(E0)
 
     # Fit E = E0 + 3 * V0 * (C11 - C12) * s^2
-    coeffs_tet = np.polyfit(strains_tet, energies_tet, 2)
-    C11_minus_C12 = coeffs_tet[0] / (3 * V0)
+    coeffs_tet: npt.NDArray[np.float64] = np.polyfit(strains_tet, energies_tet, 2)  # type: ignore[no-untyped-call]
+    C11_minus_C12: float = float(coeffs_tet[0] / (3 * V0))
 
     # Calculate C44 using shear strain
-    strains_shear = [-0.02, -0.01, 0.01, 0.02]
-    energies_shear = []
+    strains_shear: list[float] = [-0.02, -0.01, 0.01, 0.02]
+    energies_shear: list[float] = []
     for s in strains_shear:
         shear_atoms = atoms.copy()  # type: ignore[no-untyped-call]
         cell = shear_atoms.get_cell()  # type: ignore[no-untyped-call]
@@ -142,8 +143,8 @@ def check_mechanical_stability(atoms: "Atoms", calc: "Calculator") -> bool:  # n
     energies_shear.append(E0)
 
     # Fit E = E0 + 1/2 V0 C44 s^2
-    coeffs_shear = np.polyfit(strains_shear, energies_shear, 2)
-    C44 = 2 * coeffs_shear[0] / V0
+    coeffs_shear: npt.NDArray[np.float64] = np.polyfit(strains_shear, energies_shear, 2)  # type: ignore[no-untyped-call]
+    C44: float = float(2 * coeffs_shear[0] / V0)
 
     # Derived from B = (C11 + 2C12)/3
     # B * 3 = C11 + 2C12
@@ -151,11 +152,11 @@ def check_mechanical_stability(atoms: "Atoms", calc: "Calculator") -> bool:  # n
     # 3B = C11_minus_C12 + 3C12 -> C12 = B - C11_minus_C12 / 3
     # C11 = C11_minus_C12 + B - C11_minus_C12 / 3 = B + 2/3 C11_minus_C12
 
-    C12 = B - C11_minus_C12 / 3
-    C11 = C11_minus_C12 + C12
+    C12: float = B - C11_minus_C12 / 3
+    C11: float = C11_minus_C12 + C12
 
     # Born Stability Criteria for Cubic system
-    is_stable = True
+    is_stable: bool = True
     if C11 - C12 <= 0:
         is_stable = False
     if C11 + 2 * C12 <= 0:

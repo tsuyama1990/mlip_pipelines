@@ -10,7 +10,7 @@ class Reporter:
         """Generates an HTML validation report with metrics."""
         # Build simple HTML string
 
-        html_content = f"""
+        html_content: str = f"""
         <!DOCTYPE html>
     <html lang="en">
     <head>

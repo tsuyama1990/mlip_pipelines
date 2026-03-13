@@ -225,34 +225,34 @@ class Orchestrator:
                 "No initial potential found. Starting cold-start exploration (Baseline only)."
             )
 
-        base_dir = self.config.project_root / "active_learning"
+        base_dir: Path = self.config.project_root / "active_learning"
         base_dir.mkdir(parents=True, exist_ok=True)
 
-        work_dir = base_dir / f"iter_{self.iteration:03d}"
+        work_dir: Path = base_dir / f"iter_{self.iteration:03d}"
 
         import os
         import tempfile
 
-        cycle_successful = False
-        tmp_work_dir = Path(tempfile.mkdtemp(dir=str(base_dir)))
+        cycle_successful: bool = False
+        tmp_work_dir: Path = Path(tempfile.mkdtemp(dir=str(base_dir)))
 
         # Verify ownership before changing permissions
         if tmp_work_dir.stat().st_uid == os.getuid():
             tmp_work_dir.chmod(0o700)
 
         try:
-            halt_info = self._run_exploration(current_pot, tmp_work_dir)
+            halt_info: dict[str, Any] | str = self._run_exploration(current_pot, tmp_work_dir)
             if isinstance(halt_info, str):
                 cycle_successful = True
                 return halt_info
 
-            candidate_generator = self._select_candidates(halt_info)
+            candidate_generator: Iterator[list[Atoms]] = self._select_candidates(halt_info)
 
-            new_pot_path = self._run_dft_and_train(candidate_generator, tmp_work_dir, current_pot)
+            new_pot_path: Path | str = self._run_dft_and_train(candidate_generator, tmp_work_dir, current_pot)
             if isinstance(new_pot_path, str):
                 return new_pot_path
 
-            final_dest = self._validate_and_deploy(new_pot_path, tmp_work_dir, work_dir)
+            final_dest: str = self._validate_and_deploy(new_pot_path, tmp_work_dir, work_dir)
             if final_dest == "VALIDATION_FAILED":
                 return "VALIDATION_FAILED"
 

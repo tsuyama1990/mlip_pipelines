@@ -78,42 +78,43 @@ class Validator:
         )
         atoms.calc = calc
 
-        energy_rmse = self.config.fallback_energy_rmse
-        force_rmse = self.config.fallback_force_rmse
-        stress_rmse = self.config.fallback_stress_rmse
+        energy_rmse: float = self.config.fallback_energy_rmse
+        force_rmse: float = self.config.fallback_force_rmse
+        stress_rmse: float = self.config.fallback_stress_rmse
 
         if self.config.test_dataset_path is not None:
-            test_path = Path(self.config.test_dataset_path).resolve(strict=True)
+            test_path: Path = Path(self.config.test_dataset_path).resolve(strict=True)
             if test_path.exists():
                 from ase.io import read
                 test_atoms_list = read(str(test_path), index=":")
                 if not isinstance(test_atoms_list, list):
                     test_atoms_list = [test_atoms_list]
 
-                e_errors = []
-                f_errors = []
-                s_errors = []
+                e_errors: list[float] = []
+                f_errors: list[float] = []
+                s_errors: list[float] = []
 
                 for test_atoms in test_atoms_list:
                     # Ground truth from dataset
-                    true_e = test_atoms.get_potential_energy()
-                    true_f = test_atoms.get_forces()
+                    true_e: float = float(test_atoms.get_potential_energy())  # type: ignore[no-untyped-call]
+                    true_f: np.ndarray = test_atoms.get_forces()  # type: ignore[no-untyped-call, type-arg]
                     # stress might not be available
+                    true_s: np.ndarray | None
                     try:
-                        true_s = test_atoms.get_stress()
+                        true_s = test_atoms.get_stress()  # type: ignore[no-untyped-call]
                     except Exception:
                         true_s = None
 
                     test_atoms.calc = calc
-                    pred_e = test_atoms.get_potential_energy()
-                    pred_f = test_atoms.get_forces()
+                    pred_e: float = float(test_atoms.get_potential_energy())  # type: ignore[no-untyped-call]
+                    pred_f: np.ndarray = test_atoms.get_forces()  # type: ignore[no-untyped-call, type-arg]
 
                     e_errors.append((pred_e - true_e)**2)
-                    f_errors.append(np.mean((pred_f - true_f)**2))
+                    f_errors.append(float(np.mean((pred_f - true_f)**2)))
 
                     if true_s is not None:
-                        pred_s = test_atoms.get_stress()
-                        s_errors.append(np.mean((pred_s - true_s)**2))
+                        pred_s: np.ndarray = test_atoms.get_stress()  # type: ignore[no-untyped-call, type-arg]
+                        s_errors.append(float(np.mean((pred_s - true_s)**2)))
 
                 if e_errors:
                     energy_rmse = float(np.sqrt(np.mean(e_errors)))

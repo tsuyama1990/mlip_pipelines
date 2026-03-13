@@ -27,24 +27,24 @@ src/__init__.py                             0      0   100%
 src/core/__init__.py                        0      0   100%
 src/core/orchestrator.py                  169     38    78%   52-53, 56-57, 62-64, 79-80, 100-104, 134-135, 151-152, 161-162, 165-166, 172-173, 181-182, 186-187, 193-194, 198-199, 202, 207-208, 253, 257, 263-264
 src/domain_models/__init__.py               3      0   100%
-src/domain_models/config.py               110     10    91%   52-53, 182-183, 186-187, 190-191, 195-196
+src/domain_models/config.py               118     10    92%   210-211, 366-367, 370-371, 374-375, 379-380
 src/domain_models/dtos.py                  39      2    95%   42-43
 src/dynamics/__init__.py                    0      0   100%
-src/dynamics/dynamics_engine.py           219     63    71%   27-28, 69-70, 121-122, 133, 137-154, 157-158, 161, 165-166, 169-170, 173-176, 247-249, 299, 303-304, 310-326, 329-330, 333, 337-338, 341-342, 345-348, 363, 380, 383-384
-src/dynamics/eon_wrapper.py                72     21    71%   127-130, 149, 155-168, 180-184
+src/dynamics/dynamics_engine.py           218     63    71%   27-28, 61-62, 89-90, 101, 106-123, 126-127, 130, 134-135, 138-139, 142-145, 216-218, 268, 272-273, 279-295, 298-299, 302, 306-307, 310-311, 314-317, 332, 349, 352-353
+src/dynamics/eon_wrapper.py                72     21    71%   49-52, 71, 78-91, 103-107
 src/generators/__init__.py                  0      0   100%
 src/generators/adaptive_policy.py          29      7    76%   13-14, 46-51
 src/generators/structure_generator.py      15      9    40%   14-31
 src/oracles/__init__.py                     0      0   100%
 src/oracles/dft_oracle.py                 113     70    38%   19-20, 32-33, 40-41, 46-47, 65-152, 185-204
 src/trainers/__init__.py                    0      0   100%
-src/trainers/ace_trainer.py               173    127    27%   26, 35, 47-48, 70, 74-90, 93-94, 99-112, 130, 132-141, 145-262
+src/trainers/ace_trainer.py               187    127    32%   27, 36, 48-49, 71, 75-91, 94-95, 100-113, 144, 146-155, 159-284
 src/validators/__init__.py                  0      0   100%
 src/validators/reporter.py                  7      0   100%
-src/validators/stability_tests.py          92     15    84%   30-37, 47-50, 68-71
-src/validators/validator.py                96     76    21%   20-22, 32-33, 37-38, 41-54, 57-131, 135-157
+src/validators/stability_tests.py          93     15    84%   30-37, 47-50, 68-71
+src/validators/validator.py                96     76    21%   20-22, 32-33, 37-38, 41-54, 57-132, 136-158
 ---------------------------------------------------------------------
-TOTAL                                    1137    438    61%
-======================== 51 passed, 2 skipped in 5.29s =========================
+TOTAL                                    1159    438    62%
+======================== 51 passed, 2 skipped in 5.36s =========================
 /app/.venv/lib/python3.12/site-packages/coverage/inorout.py:561: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.4/messages.html#warning-module-not-imported
   self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")

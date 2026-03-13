@@ -136,7 +136,7 @@ class PacemakerWrapper:
             )
 
             try:
-                subprocess.run(cmd, check=True, capture_output=True, text=True, shell=False)  # noqa: S603
+                _res: subprocess.CompletedProcess[str] = subprocess.run(cmd, check=True, capture_output=True, text=True, shell=False)  # noqa: S603
                 if out_file.exists():
                     # Parse selected
                     selected = read(str(out_file), index=":")
@@ -272,7 +272,7 @@ class PacemakerWrapper:
             cmd.extend(["--initial_potential", shlex.quote(str(initial_potential.resolve()))])
 
         try:
-            subprocess.run(cmd, check=True, capture_output=True, text=True, shell=False)  # noqa: S603
+            _res2: subprocess.CompletedProcess[str] = subprocess.run(cmd, check=True, capture_output=True, text=True, shell=False)  # noqa: S603
         except subprocess.CalledProcessError as e:
             msg = f"pace_train execution failed: {e.stderr}"
             raise RuntimeError(msg) from e

@@ -60,8 +60,8 @@ class EONWrapper:
             import shutil
             import sys
 
-            eon_binary = self.config.eon_binary
-            trusted_dirs = [
+            eon_binary: str = self.config.eon_binary
+            trusted_dirs: list[str] = [
                 "/usr/bin",
                 "/usr/local/bin",
                 "/opt/homebrew/bin",
@@ -70,12 +70,13 @@ class EONWrapper:
             if hasattr(self.config, "project_root"):
                 trusted_dirs.append(str(Path(self.config.project_root) / "bin"))
 
-            resolved_which = shutil.which(eon_binary)
+            resolved_which: str | None = shutil.which(eon_binary)
+            eon_bin: str
             if resolved_which is None:
                 eon_bin = eon_binary  # fallback, will trigger FileNotFoundError
             else:
                 import os
-                eon_path = Path(os.path.realpath(resolved_which)).resolve(strict=True)
+                eon_path: Path = Path(os.path.realpath(resolved_which)).resolve(strict=True)
                 if not eon_path.is_file() or not os.access(eon_path, os.X_OK):
                     msg = f"EON binary is not an executable file: {eon_path}"
                     raise ValueError(msg)
@@ -89,13 +90,13 @@ class EONWrapper:
                     raise ValueError(msg)
                 eon_bin = str(eon_path)
 
-            cmd = [eon_bin]
+            cmd: list[str] = [eon_bin]
 
             # We use check=False to capture return code 100 gracefully
             import os
 
-            env = os.environ.copy()
-            res = subprocess.run(  # noqa: S603
+            env: dict[str, str] = os.environ.copy()
+            res: subprocess.CompletedProcess[bytes] = subprocess.run(  # noqa: S603
                 cmd, cwd=resolved_work_dir, capture_output=True, shell=False, env=env, check=False
             )
 

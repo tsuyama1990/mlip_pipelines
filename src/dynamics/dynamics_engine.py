@@ -89,9 +89,9 @@ class MDInterface:
             msg = "Invalid input file name"
             raise ValueError(msg)
 
-        lmp_binary = self.config.lmp_binary
+        lmp_binary: str = self.config.lmp_binary
 
-        trusted_dirs = [
+        trusted_dirs: list[str] = [
             "/usr/bin",
             "/usr/local/bin",
             "/opt/homebrew/bin",
@@ -101,13 +101,14 @@ class MDInterface:
             trusted_dirs.append(str(Path(self.config.project_root) / "bin"))
 
         import os
+        lmp_bin: str
         if Path(lmp_binary).is_absolute():
             if not re.match(r"^[-a-zA-Z0-9_./]+$", lmp_binary) or ".." in lmp_binary:
                 msg = f"Invalid LAMMPS absolute binary path: {lmp_binary}"
                 raise ValueError(msg)
 
             # Ensure it resolves within a trusted directory
-            resolved_bin = Path(os.path.realpath(lmp_binary)).resolve(strict=True)
+            resolved_bin: Path = Path(os.path.realpath(lmp_binary)).resolve(strict=True)
             if not resolved_bin.is_file() or not os.access(resolved_bin, os.X_OK):
                 msg = f"LAMMPS binary is not an executable file: {resolved_bin}"
                 raise ValueError(msg)
@@ -124,7 +125,7 @@ class MDInterface:
             if not re.match(r"^[-a-zA-Z0-9_.]+$", lmp_binary):
                 msg = f"Invalid LAMMPS binary name: {lmp_binary}"
                 raise ValueError(msg)
-            resolved_which = shutil.which(lmp_binary)
+            resolved_which: str | None = shutil.which(lmp_binary)
             if resolved_which is None:
                 lmp_bin = lmp_binary  # Will fail later with FileNotFoundError
             else:
@@ -145,10 +146,10 @@ class MDInterface:
                 lmp_bin = str(resolved_bin)
 
         import shlex
-        cmd = [lmp_bin, "-in", shlex.quote(in_file_name)]
+        cmd: list[str] = [lmp_bin, "-in", shlex.quote(in_file_name)]
 
         try:
-            subprocess.run(  # noqa: S603
+            _res: subprocess.CompletedProcess[bytes] = subprocess.run(  # noqa: S603
                 cmd,
                 cwd=work_dir,
                 check=True,
