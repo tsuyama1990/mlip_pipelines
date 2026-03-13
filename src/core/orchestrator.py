@@ -84,7 +84,7 @@ class Orchestrator:
                 t_max=300.0,
                 n_defects=0.0,
                 strain_range=0.0,
-                policy_name="Fallback Standard"
+                policy_name="Fallback Standard",
             )
 
         if strategy.md_mc_ratio > 0.0:
@@ -169,7 +169,9 @@ class Orchestrator:
         final_dest = pot_dir / f"generation_{self.iteration:03d}.yace"
 
         src_pot = tmp_work_dir / "training" / "output_potential.yace"
-        if not src_pot.is_file() or not src_pot.resolve(strict=True).is_relative_to(tmp_work_dir.resolve(strict=True)):
+        if not src_pot.is_file() or not src_pot.resolve(strict=True).is_relative_to(
+            tmp_work_dir.resolve(strict=True)
+        ):
             msg = "Source potential file missing or invalid"
             raise FileNotFoundError(msg)
 

@@ -30,6 +30,7 @@ class EONWrapper:
         pot_str = repr(str(potential.resolve())) if potential else "None"
         # Ensure executable doesn't break python logic
         import sys
+
         executable = sys.executable
         driver_content = self.config.eon_driver_template.format(
             executable=executable,
@@ -60,6 +61,7 @@ class EONWrapper:
             import re
             import shutil
             import sys
+
             eon_binary: str = self.config.eon_binary
 
             if not re.match(r"^[a-zA-Z0-9_-]+$", eon_binary):
@@ -72,34 +74,35 @@ class EONWrapper:
                 trusted_dirs.append(str(Path(self.config.project_root) / "bin"))
 
             resolved_which: str | None = shutil.which(eon_binary)
-            eon_bin: str
             if resolved_which is None:
-                eon_bin = eon_binary  # fallback, will trigger FileNotFoundError
-            else:
-                import os
+                msg = "EON client executable not found."
+                raise RuntimeError(msg)
 
-                eon_path: Path = Path(os.path.realpath(resolved_which)).resolve(strict=True)
-                if not eon_path.is_file() or not os.access(eon_path, os.X_OK):
-                    msg = f"EON binary is not an executable file: {eon_path}"
-                    raise ValueError(msg)
+            import os
 
-                if eon_path.name != "eonclient":
-                    msg = f"Resolved EON binary name must be 'eonclient', got '{eon_path.name}'"
-                    raise ValueError(msg)
+            eon_path: Path = Path(os.path.realpath(resolved_which)).resolve(strict=True)
+            if not eon_path.is_file() or not os.access(eon_path, os.X_OK):
+                msg = f"EON binary is not an executable file: {eon_path}"
+                raise ValueError(msg)
 
-                is_trusted = False
-                for td in trusted_dirs:
-                    try:
-                        if eon_path.is_relative_to(Path(td).resolve(strict=True)):
-                            is_trusted = True
-                            break
-                    except OSError:
-                        continue
+            if eon_path.name != "eonclient":
+                msg = f"Resolved EON binary name must be 'eonclient', got '{eon_path.name}'"
+                raise ValueError(msg)
 
-                if not is_trusted:
-                    msg = f"Resolved EON binary must reside in a trusted directory: {eon_path}"
-                    raise ValueError(msg)
-                eon_bin = str(eon_path)
+            is_trusted = False
+            for td in trusted_dirs:
+                try:
+                    if eon_path.is_relative_to(Path(td).resolve(strict=True)):
+                        is_trusted = True
+                        break
+                except OSError:
+                    continue
+
+            if not is_trusted:
+                msg = f"Resolved EON binary must reside in a trusted directory: {eon_path}"
+                raise ValueError(msg)
+
+            eon_bin = str(eon_path.absolute())
 
             cmd: list[str] = [eon_bin]
 

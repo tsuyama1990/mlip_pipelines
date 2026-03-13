@@ -1,8 +1,49 @@
-ImportError while loading conftest '/app/tests/conftest.py'.
-tests/conftest.py:5: in <module>
-    from src.domain_models.config import (
-src/domain_models/__init__.py:1: in <module>
-    from .config import (
-src/domain_models/config.py:4: in <module>
-    from pydantic import BaseModel, ConfigDict, Field, field_validator
-E   ModuleNotFoundError: No module named 'pydantic'
+============================= test session starts ==============================
+platform linux -- Python 3.12.13, pytest-9.0.2, pluggy-1.6.0
+rootdir: /app
+configfile: pyproject.toml
+testpaths: tests
+plugins: cov-7.0.0, anyio-4.12.1
+collected 52 items
+
+tests/e2e/test_skeleton.py s                                             [  1%]
+tests/uat/test_tutorial.py .                                             [  3%]
+tests/unit/test_ace_trainer.py ...                                       [  9%]
+tests/unit/test_adaptive_policy.py ...                                   [ 15%]
+tests/unit/test_config.py .....                                          [ 25%]
+tests/unit/test_dft_oracle.py ...                                        [ 30%]
+tests/unit/test_domain_models.py .....                                   [ 40%]
+tests/unit/test_dynamics_engine.py ...............                       [ 69%]
+tests/unit/test_eon_wrapper.py ...                                       [ 75%]
+tests/unit/test_orchestrator.py .......                                  [ 88%]
+tests/unit/test_stability.py ....                                        [ 96%]
+tests/unit/test_validator.py .s                                          [100%]
+
+================================ tests coverage ================================
+_______________ coverage: platform linux, python 3.12.13-final-0 _______________
+
+Name                                    Stmts   Miss  Cover   Missing
+---------------------------------------------------------------------
+src/__init__.py                             0      0   100%
+src/core/__init__.py                        0      0   100%
+src/core/orchestrator.py                  176     41    77%   52-53, 56-57, 62-64, 80-82, 91-92, 112-116, 146-147, 163-164, 175-176, 179-180, 186-187, 192-193, 199-200, 208-209, 213-214, 217, 222-223, 270, 274, 280-281
+src/domain_models/__init__.py               3      0   100%
+src/domain_models/config.py               135     18    87%   209-210, 357-366, 392-393, 396-397, 400-401, 405-406
+src/domain_models/dtos.py                  39      2    95%   42-43
+src/dynamics/__init__.py                    0      0   100%
+src/dynamics/dynamics_engine.py           206     37    82%   29-30, 65-66, 96-97, 102-103, 107-108, 112-113, 116-117, 122, 134-135, 206-208, 254, 260-261, 268-269, 273-274, 278-279, 282-283, 295-296, 311, 328, 331-332
+src/dynamics/eon_wrapper.py                84     41    51%   50-53, 68-69, 74, 81-129, 133-136
+src/generators/__init__.py                  0      0   100%
+src/generators/adaptive_policy.py          29      7    76%   13-14, 46-51
+src/generators/structure_generator.py      15      9    40%   14-31
+src/oracles/__init__.py                     0      0   100%
+src/oracles/dft_oracle.py                 113     70    38%   19-20, 32-33, 40-41, 46-47, 65-152, 185-204
+src/trainers/__init__.py                    0      0   100%
+src/trainers/ace_trainer.py               187    127    32%   27, 36, 48-49, 71, 75-91, 94-95, 100-113, 144, 146-155, 159-284
+src/validators/__init__.py                  0      0   100%
+src/validators/reporter.py                  7      0   100%
+src/validators/stability_tests.py          99     19    81%   13-14, 36-43, 53-59, 66-69, 84-87
+src/validators/validator.py                96     76    21%   20-22, 32-33, 39-40, 43-56, 59-139, 143-165
+---------------------------------------------------------------------
+TOTAL                                    1189    447    62%
+======================== 50 passed, 2 skipped in 6.51s =========================

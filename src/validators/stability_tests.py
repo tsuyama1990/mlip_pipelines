@@ -7,6 +7,12 @@ if TYPE_CHECKING:
 
 def check_phonopy_stability(atoms: "Atoms", calc: "Calculator") -> bool:
     """Calculates phonon bands using phonopy and checks for imaginary frequencies."""
+
+    # Resource Exhaustion Protection: prevent massive cell expansion
+    if len(atoms) > 1000:
+        msg = f"Structure too large for phonon stability check: {len(atoms)} atoms > 1000 limit."
+        raise ValueError(msg)
+
     try:
         import phonopy
         from phonopy.structure.atoms import PhonopyAtoms
@@ -55,6 +61,13 @@ def check_phonopy_stability(atoms: "Atoms", calc: "Calculator") -> bool:
 
 def check_mechanical_stability(atoms: "Atoms", calc: "Calculator") -> bool:  # noqa: PLR0915
     """Evaluates the Born mechanical stability criteria via applied strain."""
+    # Resource Exhaustion Protection: prevent massive mechanical calculations
+    if len(atoms) > 1000:
+        msg = (
+            f"Structure too large for mechanical stability check: {len(atoms)} atoms > 1000 limit."
+        )
+        raise ValueError(msg)
+
     import logging
 
     import numpy as np

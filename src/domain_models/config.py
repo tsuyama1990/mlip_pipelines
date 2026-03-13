@@ -1,7 +1,7 @@
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -340,9 +340,32 @@ class ProjectConfig(BaseSettings):
         env_prefix="MLIP_",
         env_nested_delimiter="__",
         extra="forbid",
+        env_file_encoding="utf-8",
     )
 
     project_root: Path = Field(..., description="Root directory of the project")
+
+    @model_validator(mode="before")
+    @classmethod
+    def validate_env_content(cls, values: dict[str, Any]) -> dict[str, Any]:
+        from pathlib import Path
+
+        # Secure the env loading process to verify the file resolves inside the CWD/project root
+        env_file = Path(".env")
+        if env_file.exists():
+            # Basic validation of .env file size and canonical location to prevent loading external malicious envs
+            resolved_env = env_file.resolve(strict=True)
+            expected_base = Path.cwd().resolve(strict=True)
+
+            if not resolved_env.is_relative_to(expected_base):
+                msg = f".env file must reside within the allowed base directory: {expected_base}"
+                raise ValueError(msg)
+
+            if resolved_env.stat().st_size > 10 * 1024:
+                msg = ".env file exceeds maximum allowed size (10KB)."
+                raise ValueError(msg)
+
+        return values
 
     @field_validator("project_root", mode="before")
     @classmethod
