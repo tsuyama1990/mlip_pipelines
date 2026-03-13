@@ -2,11 +2,21 @@
 platform linux -- Python 3.12.13, pytest-9.0.2, pluggy-1.6.0
 rootdir: /app
 configfile: pyproject.toml
+testpaths: tests
 plugins: cov-7.0.0
-collected 5 items
+collected 36 items
 
-tests/e2e/test_skeleton.py .                                             [ 20%]
-tests/unit/test_domain_models.py ....                                    [100%]
+tests/e2e/test_skeleton.py .                                             [  2%]
+tests/unit/test_ace_trainer.py .....                                     [ 16%]
+tests/unit/test_adaptive_policy.py ....                                  [ 27%]
+tests/unit/test_config.py ...                                            [ 36%]
+tests/unit/test_dft_oracle.py ......                                     [ 52%]
+tests/unit/test_domain_models.py ....                                    [ 63%]
+tests/unit/test_dynamics_engine.py ....                                  [ 75%]
+tests/unit/test_orchestrator.py .....                                    [ 88%]
+tests/unit/test_validator.py ..../app/.venv/lib/python3.12/site-packages/coverage/inorout.py:561: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.4/messages.html#warning-module-not-imported
+  self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")
+                                        [100%]
 
 ================================ tests coverage ================================
 _______________ coverage: platform linux, python 3.12.13-final-0 _______________
@@ -15,22 +25,20 @@ Name                                Stmts   Miss  Cover   Missing
 -----------------------------------------------------------------
 src/__init__.py                         0      0   100%
 src/core/__init__.py                    0      0   100%
-src/core/orchestrator.py               64     26    59%   43, 46, 71-117
+src/core/orchestrator.py               71      0   100%
 src/domain_models/__init__.py           0      0   100%
-src/domain_models/config.py            40      6    85%   48-53
-src/domain_models/dtos.py               9      0   100%
+src/domain_models/config.py           102      2    98%   121-122
+src/domain_models/dtos.py               8      0   100%
 src/dynamics/__init__.py                0      0   100%
-src/dynamics/dynamics_engine.py        22      4    82%   34, 54-59
+src/dynamics/dynamics_engine.py        73     10    86%   31-32, 56-67, 115-116, 137, 141-142
 src/generators/__init__.py              0      0   100%
-src/generators/adaptive_policy.py      20      5    75%   30-47
+src/generators/adaptive_policy.py      24      0   100%
 src/oracles/__init__.py                 0      0   100%
-src/oracles/dft_oracle.py              31     22    29%   20-29, 35-63
+src/oracles/dft_oracle.py              72      5    93%   57-58, 140-142
 src/trainers/__init__.py                0      0   100%
-src/trainers/ace_trainer.py            25     15    40%   17-28, 34, 40-48
+src/trainers/ace_trainer.py           100     28    72%   28, 42-46, 73-77, 83, 86, 100, 105-109, 129-133, 160, 171-174, 178
 src/validators/__init__.py              0      0   100%
-src/validators/validator.py            16      9    44%   19-35
+src/validators/validator.py            89     51    43%   50-83, 92, 99-143, 159-161
 -----------------------------------------------------------------
-TOTAL                                 227     87    62%
-============================== 5 passed in 0.82s ===============================
-/app/.venv/lib/python3.12/site-packages/coverage/inorout.py:561: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.4/messages.html#warning-module-not-imported
-  self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")
+TOTAL                                 539     96    82%
+============================== 36 passed in 2.63s ==============================
