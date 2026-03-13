@@ -5,10 +5,13 @@ if TYPE_CHECKING:
     from ase.calculators.calculator import Calculator
 
 
-def _compute_phonopy_forces(atoms: "Atoms", calc: "Calculator", supercells: list["Atoms"] | None) -> list[Any]:
+def _compute_phonopy_forces(
+    atoms: "Atoms", calc: "Calculator", supercells: list["Atoms"] | None
+) -> list[Any]:
     force_sets = []
     if supercells is not None:
         from ase.build import make_supercell
+
         for sc in supercells:
             if sc is None:
                 continue
@@ -19,6 +22,7 @@ def _compute_phonopy_forces(atoms: "Atoms", calc: "Calculator", supercells: list
             forces = disp_atoms.get_forces()  # type: ignore[no-untyped-call]
             force_sets.append(forces)
     return force_sets
+
 
 def check_phonopy_stability(atoms: "Atoms", calc: "Calculator") -> bool:
     """Calculates phonon bands using phonopy and checks for imaginary frequencies."""
@@ -36,6 +40,7 @@ def check_phonopy_stability(atoms: "Atoms", calc: "Calculator") -> bool:
         from pathlib import Path
 
         import phonopy
+
         phonopy_path = Path(phonopy.__file__).resolve()
 
         # Validate that the module is imported from standard site-packages or prefix
@@ -46,14 +51,18 @@ def check_phonopy_stability(atoms: "Atoms", calc: "Calculator") -> bool:
                 continue
             trusted_path = Path(os.path.realpath(path)).resolve()
             try:
-                if phonopy_path.is_relative_to(trusted_path) and "site-packages" in str(phonopy_path):
+                if phonopy_path.is_relative_to(trusted_path) and "site-packages" in str(
+                    phonopy_path
+                ):
                     is_trusted_module = True
                     break
             except ValueError:
                 continue
 
         if not is_trusted_module and "site-packages" not in str(phonopy_path):
-            msg = "Phonopy imported from untrusted location. Potential dependency injection detected."
+            msg = (
+                "Phonopy imported from untrusted location. Potential dependency injection detected."
+            )
             raise RuntimeError(msg)
 
         from phonopy.structure.atoms import PhonopyAtoms

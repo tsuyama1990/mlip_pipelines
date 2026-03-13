@@ -77,8 +77,10 @@ class Orchestrator:
 
         try:
             strategy = self.policy_engine.decide_policy(features)
-        except (ValueError, TypeError, KeyError) as e:
-            logging.warning(f"Policy engine parameter calculation failed: {e}. Falling back to default MD strategy.")
+        except (ValueError, TypeError, KeyError):
+            logging.warning(
+                "Policy engine parameter calculation failed. Falling back to default MD strategy."
+            )
             strategy = ExplorationStrategy(
                 md_mc_ratio=0.0,
                 t_max=300.0,
@@ -87,7 +89,7 @@ class Orchestrator:
                 policy_name="Fallback Standard",
             )
         except RuntimeError as e:
-            msg = f"Critical infrastructure failure in policy engine execution: {e}"
+            msg = "Critical infrastructure failure in policy engine execution."
             logging.exception(msg)
             raise RuntimeError(msg) from e
 
@@ -203,15 +205,22 @@ class Orchestrator:
             msg = "final_dest is outside the expected potentials directory"
             raise ValueError(msg)
 
+        import os
+        import shutil
         import tempfile
 
-        # Atomic file replacement for the trained potential rather than non-atomic copy
-        # Use os.replace for guaranteed platform atomic behavior, moving via temp file if cross-device
+        # Atomic file replacement for the trained potential
+        # We copy to a temp file in the SAME target directory to ensure os.replace is on the same mount,
+        # then atomically replace the final destination.
+        fd, tmp_dest = tempfile.mkstemp(dir=str(final_dest_resolved.parent))
+        os.close(fd)
+
         try:
-            src_pot.resolve(strict=True).replace(final_dest_resolved)
-        except OSError:
-            import shutil
-            shutil.move(str(src_pot.resolve(strict=True)), str(final_dest_resolved))
+            shutil.copy2(str(src_pot.resolve(strict=True)), tmp_dest)
+            Path(tmp_dest).replace(final_dest_resolved)
+        except Exception:
+            Path(tmp_dest).unlink(missing_ok=True)
+            raise
 
         # Implement directory content validation
         expected_dirs = ["training"]
@@ -228,12 +237,16 @@ class Orchestrator:
         # Use atomic rename to replace the target directory entirely, preventing race conditions
 
         # If work_dir exists, atomic replace is trickier cross-platform for directories,
-        # but os.replace works for empty/replaced structures on POSIX
+        # but os.replace works for empty/replaced structures on POSIX.
+        # We ensure it's on the same filesystem by creating the tmp_work_dir correctly.
         if work_dir.exists():
             # Atomically move old work_dir out of the way before replacing
             backup_dir = Path(tempfile.mkdtemp(dir=str(work_dir.parent)))
-            work_dir.replace(backup_dir)
-            import shutil
+            try:
+                work_dir.replace(backup_dir)
+            except Exception:
+                shutil.rmtree(str(backup_dir), ignore_errors=True)
+                raise
             shutil.rmtree(str(backup_dir), ignore_errors=True)
 
         tmp_work_dir.replace(work_dir.resolve(strict=False))

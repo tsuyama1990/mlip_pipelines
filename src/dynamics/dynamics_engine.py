@@ -31,17 +31,28 @@ class MDInterface:
 
         box_x, box_y, box_z = self.config.box_size
 
+        # Security: validate all template variables against strict whitelists before formatting
+        lattice_type = self.config.lattice_type
+        if not re.match(r"^[a-zA-Z0-9]+$", lattice_type):
+            msg = "Invalid lattice_type"
+            raise ValueError(msg)
+
+        work_dir_str = str(work_dir.resolve(strict=True))
+        if not re.match(r"^[/a-zA-Z0-9_.-]+$", work_dir_str) or ".." in work_dir_str:
+            msg = "Invalid characters in work_dir"
+            raise ValueError(msg)
+
         template = self.config.lammps_cold_start_template
         script = template.format(
-            lattice_type=self.config.lattice_type,
-            lattice_size=self.config.lattice_size,
-            box_x=box_x,
-            box_y=box_y,
-            box_z=box_z,
+            lattice_type=lattice_type,
+            lattice_size=float(self.config.lattice_size),
+            box_x=int(box_x),
+            box_y=int(box_y),
+            box_z=int(box_z),
             zbl_mapping=self._get_zbl_mapping(),
             dump_name=dump_name,
-            md_steps=min(self.config.md_steps, 1000),
-            work_dir=str(work_dir.resolve()),
+            md_steps=int(min(self.config.md_steps, 1000)),
+            work_dir=work_dir_str,
         )
         tmp_in_file.write(script)
 
@@ -54,6 +65,7 @@ class MDInterface:
         # Verify the potential path is within the project root to prevent path traversal
         if hasattr(self.config, "project_root"):
             import os
+
             root = Path(os.path.realpath(self.config.project_root)).resolve(strict=True)
             if not resolved_pot.is_relative_to(root):
                 msg = f"Potential path must be within the project root: {resolved_pot}"
@@ -78,38 +90,45 @@ class MDInterface:
         template = self.config.lammps_script_template
 
         box_x, box_y, box_z = self.config.box_size
+
+        lattice_type = self.config.lattice_type
+        if not re.match(r"^[a-zA-Z0-9]+$", lattice_type):
+            msg = "Invalid lattice_type"
+            raise ValueError(msg)
+
+        work_dir_str = str(work_dir.resolve(strict=True))
+        if not re.match(r"^[/a-zA-Z0-9_.-]+$", work_dir_str) or ".." in work_dir_str:
+            msg = "Invalid characters in work_dir"
+            raise ValueError(msg)
+
         script = template.format(
-            lattice_type=self.config.lattice_type,
-            lattice_size=self.config.lattice_size,
-            box_x=box_x,
-            box_y=box_y,
-            box_z=box_z,
+            lattice_type=lattice_type,
+            lattice_size=float(self.config.lattice_size),
+            box_x=int(box_x),
+            box_y=int(box_y),
+            box_z=int(box_z),
             pot_path=pot_path_str,
             zbl_mapping=self._get_zbl_mapping(),
-            threshold=self.config.uncertainty_threshold,
+            threshold=float(self.config.uncertainty_threshold),
             dump_name=dump_name,
-            md_steps=self.config.md_steps,
-            work_dir=str(work_dir.resolve()),
+            md_steps=int(self.config.md_steps),
+            work_dir=work_dir_str,
         )
         tmp_in_file.write(script)
 
-    def _execute_lammps(self, work_dir: Path, in_file_name: str) -> None:  # noqa: C901, PLR0912, PLR0915
+    def _execute_lammps(self, work_dir: Path) -> None:  # noqa: C901, PLR0912, PLR0915
         import os
         import re
         import shutil
         import sys
 
-        # Use os.path.realpath to construct and validate the actual path instead of pure regex
+        # Secure input file definition by hardcoding it completely
+        in_file_name = "in.lammps"
         resolved_in_file = Path(os.path.realpath(work_dir / in_file_name)).resolve(strict=False)
         resolved_work_dir = work_dir.resolve(strict=True)
 
         if not resolved_in_file.is_relative_to(resolved_work_dir):
             msg = f"Invalid input file name causing path traversal: {in_file_name}"
-            raise ValueError(msg)
-
-        # Optional basic sanity regex to prevent weird spaces/characters that mess with shell strings
-        if not re.match(r"^[a-zA-Z0-9_.-]+$", resolved_in_file.name):
-            msg = f"Invalid characters in input file name: {resolved_in_file.name}"
             raise ValueError(msg)
 
         lmp_binary: str = self.config.lmp_binary
@@ -124,6 +143,11 @@ class MDInterface:
             raise RuntimeError(msg)
 
         resolved_bin = Path(os.path.realpath(resolved_which)).resolve(strict=True)
+
+        if resolved_bin.is_symlink():
+            msg = "LAMMPS binary cannot be a symlink."
+            raise ValueError(msg)
+
         if not resolved_bin.is_file() or not os.access(resolved_bin, os.X_OK):
             msg = f"LAMMPS binary is not an executable file: {resolved_bin}"
             raise ValueError(msg)
@@ -194,7 +218,7 @@ class MDInterface:
             Path(tmp_path).unlink(missing_ok=True)
             raise
 
-        self._execute_lammps(work_dir, "in.lammps")
+        self._execute_lammps(work_dir)
         return self._check_halt(dump_file)
 
     def _check_halt(self, dump_file: Path) -> dict[str, Any]:
@@ -290,6 +314,11 @@ write_data {work_dir.resolve()}/data.lammps
             raise RuntimeError(msg)
 
         resolved_bin = Path(os.path.realpath(resolved_which)).resolve(strict=True)
+
+        if resolved_bin.is_symlink():
+            msg = "LAMMPS binary cannot be a symlink."
+            raise ValueError(msg)
+
         if not resolved_bin.is_file() or not os.access(resolved_bin, os.X_OK):
             msg = f"LAMMPS binary is not an executable file: {resolved_bin}"
             raise ValueError(msg)

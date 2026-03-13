@@ -71,6 +71,7 @@ class PacemakerWrapper:
                 trusted_dirs.append(str(Path(self.config.project_root) / "bin"))
 
             import os
+
             if Path(binary_setting).is_absolute():
                 if ".." in binary_setting:
                     msg = f"Invalid absolute binary path: {binary_setting}"
@@ -82,7 +83,9 @@ class PacemakerWrapper:
                     raise ValueError(msg)
 
                 if resolved_bin.name != "pace_activeset":
-                    msg = f"Resolved binary name must be 'pace_activeset', got '{resolved_bin.name}'"
+                    msg = (
+                        f"Resolved binary name must be 'pace_activeset', got '{resolved_bin.name}'"
+                    )
                     raise ValueError(msg)
 
                 if not any(str(resolved_bin).startswith(td) for td in trusted_dirs):
@@ -128,15 +131,17 @@ class PacemakerWrapper:
                             self.cmd.append(arg)
                     return self.cmd
 
-            builder = PaceActivesetCommandBuilder(pace_activeset_bin, self.config.pace_activeset_args_template)
+            builder = PaceActivesetCommandBuilder(
+                pace_activeset_bin, self.config.pace_activeset_args_template
+            )
             cmd = builder.build(
-                input=str(in_file.resolve()),
-                output=str(out_file.resolve()),
-                n=str(n)
+                input=str(in_file.resolve()), output=str(out_file.resolve()), n=str(n)
             )
 
             try:
-                _res: subprocess.CompletedProcess[str] = subprocess.run(cmd, check=True, capture_output=True, text=True, shell=False)  # noqa: S603
+                _res: subprocess.CompletedProcess[str] = subprocess.run(
+                    cmd, check=True, capture_output=True, text=True, shell=False
+                )  # noqa: S603
                 if out_file.exists():
                     # Parse selected
                     selected = read(str(out_file), index=":")
@@ -170,7 +175,9 @@ class PacemakerWrapper:
 
         if hasattr(self.config, "project_root"):
             proj_root = Path(self.config.project_root).resolve(strict=True)
-            if not resolved_output_dir.is_relative_to(proj_root) and not str(resolved_output_dir).startswith(tempfile.gettempdir()):
+            if not resolved_output_dir.is_relative_to(proj_root) and not str(
+                resolved_output_dir
+            ).startswith(tempfile.gettempdir()):
                 msg = f"output_dir is outside the trusted base directory: {resolved_output_dir}"
                 raise ValueError(msg)
 
@@ -265,14 +272,16 @@ class PacemakerWrapper:
             active_set_size=str(self.config.active_set_size),
             baseline_potential=self.config.baseline_potential,
             regularization=self.config.regularization,
-            output_dir=str(resolved_output_dir)
+            output_dir=str(resolved_output_dir),
         )
 
         if initial_potential and initial_potential.exists():
             cmd.extend(["--initial_potential", shlex.quote(str(initial_potential.resolve()))])
 
         try:
-            _res2: subprocess.CompletedProcess[str] = subprocess.run(cmd, check=True, capture_output=True, text=True, shell=False)  # noqa: S603
+            _res2: subprocess.CompletedProcess[str] = subprocess.run(
+                cmd, check=True, capture_output=True, text=True, shell=False
+            )  # noqa: S603
         except subprocess.CalledProcessError as e:
             msg = f"pace_train execution failed: {e.stderr}"
             raise RuntimeError(msg) from e

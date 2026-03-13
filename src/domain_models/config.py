@@ -347,7 +347,7 @@ class ProjectConfig(BaseSettings):
 
     @model_validator(mode="before")
     @classmethod
-    def validate_env_content(cls, values: dict[str, Any]) -> dict[str, Any]:  # noqa: C901
+    def validate_env_content(cls, values: dict[str, Any]) -> dict[str, Any]:  # noqa: C901, PLR0912
         import re
         from pathlib import Path
 
@@ -368,6 +368,7 @@ class ProjectConfig(BaseSettings):
 
             # Strict whitelist validation for .env file contents
             import os
+
             with Path.open(resolved_env, encoding="utf-8") as f:
                 for raw_line in f:
                     clean_line = raw_line.strip()
@@ -385,8 +386,20 @@ class ProjectConfig(BaseSettings):
                         msg = f"Unauthorized environment variable injected via .env: {key}. Only MLIP_ prefixes are allowed."
                         raise ValueError(msg)
 
+                    if len(key) > 64:
+                        msg = "Environment variable key exceeds maximum length"
+                        raise ValueError(msg)
+
+                    if len(val) > 256:
+                        msg = "Environment variable value exceeds maximum length"
+                        raise ValueError(msg)
+
                     if not re.match(r"^[A-Z0-9_]+$", key):
                         msg = f"Invalid characters in .env variable key: {key}"
+                        raise ValueError(msg)
+
+                    if not re.match(r"^[a-zA-Z0-9_./-]+$", val):
+                        msg = f"Invalid characters in .env variable value: {val}"
                         raise ValueError(msg)
 
                     # Add path traversal validation for values that look like paths
@@ -397,9 +410,12 @@ class ProjectConfig(BaseSettings):
 
                         # If it's an absolute path, verify it's within expected bounds
                         if Path(val).is_absolute():
-                            _ = Path(os.path.realpath(val))
-                            # Depending on usage, we might only allow paths under project_root.
-                            # For safety, we check if the path contains unexpected traversals even after realpath
+                            resolved_val = Path(os.path.realpath(val))
+                            if not resolved_val.is_relative_to(expected_base):
+                                msg = (
+                                    f"Absolute paths in .env must be within the project root: {val}"
+                                )
+                                raise ValueError(msg)
 
         return values
 
@@ -433,7 +449,10 @@ class ProjectConfig(BaseSettings):
             raise ValueError(msg)
 
         # Content validation: verify it looks like a valid project root
-        if not (resolved_path / "pyproject.toml").exists() and not (resolved_path / "README.md").exists():
+        if (
+            not (resolved_path / "pyproject.toml").exists()
+            and not (resolved_path / "README.md").exists()
+        ):
             msg = f"Project root '{v}' does not contain expected core project files (pyproject.toml or README.md)."
             raise ValueError(msg)
 

@@ -33,6 +33,7 @@ class EONWrapper:
         resolved_pot_str = ""
         if potential:
             import os
+
             resolved_pot = Path(os.path.realpath(potential)).resolve(strict=True)
             if hasattr(self.config, "project_root"):
                 root = Path(os.path.realpath(self.config.project_root)).resolve(strict=True)
@@ -44,9 +45,14 @@ class EONWrapper:
         pot_str = repr(resolved_pot_str) if potential else "None"
 
         # Ensure executable doesn't break python logic
+        import re
         import sys
 
         executable = sys.executable
+        if not re.match(r"^[/a-zA-Z0-9_.-]+$", executable):
+            msg = "Invalid python executable path"
+            raise ValueError(msg)
+
         driver_content = self.config.eon_driver_template.format(
             executable=executable,
             threshold=float(self.config.uncertainty_threshold),
@@ -96,6 +102,10 @@ class EONWrapper:
             import os
 
             eon_path: Path = Path(os.path.realpath(resolved_which)).resolve(strict=True)
+            if eon_path.is_symlink():
+                msg = "EON binary cannot be a symlink."
+                raise ValueError(msg)
+
             if not eon_path.is_file() or not os.access(eon_path, os.X_OK):
                 msg = f"EON binary is not an executable file: {eon_path}"
                 raise ValueError(msg)
@@ -131,7 +141,12 @@ class EONWrapper:
 
             # Safely invoke EON client using direct list execution through subprocess (shell=False)
             res: subprocess.CompletedProcess[bytes] = subprocess.run(  # noqa: S603
-                cmd, cwd=str(resolved_work_dir.absolute()), capture_output=True, shell=False, env=env, check=False
+                cmd,
+                cwd=str(resolved_work_dir.absolute()),
+                capture_output=True,
+                shell=False,
+                env=env,
+                check=False,
             )
 
             if res.returncode == 100:
