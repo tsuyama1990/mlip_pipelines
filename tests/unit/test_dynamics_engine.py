@@ -47,7 +47,7 @@ def test_run_exploration_watchdog(monkeypatch: pytest.MonkeyPatch, tmp_path: Pat
     dump_file.parent.mkdir(parents=True)
     dump_file.touch()
 
-    def mock_check_halt(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+    def mock_check_halt(self: Any, *args: Any, **kwargs: Any) -> dict[str, Any]:
         return {"halted": True, "dump_file": dump_file}
 
     monkeypatch.setattr(MDInterface, "_check_halt", mock_check_halt)
@@ -76,7 +76,7 @@ def test_resume(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
 
     monkeypatch.setattr(subprocess, "run", mock_run)
 
-    def mock_check_halt(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+    def mock_check_halt(self: Any, *args: Any, **kwargs: Any) -> dict[str, Any]:
         return {"halted": False, "dump_file": None}
 
     monkeypatch.setattr(MDInterface, "_check_halt", mock_check_halt)
@@ -168,7 +168,7 @@ def test_run_exploration_cold_start(monkeypatch: pytest.MonkeyPatch, tmp_path: P
     dump_file.parent.mkdir(parents=True)
     dump_file.touch()
 
-    def mock_check_halt(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+    def mock_check_halt(self: Any, *args: Any, **kwargs: Any) -> dict[str, Any]:
         return {"halted": False, "dump_file": dump_file}
 
     monkeypatch.setattr(MDInterface, "_check_halt", mock_check_halt)
