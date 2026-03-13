@@ -1,127 +1,64 @@
 from pathlib import Path
+from typing import Literal
 
-import yaml
 from pydantic import BaseModel, ConfigDict, Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class MaterialConfig(BaseModel):
+class SystemConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    elements: list[str]
-    atomic_numbers: list[int]
-    masses: list[float]
-    band_gap: float
-    melting_point: float
-    bulk_modulus: float
-    crystal: str
-    a: float
-
-
-class MDConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    temperature: float = Field(default=300.0, ge=0.0)
-    steps: int = Field(default=10000, gt=0)
-    lammps_commands: list[str] = Field(default_factory=list)
-
-
-class DFTConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    kspacing: float = Field(default=0.05, gt=0.0)
-    smearing_type: str = Field(default="mv")
-    occupations: str = Field(default="smearing")
-    calculation: str = Field(default="scf")
-    ecutwfc: float = Field(default=40.0, gt=0.0)
-    ecutrho: float = Field(default=320.0, gt=0.0)
-    degauss: float = Field(default=0.02, ge=0.0)
-    mixing_beta: float = Field(default=0.7, gt=0.0)
-    electron_maxstep: int = Field(default=100, gt=0)
-    pseudopotentials: dict[str, str] = Field(default_factory=dict)
-    pw_executable: str = Field(default="pw.x")
-
-
-class TrainingConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    max_epochs: int = Field(default=50, gt=0)
-    pace_train_args: list[str] = Field(default_factory=list)
-    pace_activeset_executable: str = Field(default="pace_activeset")
-    pace_train_executable: str = Field(default="pace_train")
-    activeset_fallback_strategy: str = Field(default="random")
-
-
-class ValidationConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    rmse_energy_threshold: float = Field(default=2.0, gt=0.0)
-    rmse_force_threshold: float = Field(default=0.05, gt=0.0)
-    rmse_energy_offset: float = Field(default=0.0)
-    rmse_force_offset: float = Field(default=0.0)
-    supercell_matrix: list[list[int]] = Field(
-        default_factory=lambda: [[2, 0, 0], [0, 2, 0], [0, 0, 2]]
+    elements: list[str] = Field(..., min_length=1, description="List of elements in the system")
+    baseline_potential: Literal["lj", "zbl"] = Field(
+        default="zbl", description="Baseline potential for core repulsion"
     )
-    displacement_distance: float = Field(default=0.01, gt=0.0)
-    mesh: list[int] = Field(default_factory=lambda: [20, 20, 20])
-    imaginary_freq_threshold: float = Field(default=-0.1)
 
 
-class OTFLoopConfig(BaseModel):
+class DynamicsConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    uncertainty_threshold: float = Field(default=5.0, gt=0.0)
+    uncertainty_threshold: float = Field(
+        default=5.0, ge=0.0, description="Gamma threshold to trigger halt"
+    )
+    md_steps: int = Field(default=100000, ge=1, description="Number of MD steps per exploration run")
+    temperature: float = Field(default=300.0, ge=0.0, description="Temperature for MD exploration")
+    pressure: float = Field(default=0.0, description="Pressure for NPT MD exploration")
 
 
-class PolicyConfig(BaseModel):
+class OracleConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    metal_eg_threshold: float = Field(default=0.1)
-    hard_b0_threshold: float = Field(default=150.0)
-
-    high_mc_r_md_mc: int = Field(default=100)
-    high_mc_t_max_ratio: float = Field(default=0.8)
-    high_mc_steps: int = Field(default=20000)
-    high_mc_defects: int = Field(default=1)
-    high_mc_strain: float = Field(default=0.05)
-
-    defect_r_md_mc: int = Field(default=0)
-    defect_t_max_ratio: float = Field(default=0.5)
-    defect_steps: int = Field(default=10000)
-    defect_defects: int = Field(default=3)
-    defect_strain: float = Field(default=0.02)
-
-    strain_r_md_mc: int = Field(default=0)
-    strain_t_max: float = Field(default=500.0)
-    strain_steps: int = Field(default=10000)
-    strain_defects: int = Field(default=0)
-    strain_strain: float = Field(default=0.15)
-
-    std_r_md_mc: int = Field(default=0)
-    std_t_max: float = Field(default=300.0)
-    std_steps: int = Field(default=10000)
-    std_defects: int = Field(default=0)
-    std_strain: float = Field(default=0.0)
+    kspacing: float = Field(default=0.05, gt=0.0, description="K-point spacing in inverse Angstroms")
+    smearing_width: float = Field(default=0.02, ge=0.0, description="Smearing width (Ry)")
+    pseudo_dir: str = Field(
+        default=str(Path.home() / "pseudos"), description="Path to pseudopotentials directory"
+    )
+    max_retries: int = Field(default=3, ge=0, description="Max retries for SCF convergence failure")
 
 
-class PipelineConfig(BaseModel):
+class TrainerConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    project_name: str = Field(default="mlip_project")
-    data_directory: Path = Field(default_factory=lambda: Path("data"))
-    active_learning_dir: Path = Field(default_factory=lambda: Path("active_learning"))
-    potential_path_template: str = Field(default="potentials/generation_{iteration:03d}.yace")
-    material: MaterialConfig
-    lammps: MDConfig = Field(default_factory=MDConfig)
-    dft: DFTConfig = Field(default_factory=DFTConfig)
-    training: TrainingConfig = Field(default_factory=TrainingConfig)
-    validation: ValidationConfig = Field(default_factory=ValidationConfig)
-    otf_loop: OTFLoopConfig = Field(default_factory=OTFLoopConfig)
-    policy: PolicyConfig = Field(default_factory=PolicyConfig)
+    max_epochs: int = Field(default=50, ge=1, description="Number of epochs for fine-tuning")
+    active_set_size: int = Field(
+        default=500, ge=1, description="Target size of active set for D-Optimality"
+    )
 
-    @classmethod
-    def from_yaml(cls, path: str | Path) -> "PipelineConfig":
-        from pydantic import ValidationError
 
-        path_obj = Path(path)
-        with path_obj.open("r", encoding="utf-8") as f:
-            data = yaml.safe_load(f)
-        if data is None:
-            data = {}
+class ValidatorConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    energy_rmse_threshold: float = Field(default=0.002, ge=0.0, description="Max allowed Energy RMSE (eV/atom)")
+    force_rmse_threshold: float = Field(default=0.05, ge=0.0, description="Max allowed Force RMSE (eV/A)")
+    stress_rmse_threshold: float = Field(default=0.1, ge=0.0, description="Max allowed Stress RMSE (GPa)")
 
-        try:
-            return cls(**data)
-        except ValidationError as e:
-            msg = f"Invalid configuration file {path_obj}:\n{e}"
-            raise ValueError(msg) from e
+
+class ProjectConfig(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_prefix="MLIP_",
+        env_nested_delimiter="__",
+        extra="forbid",
+    )
+
+    project_root: Path = Field(default_factory=Path.cwd)
+    system: SystemConfig
+    dynamics: DynamicsConfig
+    oracle: OracleConfig
+    trainer: TrainerConfig
+    validator: ValidatorConfig

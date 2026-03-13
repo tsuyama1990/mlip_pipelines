@@ -1,113 +1,53 @@
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from ase import Atoms
 
-import numpy as np
-from ase.build import bulk
-
-from src.domain_models.config import DFTConfig
-from src.oracles.dft_oracle import DFTOracle
+from src.domain_models.config import OracleConfig
+from src.oracles.dft_oracle import DFTManager
 
 
-def test_dft_oracle_apply_periodic_embedding() -> None:
-    config = DFTConfig()
-    oracle = DFTOracle(config)
+def test_dft_manager_initialization():
+    config = OracleConfig()
+    manager = DFTManager(config)
+    assert manager.config.kspacing == 0.05
 
-    atoms = bulk("Fe", cubic=True)
-    orig_cell = atoms.cell
+def test_periodic_embedding():
+    config = OracleConfig()
+    manager = DFTManager(config)
+    atoms = Atoms("Fe", positions=[(0, 0, 0)])
 
-    embedded = oracle._apply_periodic_embedding(atoms)
-    new_cell = embedded.cell
+    embedded = manager._apply_periodic_embedding(atoms)
 
-    assert np.allclose(new_cell, orig_cell)
-    # the atoms shouldn't be altered in our mock implementation other than the cell
-    assert len(embedded) == len(atoms)
+    # Must be Orthorhombic cell for embedding
+    cell = embedded.get_cell()
+    assert cell[0][1] == 0.0
+    assert cell[0][2] == 0.0
+    assert cell[1][0] == 0.0
+    assert cell[1][2] == 0.0
+    assert cell[2][0] == 0.0
+    assert cell[2][1] == 0.0
 
+def test_compute_batch(monkeypatch, tmp_path):
+    config = OracleConfig()
+    manager = DFTManager(config)
 
-def test_dft_oracle_apply_periodic_embedding_no_cell() -> None:
+    import numpy as np
     from ase import Atoms
+    from ase.calculators.calculator import Calculator
 
-    config = DFTConfig()
-    oracle = DFTOracle(config)
+    class MockCalc(Calculator):
+        implemented_properties = ['energy', 'forces', 'stress']
+        parameters = {"input_data": {"electrons": {"mixing_beta": 0.7, "diagonalization": "david"}}}
 
-    atoms = Atoms("Fe")
-    embedded = oracle._apply_periodic_embedding(atoms)
-    new_cell = embedded.cell
+        def calculate(self, atoms=None, properties=['energy'], system_changes=None):
+            self.results = {'energy': -5.0, 'forces': np.zeros((len(atoms), 3)), 'stress': np.zeros(6)}
 
-    assert not np.allclose(new_cell.diagonal(), 0.0)
+    atoms1 = Atoms("Fe", positions=[(0, 0, 0)])
+    atoms2 = Atoms("Pt", positions=[(0, 0, 0)])
 
+    # Monkeypatch the get_calculator logic to inject mock
+    manager._get_calculator = lambda atoms, work_dir: MockCalc()
 
-def test_dft_oracle_get_pseudos() -> None:
-    config = DFTConfig()
-    oracle = DFTOracle(config)
-    atoms = bulk("Fe", cubic=True)
+    results = manager.compute_batch([atoms1, atoms2], tmp_path)
 
-    pseudos = oracle._get_pseudos(atoms)
-    assert "Fe" in pseudos
-    assert pseudos["Fe"] == "Fe.upf"
-
-
-@patch("shutil.which", return_value="pw.x")
-def test_dft_oracle_compute_batch(mock_which: MagicMock, tmp_path: Path) -> None:
-    config = DFTConfig()
-    oracle = DFTOracle(config)
-
-    atoms1 = bulk("Fe", cubic=True)
-    atoms2 = bulk("Pt", cubic=True)
-
-    with (
-        patch("ase.calculators.espresso.Espresso.get_potential_energy"),
-        patch("ase.calculators.espresso.Espresso.get_forces", return_value=np.zeros((2, 3))),
-        patch("src.oracles.dft_oracle.Espresso") as MockEspresso,
-    ):
-        # Mock ASE Espresso since it fails with BadConfiguration locally
-        mock_calc = MagicMock()
-        MockEspresso.return_value = mock_calc
-        with (
-            patch("ase.Atoms.get_potential_energy", return_value=-100.0),
-            patch("ase.Atoms.get_forces", return_value=np.zeros((2, 3))),
-        ):
-            results = oracle.compute_batch([atoms1, atoms2], tmp_path)
-
-            assert len(results) == 2
-            # Notice that in the new scalable version, the calculator is detached immediately after
-            # computing the forces to save memory! So `atoms.calc is None` is now the expected behavior.
-            for atoms in results:
-                assert atoms.calc is None
-
-
-@patch("shutil.which", return_value="pw.x")
-def test_dft_oracle_compute_batch_exception_handling(mock_which: MagicMock, tmp_path: Path) -> None:
-    config = DFTConfig()
-    oracle = DFTOracle(config)
-
-    atoms = bulk("Fe", cubic=True)
-
-    with patch("src.oracles.dft_oracle.Espresso") as MockEspresso:
-        mock_calc = MagicMock()
-        MockEspresso.return_value = mock_calc
-
-        # We need to mock get_potential_energy on the atoms object since dft_oracle assigns calc to atoms
-        # then calls atoms.get_potential_energy()
-
-        with (
-            patch(
-                "ase.Atoms.get_potential_energy", side_effect=[Exception("mocked error"), -100.0]
-            ),
-            patch("ase.Atoms.get_forces", return_value=np.zeros((2, 3))),
-        ):
-            results = oracle.compute_batch([atoms], tmp_path)
-
-            assert len(results) == 1
-
-
-@patch("shutil.which", return_value=None)
-def test_dft_oracle_compute_batch_no_pw(mock_which: MagicMock, tmp_path: Path) -> None:
-    config = DFTConfig()
-    oracle = DFTOracle(config)
-
-    atoms = bulk("Fe", cubic=True)
-
-    with patch("src.oracles.dft_oracle.Espresso"):
-        results = oracle.compute_batch([atoms], tmp_path)
-
-        assert len(results) == 0
+    assert len(results) == 2
+    assert "energy" in results[0].calc.results
+    assert results[0].calc.results["energy"] == -5.0
