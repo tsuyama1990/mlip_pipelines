@@ -290,18 +290,9 @@ class ValidatorConfig(BaseModel):
         default="bcc", description="Crystal type to build bulk validation structure from"
     )
     validation_a: float = Field(default=2.86, description="Lattice parameter a")
-    fallback_energy_rmse: float = Field(
-        default=0.001, description="Fallback energy RMSE for mock CI environments"
-    )
-    fallback_force_rmse: float = Field(
-        default=0.01, description="Fallback force RMSE for mock CI environments"
-    )
-    fallback_stress_rmse: float = Field(
-        default=0.05, description="Fallback stress RMSE for mock CI environments"
-    )
     test_dataset_path: str | None = Field(
         default=None,
-        description="Path to held-out test dataset for RMSE calculation. If None, mock validation is skipped or defaults are used.",
+        description="Path to held-out test dataset for RMSE calculation. If None, validation on test dataset is skipped.",
     )
 
 

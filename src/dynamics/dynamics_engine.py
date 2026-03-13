@@ -387,7 +387,7 @@ write_data {work_dir.resolve()}/data.lammps
                 if np.max(gamma_array) > threshold:
                     high_gamma.append(atoms)
             else:
-                # Default to last frame if gamma is not mapped, e.g. for mock testing or cold start
+                # Default to last frame if gamma is not mapped, e.g. for cold start
                 continue
 
         if not high_gamma:
