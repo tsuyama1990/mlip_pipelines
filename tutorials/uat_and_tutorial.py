@@ -84,6 +84,7 @@ def __(orchestrator, mo):
 
     # Run the cycle
     import shutil
+
     if not shutil.which("lmp") or not shutil.which("pace_train"):
         result_pot = None
         calculated_interface_energy = 0.0

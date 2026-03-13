@@ -89,6 +89,7 @@ class PacemakerWrapper:
         out_pot = resolved_output_dir / "output_potential.yace"
 
         import re
+
         if not re.match(r"^[a-zA-Z0-9_.-]+$", self.config.baseline_potential):
             msg = "Invalid baseline potential format"
             raise ValueError(msg)

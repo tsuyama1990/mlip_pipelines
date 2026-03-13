@@ -14,7 +14,7 @@ def test_orchestrator_initialization(mock_project_config: ProjectConfig) -> None
     assert orch.iteration == 0
 
 
-def test_run_cycle(monkeypatch: pytest.MonkeyPatch, mock_project_config: ProjectConfig) -> None:
+def test_run_cycle(monkeypatch: pytest.MonkeyPatch, mock_project_config: ProjectConfig) -> None:  # noqa: C901
     orch = Orchestrator(mock_project_config)
 
     # Mock all internal models
@@ -26,6 +26,9 @@ def test_run_cycle(monkeypatch: pytest.MonkeyPatch, mock_project_config: Project
             from ase import Atoms
 
             return [Atoms("Fe", positions=[(0, 0, 0)])]
+
+        def resume(self, potential: Path, restart_dir: Path, work_dir: Path) -> dict[str, Any]:
+            return {"halted": False, "dump_file": None}
 
     class MockOracle:
         def compute_batch(self, *args: Any, **kwargs: Any) -> list[Any]:
@@ -84,3 +87,67 @@ def test_run_cycle(monkeypatch: pytest.MonkeyPatch, mock_project_config: Project
     assert orch.iteration == 1
     assert res is not None
     assert str(res).endswith("generation_001.yace")
+
+
+def test_run_cycle_converged(
+    monkeypatch: pytest.MonkeyPatch, mock_project_config: ProjectConfig
+) -> None:
+    orch = Orchestrator(mock_project_config)
+
+    class MockMD:
+        def run_exploration(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+            return {"halted": False, "dump_file": "dummy_dump"}
+
+    class MockTrainer:
+        def get_latest_potential(self) -> str:
+            return "dummy_pot.yace"
+
+    orch.md_engine = MockMD()  # type: ignore[assignment]
+    orch.trainer = MockTrainer()  # type: ignore[assignment]
+
+    res = orch.run_cycle()
+    assert res == "CONVERGED"
+
+
+def test_get_latest_potential(
+    monkeypatch: pytest.MonkeyPatch, mock_project_config: ProjectConfig, tmp_path: Path
+) -> None:
+    orch = Orchestrator(mock_project_config)
+    pot_dir = tmp_path / "potentials"
+    pot_dir.mkdir(parents=True)
+    pot_path = pot_dir / "generation_000.yace"
+    pot_path.write_text("elements version")
+
+    orch.config.project_root = tmp_path
+
+    latest = orch.get_latest_potential()
+    assert latest == pot_path.resolve()
+
+def test_get_latest_potential_no_dir(monkeypatch: pytest.MonkeyPatch, mock_project_config: ProjectConfig, tmp_path: Path) -> None:
+    orch = Orchestrator(mock_project_config)
+    orch.config.project_root = tmp_path
+
+    latest = orch.get_latest_potential()
+    assert latest is None
+
+def test_get_latest_potential_no_files(monkeypatch: pytest.MonkeyPatch, mock_project_config: ProjectConfig, tmp_path: Path) -> None:
+    orch = Orchestrator(mock_project_config)
+    pot_dir = tmp_path / "potentials"
+    pot_dir.mkdir(parents=True)
+
+    orch.config.project_root = tmp_path
+
+    latest = orch.get_latest_potential()
+    assert latest is None
+
+def test_get_latest_potential_invalid_file(monkeypatch: pytest.MonkeyPatch, mock_project_config: ProjectConfig, tmp_path: Path) -> None:
+    orch = Orchestrator(mock_project_config)
+    pot_dir = tmp_path / "potentials"
+    pot_dir.mkdir(parents=True)
+    pot_path = pot_dir / "generation_000.yace"
+    pot_path.write_text("invalid data")
+
+    orch.config.project_root = tmp_path
+
+    latest = orch.get_latest_potential()
+    assert latest is None

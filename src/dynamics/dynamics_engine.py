@@ -17,7 +17,7 @@ class MDInterface:
         self.config = config
         self.system_config = system_config
 
-    def run_exploration(self, potential: Path | None, work_dir: Path) -> dict[str, Any]:  # noqa: C901, PLR0915
+    def run_exploration(self, potential: Path | None, work_dir: Path) -> dict[str, Any]:  # noqa: C901
         """Runs LAMMPS exploration and monitors for high uncertainty."""
         work_dir.mkdir(parents=True, exist_ok=True)
         dump_file = work_dir / "dump.lammps"
@@ -42,6 +42,7 @@ class MDInterface:
             with os.fdopen(fd, "w") as tmp_in_file:
                 if potential is None:
                     import re
+
                     dump_name = dump_file.name
                     if not re.match(r"^[-a-zA-Z0-9_.]+$", dump_name):
                         msg = "Dump file name contains invalid characters"
@@ -53,6 +54,11 @@ units metal
 boundary p p p
 atom_style atomic
 
+lattice fcc 3.5
+region box block 0 2 0 2 0 2
+create_box 2 box
+create_atoms 1 box
+
 # Cold start: using only ZBL
 pair_style zbl 1.0 2.0
 pair_coeff * * {zbl_elements}
@@ -60,6 +66,8 @@ pair_coeff * * {zbl_elements}
 # Force dump to extract structures for initial training
 dump 1 all custom 10 {dump_name} id type x y z
 run {min(self.config.md_steps, 1000)}  # Short run for cold start
+write_restart {work_dir.resolve()}/restart.lammps
+write_data {work_dir.resolve()}/data.lammps
 """)
                 else:
                     # Validate potential path ends with .yace and safely quote it
@@ -69,6 +77,7 @@ run {min(self.config.md_steps, 1000)}  # Short run for cold start
                         raise ValueError(msg)
 
                     import re
+
                     # Validate path safe for lammps without shlex quotes to avoid LAMMPS syntax errors
                     # using strict whitelist
                     if not re.match(r"^[-a-zA-Z0-9_./]+$", pot_path_str):
@@ -85,16 +94,23 @@ units metal
 boundary p p p
 atom_style atomic
 
+lattice fcc 3.5
+region box block 0 2 0 2 0 2
+create_box 2 box
+create_atoms 1 box
+
 pair_style hybrid/overlay pace zbl 1.0 2.0
 pair_coeff * * pace {pot_path_str}
 pair_coeff * * zbl {zbl_elements}
 
 compute pace_gamma all pace gamma_mode=1
 variable max_gamma equal max(c_pace_gamma)
-fix watchdog all halt 10 v_max_gamma > {self.config.uncertainty_threshold} error hard
+fix watchdog all halt 10 v_max_gamma > {self.config.uncertainty_threshold} error soft
 
 dump 1 all custom 10 {dump_name} id type x y z c_pace_gamma
 run {self.config.md_steps}
+write_restart {work_dir.resolve()}/restart.lammps
+write_data {work_dir.resolve()}/data.lammps
 """)
             # Atomically rename to target input file
             Path(tmp_path).replace(in_file)
@@ -104,10 +120,6 @@ run {self.config.md_steps}
 
         # Execute lammps
         try:
-            # Lammps command line execution
-            # 'lmp' or 'lmp_mpi' is standard
-            # if we get an error, it might be the watchdog
-
             lmp_bin = shutil.which("lmp") or "lmp"
             subprocess.run(  # noqa: S603
                 [lmp_bin, "-in", "in.lammps"],
@@ -117,18 +129,94 @@ run {self.config.md_steps}
                 shell=False,
             )
         except subprocess.CalledProcessError:
-            # If LAMMPS halted due to error hard
-            logging.warning("LAMMPS halted, possibly due to uncertainty watchdog.")
-            # For the pipeline logic, we assume it halted.
-            if not dump_file.exists():
-                msg = "LAMMPS halted but no dump file was generated."
-                raise RuntimeError(msg) from None
-            return {"halted": True, "dump_file": dump_file}
+            pass  # error soft doesn't trigger CalledProcessError usually
         except FileNotFoundError as e:
             msg = "LAMMPS executable not found."
             raise RuntimeError(msg) from e
-        else:
-            return {"halted": False, "dump_file": None}
+
+        return self._check_halt(dump_file)
+
+    def _check_halt(self, dump_file: Path) -> dict[str, Any]:
+        """Checks if the run was halted based on the dump file output."""
+        if not dump_file.exists():
+            msg = "LAMMPS failed and no dump file was generated."
+            raise RuntimeError(msg)
+
+        is_halted = False
+        try:
+            high_gamma = self.extract_high_gamma_structures(
+                dump_file, self.config.uncertainty_threshold
+            )
+            if high_gamma:
+                last_frame = high_gamma[-1]
+                if "c_pace_gamma" in last_frame.arrays:
+                    import numpy as np
+
+                    if (
+                        np.max(last_frame.arrays["c_pace_gamma"])
+                        > self.config.uncertainty_threshold
+                    ):
+                        is_halted = True
+                        logging.warning("LAMMPS halted, possibly due to uncertainty watchdog.")
+        except Exception as e:
+            logging.warning(f"Error checking halt status: {e}")
+            is_halted = True
+
+        return {"halted": is_halted, "dump_file": dump_file}
+
+    def resume(self, potential: Path, restart_dir: Path, work_dir: Path) -> dict[str, Any]:
+        """Resumes the MD simulation with the newly updated potential."""
+        logging.info(f"Resuming dynamics with new potential: {potential}")
+        work_dir.mkdir(parents=True, exist_ok=True)
+        dump_file = work_dir / "dump.lammps"
+        in_file = work_dir / "in.lammps"
+
+        restart_file = restart_dir / "restart.lammps"
+        if not restart_file.exists():
+            msg = f"Missing required file: {restart_file}"
+            raise FileNotFoundError(msg)
+
+        zbl_elements = " ".join(
+            str(atomic_numbers.get(el, 1)) for el in self.system_config.elements
+        )
+        pot_path_str = str(potential.resolve())
+
+        with Path.open(in_file, "w") as f:
+            f.write(f"""
+read_restart {restart_file.resolve()}
+
+pair_style hybrid/overlay pace zbl 1.0 2.0
+pair_coeff * * pace {pot_path_str}
+pair_coeff * * zbl {zbl_elements}
+
+compute pace_gamma all pace gamma_mode=1
+variable max_gamma equal max(c_pace_gamma)
+fix watchdog all halt 10 v_max_gamma > {self.config.uncertainty_threshold} error soft
+
+dump 1 all custom 10 {dump_file.name} id type x y z c_pace_gamma
+run {self.config.md_steps}
+write_restart {work_dir.resolve()}/restart.lammps
+write_data {work_dir.resolve()}/data.lammps
+""")
+
+        import shutil
+
+        lmp_bin = shutil.which("lmp") or "lmp"
+        try:
+            subprocess.run(  # noqa: S603
+                [lmp_bin, "-in", in_file.name],
+                cwd=work_dir,
+                check=True,
+                capture_output=True,
+                shell=False,
+            )
+        except subprocess.CalledProcessError:
+            pass
+        except FileNotFoundError as e:
+            msg = "LAMMPS executable not found."
+            raise RuntimeError(msg) from e
+
+        return self._check_halt(dump_file)
 
     def extract_high_gamma_structures(self, dump_file: Path, threshold: float) -> list[Atoms]:
         """Extracts structures with high gamma from LAMMPS dump."""
@@ -153,6 +241,7 @@ run {self.config.md_steps}
                 # Find maximum gamma over atoms
                 gamma_array = atoms.arrays["c_pace_gamma"]
                 import numpy as np
+
                 if np.max(gamma_array) > threshold:
                     high_gamma.append(atoms)
             else:

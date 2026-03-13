@@ -15,7 +15,7 @@ class Validator:
     def __init__(self, config: ValidatorConfig) -> None:
         self.config = config
 
-    def _check_phonopy_stability(self, atoms: 'Atoms', calc: 'Calculator') -> bool:
+    def _check_phonopy_stability(self, atoms: "Atoms", calc: "Calculator") -> bool:
         import phonopy
         from phonopy.structure.atoms import PhonopyAtoms
 
@@ -85,6 +85,7 @@ class Validator:
 
         try:
             from pyacemaker.calculator import pyacemaker
+
             if not hasattr(pyacemaker, "__version__"):
                 logging.info("pyacemaker module found, skipping explicit version check.")
         except ImportError:

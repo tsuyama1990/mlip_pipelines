@@ -29,25 +29,34 @@ def test_full_pipeline_skeleton(tmp_path: Path) -> None:
 
     if not shutil.which("lmp"):
         import pytest
-        pytest.skip("LAMMPS is not installed in the environment, skipping full integration execution.")
+
+        pytest.skip(
+            "LAMMPS is not installed in the environment, skipping full integration execution."
+        )
 
     if not shutil.which("pace_train") or not shutil.which("pace_activeset"):
         import pytest
+
         pytest.skip("Pacemaker ACE binaries not found, skipping full execution.")
 
     if importlib.util.find_spec("pyacemaker") is None:
         import pytest
+
         pytest.skip("pyacemaker is missing, skipping.")
 
     if importlib.util.find_spec("phonopy") is None:
         import pytest
+
         pytest.skip("phonopy is missing, skipping.")
 
     try:
         result = orchestrator.run_cycle()
     except Exception as e:
         import pytest
-        pytest.skip(f"Integration cycle failed due to unconfigured environment specifics or missing structural input data: {e}")
+
+        pytest.skip(
+            f"Integration cycle failed due to unconfigured environment specifics or missing structural input data: {e}"
+        )
 
     assert result is not None
     assert orchestrator.iteration == 1

@@ -49,6 +49,7 @@ class Orchestrator:
             # Validate format strictly to ensure file integrity
             # Use fcntl to lock the file preventing race conditions on access
             import fcntl
+
             with Path.open(latest_pot) as f:
                 fcntl.flock(f, fcntl.LOCK_SH)
                 try:
@@ -64,7 +65,7 @@ class Orchestrator:
                 return None
             return latest_pot
 
-    def run_cycle(self) -> str | None:
+    def run_cycle(self) -> str | None:  # noqa: PLR0915
         """Runs one full loop: Exploration -> Selection -> DFT -> Update -> Resume."""
         logging.info(f"Starting iteration {self.iteration}")
 
@@ -155,6 +156,12 @@ class Orchestrator:
             if work_dir.exists():
                 shutil.rmtree(work_dir, ignore_errors=True)
             shutil.move(str(tmp_work_dir), str(work_dir))
+
+            self.md_engine.resume(
+                potential=final_dest,
+                restart_dir=work_dir / "md_run",
+                work_dir=work_dir / "resume_run",
+            )
 
             cycle_successful = True
             return str(final_dest)

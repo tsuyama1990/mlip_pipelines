@@ -2,6 +2,8 @@
 
 An automated, zero-configuration pipeline for building, validating, and deploying machine learning interatomic potentials (MLIPs).
 
+It automatically explores structural space, labels structures via DFT, trains ACE potentials iteratively, and dynamically resumes Molecular Dynamics execution loops using a robust internal state machine.
+
 ## Overview
 
 The `mlip-pipelines` system automates the traditionally manual process of generating highly accurate Atomic Cluster Expansion (ACE) potentials. By leveraging "On-The-Fly" (OTF) uncertainty monitoring, the system performs targeted molecular dynamics (MD) exploration and runs DFT labeling selectively on configurations that exceed known uncertainty thresholds.
