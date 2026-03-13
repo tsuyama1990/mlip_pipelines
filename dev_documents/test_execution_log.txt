@@ -2,19 +2,20 @@
 platform linux -- Python 3.12.13, pytest-9.0.2, pluggy-1.6.0
 rootdir: /app
 configfile: pyproject.toml
-testpaths: tests
 plugins: cov-7.0.0, anyio-4.12.1
-collected 45 items
+collected 53 items
 
-tests/e2e/test_skeleton.py s                                             [  2%]
-tests/uat/test_tutorial.py .                                             [  4%]
-tests/unit/test_ace_trainer.py ...                                       [ 11%]
-tests/unit/test_adaptive_policy.py ...                                   [ 17%]
-tests/unit/test_config.py .....                                          [ 28%]
-tests/unit/test_dft_oracle.py ...                                        [ 35%]
-tests/unit/test_domain_models.py .....                                   [ 46%]
-tests/unit/test_dynamics_engine.py ...............                       [ 80%]
-tests/unit/test_orchestrator.py .......                                  [ 95%]
+tests/e2e/test_skeleton.py s                                             [  1%]
+tests/uat/test_tutorial.py .                                             [  3%]
+tests/unit/test_ace_trainer.py ...                                       [  9%]
+tests/unit/test_adaptive_policy.py ...                                   [ 15%]
+tests/unit/test_config.py .....                                          [ 24%]
+tests/unit/test_dft_oracle.py ...                                        [ 30%]
+tests/unit/test_domain_models.py .....                                   [ 39%]
+tests/unit/test_dynamics_engine.py ...............                       [ 67%]
+tests/unit/test_eon_wrapper.py ....                                      [ 75%]
+tests/unit/test_orchestrator.py .......                                  [ 88%]
+tests/unit/test_stability.py ....                                        [ 96%]
 tests/unit/test_validator.py .s                                          [100%]
 
 ================================ tests coverage ================================
@@ -24,23 +25,26 @@ Name                                    Stmts   Miss  Cover   Missing
 ---------------------------------------------------------------------
 src/__init__.py                             0      0   100%
 src/core/__init__.py                        0      0   100%
-src/core/orchestrator.py                  127     22    83%   47-48, 51-52, 57-59, 103-104, 115-116, 125-126, 129-130, 135-136, 139, 177, 181, 187-188
+src/core/orchestrator.py                  169     38    78%   52-53, 56-57, 62-64, 79-80, 100-104, 134-135, 151-152, 161-162, 165-166, 172-173, 181-182, 186-187, 193-194, 198-199, 202, 207-208, 253, 257, 263-264
 src/domain_models/__init__.py               3      0   100%
-src/domain_models/config.py                95      6    94%   44-45, 162-163, 165-166
+src/domain_models/config.py               118     10    92%   210-211, 366-367, 370-371, 374-375, 379-380
 src/domain_models/dtos.py                  39      2    95%   42-43
 src/dynamics/__init__.py                    0      0   100%
-src/dynamics/dynamics_engine.py           178     39    78%   27-28, 63-64, 98, 101-110, 113-114, 117, 121-122, 192-194, 239, 244-252, 255-256, 259, 263-264, 278, 295, 298-299
+src/dynamics/dynamics_engine.py           218     63    71%   27-28, 61-62, 89-90, 101, 106-123, 126-127, 130, 134-135, 138-139, 142-145, 216-218, 268, 272-273, 279-295, 298-299, 302, 306-307, 310-311, 314-317, 332, 349, 352-353
+src/dynamics/eon_wrapper.py                72     21    71%   49-52, 71, 78-91, 103-107
 src/generators/__init__.py                  0      0   100%
 src/generators/adaptive_policy.py          29      7    76%   13-14, 46-51
 src/generators/structure_generator.py      15      9    40%   14-31
 src/oracles/__init__.py                     0      0   100%
 src/oracles/dft_oracle.py                 113     70    38%   19-20, 32-33, 40-41, 46-47, 65-152, 185-204
 src/trainers/__init__.py                    0      0   100%
-src/trainers/ace_trainer.py               128     84    34%   25, 34, 60, 63-70, 73-74, 79-83, 101, 103-112, 116-209
+src/trainers/ace_trainer.py               187    127    32%   27, 36, 48-49, 71, 75-91, 94-95, 100-113, 144, 146-155, 159-284
 src/validators/__init__.py                  0      0   100%
-src/validators/validator.py                97     85    12%   19-53, 56-71, 74-87, 90-130, 134-155
+src/validators/reporter.py                  7      0   100%
+src/validators/stability_tests.py          93     15    84%   30-37, 47-50, 68-71
+src/validators/validator.py                96     76    21%   20-22, 32-33, 37-38, 41-54, 57-132, 136-158
 ---------------------------------------------------------------------
-TOTAL                                     824    324    61%
-======================== 43 passed, 2 skipped in 4.51s =========================
+TOTAL                                    1159    438    62%
+======================== 51 passed, 2 skipped in 5.36s =========================
 /app/.venv/lib/python3.12/site-packages/coverage/inorout.py:561: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.4/messages.html#warning-module-not-imported
   self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")

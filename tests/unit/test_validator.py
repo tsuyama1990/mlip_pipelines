@@ -6,13 +6,17 @@ from src.domain_models.config import ValidatorConfig
 from src.validators.validator import Validator
 
 
-def test_validator_initialization() -> None:
+def test_validator_initialization(monkeypatch: pytest.MonkeyPatch) -> None:
+    import sys
+    monkeypatch.setitem(sys.modules, "pyacemaker.calculator", type("pyacemaker", (), {"pyacemaker": True}))
     config = ValidatorConfig(energy_rmse_threshold=0.01)
     validator = Validator(config)
     assert validator.config.energy_rmse_threshold == 0.01
 
 
-def test_validate(tmp_path: Path) -> None:
+def test_validate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import sys
+    monkeypatch.setitem(sys.modules, "pyacemaker.calculator", type("pyacemaker", (), {"pyacemaker": True}))
     config = ValidatorConfig()
     validator = Validator(config)
 

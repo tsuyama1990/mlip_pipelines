@@ -156,6 +156,7 @@ def test_resume_missing_restart(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError, match="Missing required file"):
         engine.resume(pot_file, restart_dir, work_dir)
 
+
 def test_run_exploration_cold_start(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     config = DynamicsConfig()
     sys_config = SystemConfig(elements=["Fe", "Pt"])
@@ -194,7 +195,9 @@ def test_check_halt_no_dump(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> 
         engine._check_halt(dump_file)
 
 
-def test_run_exploration_subprocess_fail_no_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_run_exploration_subprocess_fail_no_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     config = DynamicsConfig()
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
@@ -236,6 +239,7 @@ def test_resume_subprocess_fail_no_file(monkeypatch: pytest.MonkeyPatch, tmp_pat
     with pytest.raises(RuntimeError, match="LAMMPS executable not found"):
         engine.resume(pot_file, restart_dir, work_dir)
 
+
 def test_extract_high_gamma_structures_missing_dump(tmp_path: Path) -> None:
     config = DynamicsConfig()
     sys_config = SystemConfig(elements=["Fe", "Pt"])
@@ -244,6 +248,7 @@ def test_extract_high_gamma_structures_missing_dump(tmp_path: Path) -> None:
     dump_file = tmp_path / "does_not_exist.lammps"
     with pytest.raises(FileNotFoundError, match="Dump file not found"):
         engine.extract_high_gamma_structures(dump_file, 5.0)
+
 
 def test_extract_high_gamma_structures_no_gamma_array(tmp_path: Path) -> None:
     config = DynamicsConfig()
@@ -265,6 +270,7 @@ ITEM: ATOMS id type x y z
     dump_file.write_text(dump_content)
     structures = engine.extract_high_gamma_structures(dump_file, 5.0)
     assert len(structures) == 1
+
 
 def test_extract_high_gamma_structures(tmp_path: Path) -> None:
     config = DynamicsConfig()
