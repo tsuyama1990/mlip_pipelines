@@ -57,7 +57,7 @@ uv run src/main.py --config config.yaml
 
 To run the interactive tutorials (e.g., computing the FePt/MgO interface energy):
 ```bash
-uv run marimo edit tutorials/UAT_AND_TUTORIAL.py
+uv run marimo edit tutorials/uat_and_tutorial.py
 ```
 
 ## Development Workflow

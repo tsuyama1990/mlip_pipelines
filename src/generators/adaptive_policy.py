@@ -1,4 +1,5 @@
 from typing import Any
+
 from src.domain_models.dtos import ExplorationStrategy
 
 
@@ -27,7 +28,7 @@ class AdaptivePolicy:
                 n_defects=1,
                 strain_range=0.05,
             )
-        elif not is_metal:
+        if not is_metal:
             return ExplorationStrategy(
                 policy_type="Defect-Driven",
                 r_md_mc=0,
@@ -35,7 +36,7 @@ class AdaptivePolicy:
                 n_defects=3,
                 strain_range=0.02,
             )
-        elif is_hard:
+        if is_hard:
             return ExplorationStrategy(
                 policy_type="Strain-Heavy",
                 r_md_mc=0,
@@ -43,11 +44,10 @@ class AdaptivePolicy:
                 n_defects=0,
                 strain_range=0.15,
             )
-        else:
-            return ExplorationStrategy(
-                policy_type="Standard-MD",
-                r_md_mc=0,
-                t_schedule=(300.0, 300.0, 10000),
-                n_defects=0,
-                strain_range=0.0,
-            )
+        return ExplorationStrategy(
+            policy_type="Standard-MD",
+            r_md_mc=0,
+            t_schedule=(300.0, 300.0, 10000),
+            n_defects=0,
+            strain_range=0.0,
+        )

@@ -1,7 +1,7 @@
-import yaml
 from pathlib import Path
+
+import yaml
 from pydantic import BaseModel, ConfigDict, Field
-from typing import Any
 
 
 class MDConfig(BaseModel):

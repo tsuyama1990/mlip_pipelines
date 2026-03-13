@@ -1,6 +1,7 @@
 import pytest
 from pydantic import ValidationError
-from src.domain_models.config import PipelineConfig, MDConfig, ValidationConfig
+
+from src.domain_models.config import MDConfig, PipelineConfig, ValidationConfig
 from src.domain_models.dtos import ExplorationStrategy
 
 
