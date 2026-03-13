@@ -7,16 +7,6 @@ if TYPE_CHECKING:
 
 def check_phonopy_stability(atoms: "Atoms", calc: "Calculator") -> bool:
     """Calculates phonon bands using phonopy and checks for imaginary frequencies."""
-    from ase import Atoms
-    from ase.calculators.calculator import Calculator
-
-    if not isinstance(atoms, Atoms):
-        msg = f"Expected ase.Atoms object, got {type(atoms)}"
-        raise TypeError(msg)
-    if calc is None or not isinstance(calc, Calculator):
-        msg = f"Expected ase.calculators.calculator.Calculator object, got {type(calc)}"
-        raise TypeError(msg)
-
     try:
         import phonopy
         from phonopy.structure.atoms import PhonopyAtoms
@@ -58,20 +48,11 @@ def check_phonopy_stability(atoms: "Atoms", calc: "Calculator") -> bool:
     return not (freqs is not None and (freqs < -0.05).any())
 
 
-def check_mechanical_stability(atoms: "Atoms", calc: "Calculator") -> bool:  # noqa: C901, PLR0915
+def check_mechanical_stability(atoms: "Atoms", calc: "Calculator") -> bool:  # noqa: PLR0915
     """Evaluates the Born mechanical stability criteria via applied strain."""
     import logging
 
     import numpy as np
-    from ase import Atoms
-    from ase.calculators.calculator import Calculator
-
-    if not isinstance(atoms, Atoms):
-        msg = f"Expected ase.Atoms object, got {type(atoms)}"
-        raise TypeError(msg)
-    if calc is None or not isinstance(calc, Calculator):
-        msg = f"Expected ase.calculators.calculator.Calculator object, got {type(calc)}"
-        raise TypeError(msg)
 
     # We will compute the C11 and C12 for cubic system using volumetric and tetragonal strains
     # For a cubic system:

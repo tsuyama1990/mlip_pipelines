@@ -24,7 +24,8 @@ def __(mo):
 
 @app.cell
 def __():
-    USE_MOCK = True  # Toggle for actual HPC execution vs CI/Test dummy
+    import os as _os
+    USE_MOCK = _os.environ.get("USE_MOCK", "1") == "1"  # Toggle for actual HPC execution vs CI/Test dummy
     return (USE_MOCK,)
 
 
@@ -35,7 +36,6 @@ def __(USE_MOCK, mo):
 
 @app.cell
 def __(USE_MOCK):
-    import os
     import sys
     from pathlib import Path
     from typing import Any

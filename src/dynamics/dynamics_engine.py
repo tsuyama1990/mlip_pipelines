@@ -27,13 +27,15 @@ class MDInterface:
             msg = "Dump file name contains invalid characters"
             raise ValueError(msg)
 
+        box_x, box_y, box_z = self.config.box_size
+
         content = (
             "units metal\n"
             "boundary p p p\n"
             "atom_style atomic\n"
             "\n"
-            "lattice fcc 3.5\n"
-            "region box block 0 2 0 2 0 2\n"
+            f"lattice {self.config.lattice_type} {self.config.lattice_size}\n"
+            f"region box block 0 {box_x} 0 {box_y} 0 {box_z}\n"
             "create_box 2 box\n"
             "create_atoms 1 box\n"
             "\n"
@@ -74,8 +76,8 @@ class MDInterface:
                 "boundary p p p\n"
                 "atom_style atomic\n"
                 "\n"
-                "lattice fcc 3.5\n"
-                "region box block 0 2 0 2 0 2\n"
+                "lattice {lattice_type} {lattice_size}\n"
+                "region box block 0 {box_x} 0 {box_y} 0 {box_z}\n"
                 "create_box 2 box\n"
                 "create_atoms 1 box\n"
                 "\n"
@@ -93,7 +95,13 @@ class MDInterface:
                 "write_data {work_dir}/data.lammps\n"
             )
 
+        box_x, box_y, box_z = self.config.box_size
         script = template.format(
+            lattice_type=self.config.lattice_type,
+            lattice_size=self.config.lattice_size,
+            box_x=box_x,
+            box_y=box_y,
+            box_z=box_z,
             pot_path=pot_path_str,
             zbl_mapping=self._get_zbl_mapping(),
             threshold=self.config.uncertainty_threshold,
@@ -103,7 +111,7 @@ class MDInterface:
         )
         tmp_in_file.write(script)
 
-    def _execute_lammps(self, work_dir: Path, in_file_name: str) -> None:  # noqa: C901
+    def _execute_lammps(self, work_dir: Path, in_file_name: str) -> None:  # noqa: C901, PLR0912
         import re
         import shutil
         import sys
@@ -124,14 +132,19 @@ class MDInterface:
         if hasattr(self.config, "project_root"):
             trusted_dirs.append(str(Path(self.config.project_root) / "bin"))
 
+        import os
         if Path(lmp_binary).is_absolute():
             if not re.match(r"^[-a-zA-Z0-9_./]+$", lmp_binary) or ".." in lmp_binary:
                 msg = f"Invalid LAMMPS absolute binary path: {lmp_binary}"
                 raise ValueError(msg)
 
             # Ensure it resolves within a trusted directory
-            resolved_bin = Path(lmp_binary).resolve()
-            if not any(str(resolved_bin).startswith(td) for td in trusted_dirs):
+            resolved_bin = Path(os.path.realpath(lmp_binary)).resolve(strict=True)
+            if not resolved_bin.is_file() or not os.access(resolved_bin, os.X_OK):
+                msg = f"LAMMPS binary is not an executable file: {resolved_bin}"
+                raise ValueError(msg)
+
+            if not any(resolved_bin.is_relative_to(Path(td).resolve()) for td in trusted_dirs):
                 msg = f"LAMMPS binary must reside in a trusted directory: {lmp_binary}"
                 raise ValueError(msg)
             lmp_bin = str(resolved_bin)
@@ -143,8 +156,12 @@ class MDInterface:
             if resolved_which is None:
                 lmp_bin = lmp_binary  # Will fail later with FileNotFoundError
             else:
-                resolved_bin = Path(resolved_which).resolve()
-                if not any(str(resolved_bin).startswith(td) for td in trusted_dirs):
+                resolved_bin = Path(os.path.realpath(resolved_which)).resolve(strict=True)
+                if not resolved_bin.is_file() or not os.access(resolved_bin, os.X_OK):
+                    msg = f"LAMMPS binary is not an executable file: {resolved_bin}"
+                    raise ValueError(msg)
+
+                if not any(resolved_bin.is_relative_to(Path(td).resolve()) for td in trusted_dirs):
                     msg = (
                         f"Resolved LAMMPS binary must reside in a trusted directory: {resolved_bin}"
                     )
@@ -279,13 +296,18 @@ write_data {work_dir.resolve()}/data.lammps
 
         lmp_binary = self.config.lmp_binary
 
+        import os
         if Path(lmp_binary).is_absolute():
             if not re.match(r"^[-a-zA-Z0-9_./]+$", lmp_binary) or ".." in lmp_binary:
                 msg = f"Invalid LAMMPS absolute binary path: {lmp_binary}"
                 raise ValueError(msg)
 
-            resolved_bin = Path(lmp_binary).resolve()
-            if not any(str(resolved_bin).startswith(td) for td in trusted_dirs):
+            resolved_bin = Path(os.path.realpath(lmp_binary)).resolve(strict=True)
+            if not resolved_bin.is_file() or not os.access(resolved_bin, os.X_OK):
+                msg = f"LAMMPS binary is not an executable file: {resolved_bin}"
+                raise ValueError(msg)
+
+            if not any(resolved_bin.is_relative_to(Path(td).resolve()) for td in trusted_dirs):
                 msg = f"LAMMPS binary must reside in a trusted directory: {lmp_binary}"
                 raise ValueError(msg)
             lmp_bin = str(resolved_bin)
@@ -297,8 +319,12 @@ write_data {work_dir.resolve()}/data.lammps
             if resolved_which is None:
                 lmp_bin = lmp_binary
             else:
-                resolved_bin = Path(resolved_which).resolve()
-                if not any(str(resolved_bin).startswith(td) for td in trusted_dirs):
+                resolved_bin = Path(os.path.realpath(resolved_which)).resolve(strict=True)
+                if not resolved_bin.is_file() or not os.access(resolved_bin, os.X_OK):
+                    msg = f"LAMMPS binary is not an executable file: {resolved_bin}"
+                    raise ValueError(msg)
+
+                if not any(resolved_bin.is_relative_to(Path(td).resolve()) for td in trusted_dirs):
                     msg = (
                         f"Resolved LAMMPS binary must reside in a trusted directory: {resolved_bin}"
                     )

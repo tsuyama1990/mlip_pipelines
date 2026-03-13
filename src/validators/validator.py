@@ -71,18 +71,49 @@ class Validator:
         )
         atoms.calc = calc
 
-        pred_energy = atoms.get_potential_energy()  # type: ignore[no-untyped-call]
-        pred_forces = atoms.get_forces()  # type: ignore[no-untyped-call]
-        pred_stress = atoms.get_stress()  # type: ignore[no-untyped-call]
+        energy_rmse = self.config.fallback_energy_rmse
+        force_rmse = self.config.fallback_force_rmse
+        stress_rmse = self.config.fallback_stress_rmse
 
-        # Mock true values for RMSE calculation against self in absence of truth dataset here
-        true_energy = pred_energy
-        true_forces = pred_forces
-        true_stress = pred_stress
+        if self.config.test_dataset_path is not None:
+            test_path = Path(self.config.test_dataset_path).resolve(strict=True)
+            if test_path.exists():
+                from ase.io import read
+                test_atoms_list = read(str(test_path), index=":")
+                if not isinstance(test_atoms_list, list):
+                    test_atoms_list = [test_atoms_list]
 
-        energy_rmse = float(np.sqrt(np.mean((pred_energy - true_energy) ** 2)))
-        force_rmse = float(np.sqrt(np.mean((pred_forces - true_forces) ** 2)))
-        stress_rmse = float(np.sqrt(np.mean((pred_stress - true_stress) ** 2)))
+                e_errors = []
+                f_errors = []
+                s_errors = []
+
+                for test_atoms in test_atoms_list:
+                    # Ground truth from dataset
+                    true_e = test_atoms.get_potential_energy()
+                    true_f = test_atoms.get_forces()
+                    # stress might not be available
+                    try:
+                        true_s = test_atoms.get_stress()
+                    except Exception:
+                        true_s = None
+
+                    test_atoms.calc = calc
+                    pred_e = test_atoms.get_potential_energy()
+                    pred_f = test_atoms.get_forces()
+
+                    e_errors.append((pred_e - true_e)**2)
+                    f_errors.append(np.mean((pred_f - true_f)**2))
+
+                    if true_s is not None:
+                        pred_s = test_atoms.get_stress()
+                        s_errors.append(np.mean((pred_s - true_s)**2))
+
+                if e_errors:
+                    energy_rmse = float(np.sqrt(np.mean(e_errors)))
+                if f_errors:
+                    force_rmse = float(np.sqrt(np.mean(f_errors)))
+                if s_errors:
+                    stress_rmse = float(np.sqrt(np.mean(s_errors)))
 
         phonon_stable = self._check_phonopy_stability(atoms, calc)
 

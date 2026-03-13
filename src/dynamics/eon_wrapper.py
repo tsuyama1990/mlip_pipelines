@@ -14,7 +14,7 @@ class EONWrapper:
 
     def _write_config_ini(self, work_dir: Path) -> None:
         ini_content = f"""[Main]
-job = process_search
+job = {self.config.eon_job}
 temperature = {self.config.temperature}
 
 [Potential]
@@ -22,7 +22,7 @@ potential = script
 script_path = ./potentials/pace_driver.py
 
 [Process Search]
-min_mode_method = dimer
+min_mode_method = {self.config.eon_min_mode_method}
 """
         with Path.open(work_dir / "config.ini", "w") as f:
             f.write(ini_content)
@@ -152,16 +152,15 @@ if __name__ == "__main__":
             if resolved_which is None:
                 eon_bin = eon_binary  # fallback, will trigger FileNotFoundError
             else:
-                eon_bin = str(Path(resolved_which).resolve(strict=True))
-
-            eon_path = Path(eon_bin)
-            if eon_path.is_absolute() and eon_path.exists():
-                if not any(str(eon_path).startswith(td) for td in trusted_dirs):
+                import os
+                eon_path = Path(os.path.realpath(resolved_which)).resolve(strict=True)
+                if not eon_path.is_file() or not os.access(eon_path, os.X_OK):
+                    msg = f"EON binary is not an executable file: {eon_path}"
+                    raise ValueError(msg)
+                if not any(eon_path.is_relative_to(Path(td).resolve()) for td in trusted_dirs):
                     msg = f"Resolved EON binary must reside in a trusted directory: {eon_path}"
                     raise ValueError(msg)
-            elif not eon_path.is_absolute() and resolved_which is not None:
-                msg = "Resolved binary path is not absolute"
-                raise ValueError(msg)
+                eon_bin = str(eon_path)
 
             cmd = [eon_bin]
 

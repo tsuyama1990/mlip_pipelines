@@ -27,6 +27,11 @@ class DynamicsConfig(BaseModel):
     lammps_script_template: str | None = Field(
         default=None, description="Optional custom LAMMPS template using python str.format syntax"
     )
+    box_size: list[int] = Field(default=[2, 2, 2], description="Supercell dimensions [x, y, z]")
+    lattice_size: float = Field(default=3.5, gt=0.0, description="Lattice parameter constant")
+    lattice_type: str = Field(default="fcc", description="Lattice system type string")
+    eon_job: str = Field(default="process_search", description="EON Main Job configuration parameter")
+    eon_min_mode_method: str = Field(default="dimer", description="EON Process Search configuration parameter")
 
 
 class OracleConfig(BaseModel):
@@ -107,6 +112,9 @@ class ValidatorConfig(BaseModel):
     )
     fallback_stress_rmse: float = Field(
         default=0.05, description="Fallback stress RMSE for mock CI environments"
+    )
+    test_dataset_path: str | None = Field(
+        default=None, description="Path to held-out test dataset for RMSE calculation. If None, mock validation is skipped or defaults are used."
     )
 
 
