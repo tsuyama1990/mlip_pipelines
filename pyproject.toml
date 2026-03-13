@@ -49,7 +49,7 @@ ignore = [
 "tests/**/*.py" = ["S101", "S603"]
 "src/core/orchestrator.py" = ["C901"]
 "src/trainers/ace_trainer.py" = ["C901", "PLR0915"]
-"src/dynamics/dynamics_engine.py" = ["S311"]
+"src/dynamics/dynamics_engine.py" = ["S311", "TRY301"]
 "tutorials/**/*.py" = ["N803", "N807", "F401", "W293"]
 
 [tool.ruff.lint.mccabe]

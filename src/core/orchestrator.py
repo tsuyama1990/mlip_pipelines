@@ -39,7 +39,13 @@ class Orchestrator:
             return None
 
         try:
-            latest_pot = max(files)
+            latest_pot = max(files).resolve()
+
+            # Directory traversal vulnerability fix
+            if not latest_pot.is_relative_to(pot_dir.resolve()):
+                logging.error("Path traversal attempt detected resolving potential files.")
+                return None
+
             # Validate format strictly to ensure file integrity
             with Path.open(latest_pot) as f:
                 content = f.read(100)
@@ -64,20 +70,21 @@ class Orchestrator:
 
         # Build directory mapping
         base_dir = self.config.project_root / "active_learning"
+        base_dir.mkdir(parents=True, exist_ok=True)
+
         work_dir = base_dir / f"iter_{self.iteration:03d}"
-        try:
-            work_dir.mkdir(parents=True, exist_ok=True)
-        except OSError:
-            logging.exception(f"Failed to create working directory {work_dir}")
-            return "ERROR"
+        # For atomic transactions, work in a fully isolated temporary space
+        # and only map to the final `work_dir` if everything passes smoothly
+        import tempfile
 
         cycle_successful = False
+        tmp_work_dir = Path(tempfile.mkdtemp(dir=str(base_dir)))
 
         try:
             # 1. EXPLORATION
             halt_info = self.md_engine.run_exploration(
                 potential=current_pot,
-                work_dir=work_dir / "md_run",
+                work_dir=tmp_work_dir / "md_run",
             )
 
             if not halt_info.get("halted", False):
@@ -105,7 +112,7 @@ class Orchestrator:
             dataset_path = data_dir / "accumulated.extxyz"
 
             for i, batch in enumerate(candidate_generator()):
-                batch_calc_dir = work_dir / f"dft_calc_batch_{i}"
+                batch_calc_dir = tmp_work_dir / f"dft_calc_batch_{i}"
                 new_data = self.oracle.compute_batch(batch, batch_calc_dir)
                 if new_data:
                     self.trainer.update_dataset(new_data, dataset_path=dataset_path)
@@ -118,7 +125,7 @@ class Orchestrator:
             new_pot_path = self.trainer.train(
                 dataset=dataset_path,
                 initial_potential=current_pot,
-                output_dir=work_dir / "training",
+                output_dir=tmp_work_dir / "training",
             )
 
             # 5. VALIDATION
@@ -127,17 +134,25 @@ class Orchestrator:
                 logging.error(f"Validation failed: {validation_result.reason}")
                 return "VALIDATION_FAILED"
 
-            # 6. DEPLOYMENT
+            # 6. DEPLOYMENT (Atomic transaction)
             self.iteration += 1
             pot_dir = self.config.project_root / "potentials"
             pot_dir.mkdir(parents=True, exist_ok=True)
             final_dest = pot_dir / f"generation_{self.iteration:03d}.yace"
 
-            shutil.copy(new_pot_path, final_dest)
+            # Atomically move temporary workspace to final iteration map
+            # First move the potential out
+            shutil.copy(tmp_work_dir / "training" / "output_potential.yace", final_dest)
+
+            # Then map the transaction completely
+            # Use shutil.move for reliable cross-fs/dir merge semantics
+            if work_dir.exists():
+                shutil.rmtree(work_dir, ignore_errors=True)
+            shutil.move(str(tmp_work_dir), str(work_dir))
 
             cycle_successful = True
             return str(final_dest)
         finally:
-            if not cycle_successful and work_dir.exists():
-                logging.warning(f"Cleaning up partial state due to failure: {work_dir}")
-                shutil.rmtree(work_dir, ignore_errors=True)
+            if not cycle_successful and tmp_work_dir.exists():
+                logging.warning(f"Cleaning up partial state due to failure: {tmp_work_dir}")
+                shutil.rmtree(tmp_work_dir, ignore_errors=True)

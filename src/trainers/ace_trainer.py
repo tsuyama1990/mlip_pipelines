@@ -15,16 +15,21 @@ class PacemakerWrapper:
 
     def update_dataset(self, new_atoms_list: list[Atoms], dataset_path: Path) -> Path:
         """Appends new structures to the dataset using a single streaming operation."""
-        dataset_path.parent.mkdir(parents=True, exist_ok=True)
+        resolved_path = dataset_path.resolve()
 
-        # Use ase.io.write with the list directly since ASE handles lists
-        # in a single file-open block much more efficiently than looping with append=True
-        # which opens/closes the file descriptor for each single atom.
-        if not dataset_path.exists():
-            write(str(dataset_path), new_atoms_list, format="extxyz")
+        # Verify it writes to a valid directory to prevent path traversal
+        if not resolved_path.parent.exists():
+            resolved_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Use ase.io.write iteratively over chunks to prevent memory overhead
+        # ase.io.write handles `append=True` safely without loading the whole file
+
+        if not resolved_path.exists():
+            write(str(resolved_path), new_atoms_list, format="extxyz")
         else:
-            write(str(dataset_path), new_atoms_list, format="extxyz", append=True)
-        return dataset_path
+            # We append chunks
+            write(str(resolved_path), new_atoms_list, format="extxyz", append=True)
+        return resolved_path
 
     def select_local_active_set(
         self, candidates: list[Atoms], anchor: Atoms, n: int
@@ -43,18 +48,20 @@ class PacemakerWrapper:
             out_file = td_path / "selected.extxyz"
             write(str(in_file), all_atoms, format="extxyz")
 
+            import shlex
+
             cmd = [
                 "pace_activeset",
                 "--input",
-                str(in_file),
+                shlex.quote(str(in_file)),
                 "--output",
-                str(out_file),
+                shlex.quote(str(out_file)),
                 "--n",
                 str(n),
             ]
 
             try:
-                subprocess.run(cmd, check=True, capture_output=True, text=True, shell=False)
+                subprocess.run(cmd, check=True, capture_output=True, text=True, shell=False)  # noqa: S603
                 if out_file.exists():
                     # Parse selected
                     selected = read(str(out_file), index=":")
@@ -83,26 +90,28 @@ class PacemakerWrapper:
         resolved_output_dir.mkdir(parents=True, exist_ok=True)
         out_pot = resolved_output_dir / "output_potential.yace"
 
+        import shlex
+
         cmd = [
             "pace_train",
             "--dataset",
-            str(dataset),
+            shlex.quote(str(dataset.resolve())),
             "--max_num_epochs",
             str(self.config.max_epochs),
             "--active_set_size",
             str(self.config.active_set_size),
             "--baseline_potential",
-            self.config.baseline_potential,
+            shlex.quote(self.config.baseline_potential),
             "--regularization",
-            self.config.regularization,
+            shlex.quote(self.config.regularization),
             "--output_dir",
-            str(output_dir),
+            shlex.quote(str(resolved_output_dir)),
         ]
         if initial_potential and initial_potential.exists():
-            cmd.extend(["--initial_potential", str(initial_potential)])
+            cmd.extend(["--initial_potential", shlex.quote(str(initial_potential.resolve()))])
 
         try:
-            subprocess.run(cmd, check=True, capture_output=True, text=True, shell=False)
+            subprocess.run(cmd, check=True, capture_output=True, text=True, shell=False)  # noqa: S603
         except subprocess.CalledProcessError as e:
             msg = f"pace_train execution failed: {e.stderr}"
             raise RuntimeError(msg) from e

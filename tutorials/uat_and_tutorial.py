@@ -65,7 +65,7 @@ def __(USE_MOCK):
 
 
 @app.cell
-def __(config, USE_MOCK, mo, Any):
+def __(config, USE_MOCK, mo, Any):  # noqa: C901
     from src.core.orchestrator import Orchestrator
 
     orchestrator = Orchestrator(config)
@@ -103,8 +103,10 @@ def __(config, USE_MOCK, mo, Any):
             def update_dataset(self, new_data: Any, dataset_path: Any) -> Any:
                 return dataset_path
 
-            def train(self, dataset: Any, initial_potential: Any, output_dir: __import__('pathlib').Path) -> __import__('pathlib').Path:
-                pot = output_dir / "new_pot.yace"
+            def train(
+                self, dataset: Any, initial_potential: Any, output_dir: Path
+            ) -> Path:
+                pot = output_dir / "output_potential.yace"
                 pot.parent.mkdir(parents=True, exist_ok=True)
                 pot.write_text("dummy potential")
                 return pot

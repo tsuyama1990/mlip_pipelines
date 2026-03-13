@@ -48,7 +48,7 @@ def test_run_cycle(monkeypatch: pytest.MonkeyPatch, mock_project_config: Project
             return Path("dummy.pckl")
 
         def train(self, dataset: Any, initial_potential: Any, output_dir: Path) -> Path:
-            pot = output_dir / "new_pot.yace"
+            pot = output_dir / "output_potential.yace"
             pot.parent.mkdir(parents=True, exist_ok=True)
             pot.write_text("dummy potential")
             return pot

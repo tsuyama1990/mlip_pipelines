@@ -12,7 +12,7 @@ def test_validator_initialization() -> None:
     assert validator.config.energy_rmse_threshold == 0.01
 
 
-def test_validate(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_validate(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:  # noqa: C901
     config = ValidatorConfig()
     validator = Validator(config)
 
@@ -80,7 +80,7 @@ def test_validate(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
 
     # Create dummy modules for pyacemaker and phonopy
     pyacemaker_calc_mod = ModuleType("pyacemaker.calculator")
-    setattr(pyacemaker_calc_mod, "pyacemaker", MockPyacemaker())  # type: ignore[attr-defined]
+    pyacemaker_calc_mod.pyacemaker = MockPyacemaker()  # type: ignore[attr-defined]
     sys.modules["pyacemaker.calculator"] = pyacemaker_calc_mod
 
     phonopy_mod = ModuleType("phonopy")

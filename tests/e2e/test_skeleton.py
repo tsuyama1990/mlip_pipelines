@@ -12,7 +12,7 @@ from src.domain_models.config import (
 )
 
 
-def test_full_pipeline_skeleton(tmp_path: Path) -> None:
+def test_full_pipeline_skeleton(tmp_path: Path) -> None:  # noqa: C901
     config = ProjectConfig(
         system=SystemConfig(elements=["Fe", "Pt"], baseline_potential="zbl"),
         dynamics=DynamicsConfig(uncertainty_threshold=5.0, md_steps=100),
@@ -58,7 +58,7 @@ def test_full_pipeline_skeleton(tmp_path: Path) -> None:
             return dataset_path
 
         def train(self, dataset: Any, initial_potential: Any, output_dir: Path) -> Path:
-            pot = output_dir / "new_pot.yace"
+            pot = output_dir / "output_potential.yace"
             pot.parent.mkdir(parents=True, exist_ok=True)
             pot.write_text("dummy potential")
             return pot

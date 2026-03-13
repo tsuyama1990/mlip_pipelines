@@ -41,6 +41,11 @@ class DFTManager:
             raise ValueError(msg)
         lengths = max_pos - min_pos + 2 * buffer
 
+        # Validate reasonable cell size to prevent memory exhaustion (buffer overflow defense)
+        if any(L > 100.0 for L in lengths):
+            msg = "Calculated cell dimensions are too large, potential memory exhaustion."
+            raise ValueError(msg)
+
         # Shift positions so they center within the box
         center = (max_pos + min_pos) / 2
         box_center = lengths / 2
@@ -59,17 +64,28 @@ class DFTManager:
         # Determine pseudopotentials from elements
         import re
 
+        from ase.data import atomic_numbers
+
         symbols: set[str] = set(atoms.get_chemical_symbols())  # type: ignore[no-untyped-call]
         pseudos = {}
-        pseudo_dir_path = Path(self.config.pseudo_dir).resolve()
+
+        # Use strict resolution to ensure the base directory exists and is canonical
+        try:
+            pseudo_dir_path = Path(self.config.pseudo_dir).resolve(strict=True)
+        except FileNotFoundError as e:
+            msg = f"Pseudopotential directory not found: {self.config.pseudo_dir}"
+            raise FileNotFoundError(msg) from e
 
         for el in symbols:
-            # Validate element names against whitelist of valid chemical symbols structure
-            if not re.match(r"^[A-Z][a-z]?$", el):
+            # Validate element names strictly against a whitelist of valid chemical symbols structure
+            # to prevent path traversal attacks (e.g. element name "../malicious")
+            if not re.match(r"^[A-Z][a-z]?$", el) or el not in atomic_numbers:
                 msg = f"Invalid chemical symbol detected: {el}"
                 raise ValueError(msg)
 
             upf_name = f"{el}.upf"
+
+            # Additional layer of security: Ensure the resolved path strictly resides within the intended directory
             upf_path = (pseudo_dir_path / upf_name).resolve()
 
             if not upf_path.is_relative_to(pseudo_dir_path):

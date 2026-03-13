@@ -13,6 +13,9 @@ class StructureGenerator:
         """Generates candidates via random rattling using streaming generation."""
         from collections.abc import Iterator
 
+        # Hard cap n to prevent memory exhaustion attacks
+        n = min(n, 100)
+
         # Scale down n if the structure is massive to avoid OOM
         actual_n = n if len(s0) < 1000 else max(1, n // 10)
 

@@ -33,13 +33,17 @@ class MDInterface:
 
         zbl_elements = get_zbl_mapping(self.system_config.elements)
 
+        import os
+        import shlex
         import shutil
         import tempfile
 
-        with tempfile.NamedTemporaryFile(mode="w", dir=work_dir, delete=False) as tmp_in_file:
-            if potential is None:
-                # Cold start logic: Run MD using only the ZBL baseline potential
-                tmp_in_file.write(f"""
+        fd, tmp_path = tempfile.mkstemp(dir=work_dir, text=True)
+        try:
+            with os.fdopen(fd, "w") as tmp_in_file:
+                if potential is None:
+                    # Cold start logic: Run MD using only the ZBL baseline potential
+                    tmp_in_file.write(f"""
 units metal
 boundary p p p
 atom_style atomic
@@ -49,40 +53,48 @@ pair_style zbl 1.0 2.0
 pair_coeff * * {zbl_elements}
 
 # Force dump to extract structures for initial training
-dump 1 all custom 10 {dump_file.name} id type x y z
+dump 1 all custom 10 {shlex.quote(dump_file.name)} id type x y z
 run {min(self.config.md_steps, 1000)}  # Short run for cold start
 """)
-            else:
-                tmp_in_file.write(f"""
+                else:
+                    # Validate potential path ends with .yace and safely quote it
+                    pot_path_str = str(potential.resolve())
+                    if not pot_path_str.endswith(".yace"):
+                        msg = "Potential path must end with .yace"
+                        raise ValueError(msg)
+
+                    safe_pot_path = shlex.quote(pot_path_str)
+
+                    tmp_in_file.write(f"""
 units metal
 boundary p p p
 atom_style atomic
 
 pair_style hybrid/overlay pace zbl 1.0 2.0
-pair_coeff * * pace {potential.absolute()}
+pair_coeff * * pace {safe_pot_path}
 pair_coeff * * zbl {zbl_elements}
 
 compute pace_gamma all pace gamma_mode=1
 variable max_gamma equal max(c_pace_gamma)
 fix watchdog all halt 10 v_max_gamma > {self.config.uncertainty_threshold} error hard
 
-dump 1 all custom 10 {dump_file.name} id type x y z
+dump 1 all custom 10 {shlex.quote(dump_file.name)} id type x y z
 run {self.config.md_steps}
 """)
-            tmp_path = tmp_in_file.name
-
-        # Atomically rename to target input file
-        Path(tmp_path).replace(in_file)
+            # Atomically rename to target input file
+            Path(tmp_path).replace(in_file)
+        except Exception:
+            Path(tmp_path).unlink(missing_ok=True)
+            raise
 
         # Execute lammps
         try:
             # Lammps command line execution
             # 'lmp' or 'lmp_mpi' is standard
             # if we get an error, it might be the watchdog
-            import shutil
 
             lmp_bin = shutil.which("lmp") or "lmp"
-            subprocess.run(
+            subprocess.run(  # noqa: S603
                 [lmp_bin, "-in", "in.lammps"],
                 cwd=work_dir,
                 check=True,
