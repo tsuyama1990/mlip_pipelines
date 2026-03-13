@@ -192,14 +192,15 @@ class Orchestrator:
             msg = "tmp_work_dir is outside the expected base directory"
             raise ValueError(msg)
 
-        # Pre-resolve the final_dest parent to ensure we're not traversing
-        final_dest_dir = final_dest.parent.resolve(strict=True)
+        # Canonicalize the final destination path entirely to prevent traversing out of potentials
+        final_dest_resolved = final_dest.resolve(strict=False)
         resolved_pot_dir = pot_dir.resolve(strict=True)
-        if not final_dest_dir.is_relative_to(resolved_pot_dir):
+        if not final_dest_resolved.is_relative_to(resolved_pot_dir):
             msg = "final_dest is outside the expected potentials directory"
             raise ValueError(msg)
 
-        shutil.copy(src_pot, final_dest)
+        # Atomic file replacement for the trained potential rather than non-atomic copy
+        src_pot.resolve(strict=True).replace(final_dest_resolved)
 
         # Implement directory content validation
         expected_dirs = ["training"]
@@ -213,14 +214,18 @@ class Orchestrator:
                 msg = f"Missing expected output directory: {expected}"
                 raise FileNotFoundError(msg)
 
-        if work_dir.exists():
-            shutil.rmtree(work_dir, ignore_errors=True)
+        # Use atomic rename to replace the target directory entirely, preventing race conditions
+        import tempfile
 
-        # Use atomic os.replace if possible, fallback to shutil.move
-        try:
-            tmp_work_dir.replace(work_dir)
-        except OSError:
-            shutil.move(str(tmp_work_dir), str(work_dir))
+        # If work_dir exists, atomic replace is trickier cross-platform for directories,
+        # but Path.replace works for empty/replaced structures on POSIX
+        if work_dir.exists():
+            # Atomically move old work_dir out of the way before replacing
+            backup_dir = Path(tempfile.mkdtemp(dir=str(work_dir.parent)))
+            work_dir.replace(backup_dir)
+            shutil.rmtree(str(backup_dir), ignore_errors=True)
+
+        tmp_work_dir.replace(work_dir.resolve(strict=False))
 
         self.md_engine.resume(
             potential=final_dest,

@@ -48,7 +48,17 @@ class MDInterface:
     def _write_potential_input(
         self, tmp_in_file: Any, potential: Path, dump_name: str, work_dir: Path
     ) -> None:
-        pot_path_str = str(potential.resolve())
+        resolved_pot = potential.resolve(strict=True)
+        pot_path_str = str(resolved_pot)
+
+        # Verify the potential path is within the project root to prevent path traversal
+        if hasattr(self.config, "project_root"):
+            import os
+            root = Path(os.path.realpath(self.config.project_root)).resolve(strict=True)
+            if not resolved_pot.is_relative_to(root):
+                msg = f"Potential path must be within the project root: {resolved_pot}"
+                raise ValueError(msg)
+
         if not pot_path_str.endswith(".yace"):
             msg = "Potential path must end with .yace"
             raise ValueError(msg)
@@ -136,7 +146,9 @@ class MDInterface:
 
         lmp_bin = str(resolved_bin.absolute())
 
-        cmd: list[str] = [lmp_bin, "-in", in_file_name]
+        import shlex
+
+        cmd: list[str] = [lmp_bin, "-in", shlex.quote(in_file_name)]
 
         try:
             _res: subprocess.CompletedProcess[bytes] = subprocess.run(  # noqa: S603
@@ -297,7 +309,9 @@ write_data {work_dir.resolve()}/data.lammps
 
         lmp_bin = str(resolved_bin.absolute())
 
-        cmd = [lmp_bin, "-in", in_file.name]
+        import shlex
+
+        cmd = [lmp_bin, "-in", shlex.quote(in_file.name)]
 
         try:
             subprocess.run(  # noqa: S603

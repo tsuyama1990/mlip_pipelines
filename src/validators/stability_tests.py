@@ -1,9 +1,24 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from ase import Atoms
     from ase.calculators.calculator import Calculator
 
+
+def _compute_phonopy_forces(atoms: "Atoms", calc: "Calculator", supercells: list["Atoms"] | None) -> list[Any]:
+    force_sets = []
+    if supercells is not None:
+        from ase.build import make_supercell
+        for sc in supercells:
+            if sc is None:
+                continue
+            disp_atoms = atoms.copy()  # type: ignore[no-untyped-call]
+            disp_atoms = make_supercell(atoms, [[2, 0, 0], [0, 2, 0], [0, 0, 2]])
+            disp_atoms.set_positions(sc.get_positions())  # type: ignore[no-untyped-call]
+            disp_atoms.calc = calc
+            forces = disp_atoms.get_forces()  # type: ignore[no-untyped-call]
+            force_sets.append(forces)
+    return force_sets
 
 def check_phonopy_stability(atoms: "Atoms", calc: "Calculator") -> bool:
     """Calculates phonon bands using phonopy and checks for imaginary frequencies."""
@@ -14,7 +29,33 @@ def check_phonopy_stability(atoms: "Atoms", calc: "Calculator") -> bool:
         raise ValueError(msg)
 
     try:
+        import os
+
+        # Verify package source to prevent local shadowing malicious payload injections
+        import sys
+        from pathlib import Path
+
         import phonopy
+        phonopy_path = Path(phonopy.__file__).resolve()
+
+        # Validate that the module is imported from standard site-packages or prefix
+        # This protects against PYTHONPATH manipulation executing an arbitrary local "phonopy.py"
+        is_trusted_module = False
+        for path in sys.path:
+            if not path:
+                continue
+            trusted_path = Path(os.path.realpath(path)).resolve()
+            try:
+                if phonopy_path.is_relative_to(trusted_path) and "site-packages" in str(phonopy_path):
+                    is_trusted_module = True
+                    break
+            except ValueError:
+                continue
+
+        if not is_trusted_module and "site-packages" not in str(phonopy_path):
+            msg = "Phonopy imported from untrusted location. Potential dependency injection detected."
+            raise RuntimeError(msg)
+
         from phonopy.structure.atoms import PhonopyAtoms
 
         # Real phonopy initialization
@@ -27,20 +68,7 @@ def check_phonopy_stability(atoms: "Atoms", calc: "Calculator") -> bool:
         phonon.generate_displacements(distance=0.01)
 
         # Compute actual forces for displacements
-        supercells = phonon.supercells_with_displacements
-        force_sets = []
-        if supercells is not None:
-            for sc in supercells:
-                if sc is None:
-                    continue
-                disp_atoms = atoms.copy()  # type: ignore[no-untyped-call]
-                from ase.build import make_supercell
-
-                disp_atoms = make_supercell(atoms, [[2, 0, 0], [0, 2, 0], [0, 0, 2]])
-                disp_atoms.set_positions(sc.get_positions())  # type: ignore[no-untyped-call]
-                disp_atoms.calc = calc
-                forces = disp_atoms.get_forces()  # type: ignore[no-untyped-call]
-                force_sets.append(forces)
+        force_sets = _compute_phonopy_forces(atoms, calc, phonon.supercells_with_displacements)
 
         phonon.produce_force_constants(forces=force_sets)
 

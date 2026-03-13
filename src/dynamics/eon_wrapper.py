@@ -27,7 +27,26 @@ class EONWrapper:
         driver_path = pots_dir / "pace_driver.py"
 
         # the pace_driver should be executable by python
-        pot_str = repr(str(potential.resolve())) if potential else "None"
+
+        # Security: strictly validate the potential string before formatting it into the python template
+        import re
+
+        resolved_pot_str = ""
+        if potential:
+            resolved_pot = potential.resolve(strict=True)
+            if hasattr(self.config, "project_root"):
+                import os
+                root = Path(os.path.realpath(self.config.project_root)).resolve(strict=True)
+                if not resolved_pot.is_relative_to(root):
+                    msg = f"Potential path must be within the project root: {resolved_pot}"
+                    raise ValueError(msg)
+            resolved_pot_str = str(resolved_pot)
+            if not re.match(r"^[-a-zA-Z0-9_./]+$", resolved_pot_str) or ".." in resolved_pot_str:
+                msg = f"Potential path contains invalid characters: {resolved_pot_str}"
+                raise ValueError(msg)
+
+        pot_str = repr(resolved_pot_str) if potential else "None"
+
         # Ensure executable doesn't break python logic
         import sys
 
@@ -110,8 +129,13 @@ class EONWrapper:
             import os
 
             env: dict[str, str] = os.environ.copy()
+            # Clear sensitive/potentially hazardous env vars
+            for k in ["LD_PRELOAD", "LD_LIBRARY_PATH", "PYTHONPATH"]:
+                env.pop(k, None)
+
+            # Safely invoke EON client using execve wrapper behavior through subprocess
             res: subprocess.CompletedProcess[bytes] = subprocess.run(  # noqa: S603
-                cmd, cwd=resolved_work_dir, capture_output=True, shell=False, env=env, check=False
+                cmd, cwd=str(resolved_work_dir.absolute()), capture_output=True, shell=False, env=env, check=False, executable=eon_bin
             )
 
             if res.returncode == 100:

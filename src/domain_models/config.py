@@ -348,6 +348,7 @@ class ProjectConfig(BaseSettings):
     @model_validator(mode="before")
     @classmethod
     def validate_env_content(cls, values: dict[str, Any]) -> dict[str, Any]:
+        import re
         from pathlib import Path
 
         # Secure the env loading process to verify the file resolves inside the CWD/project root
@@ -364,6 +365,26 @@ class ProjectConfig(BaseSettings):
             if resolved_env.stat().st_size > 10 * 1024:
                 msg = ".env file exceeds maximum allowed size (10KB)."
                 raise ValueError(msg)
+
+            # Strict whitelist validation for .env file contents
+            with Path.open(resolved_env, encoding="utf-8") as f:
+                for raw_line in f:
+                    clean_line = raw_line.strip()
+                    if not clean_line or clean_line.startswith("#"):
+                        continue
+
+                    if "=" not in clean_line:
+                        continue
+
+                    key = clean_line.split("=", 1)[0].strip()
+
+                    if not key.startswith("MLIP_"):
+                        msg = f"Unauthorized environment variable injected via .env: {key}. Only MLIP_ prefixes are allowed."
+                        raise ValueError(msg)
+
+                    if not re.match(r"^[A-Z0-9_]+$", key):
+                        msg = f"Invalid characters in .env variable key: {key}"
+                        raise ValueError(msg)
 
         return values
 
