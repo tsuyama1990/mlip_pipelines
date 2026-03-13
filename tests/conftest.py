@@ -1,22 +1,32 @@
+from pathlib import Path
+
 import pytest
 
-from src.domain_models.config import MaterialConfig, PipelineConfig
+from src.domain_models.config import (
+    DynamicsConfig,
+    OracleConfig,
+    ProjectConfig,
+    SystemConfig,
+    TrainerConfig,
+    ValidatorConfig,
+)
 
 
 @pytest.fixture
-def mock_material_config() -> MaterialConfig:
-    return MaterialConfig(
+def mock_system_config() -> SystemConfig:
+    return SystemConfig(
         elements=["Fe", "Pt"],
-        atomic_numbers=[26, 78],
-        masses=[55.845, 195.084],
-        band_gap=0.0,
-        melting_point=1500.0,
-        bulk_modulus=180.0,
-        crystal="bcc",
-        a=2.8665,
+        baseline_potential="zbl",
     )
 
 
 @pytest.fixture
-def mock_pipeline_config(mock_material_config: MaterialConfig) -> PipelineConfig:
-    return PipelineConfig(material=mock_material_config)
+def mock_project_config(mock_system_config: SystemConfig, tmp_path: Path) -> ProjectConfig:
+    return ProjectConfig(
+        project_root=tmp_path,
+        system=mock_system_config,
+        dynamics=DynamicsConfig(),
+        oracle=OracleConfig(),
+        trainer=TrainerConfig(),
+        validator=ValidatorConfig(),
+    )

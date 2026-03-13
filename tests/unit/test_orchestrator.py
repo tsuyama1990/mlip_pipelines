@@ -1,168 +1,80 @@
-from pathlib import Path
-from unittest.mock import patch
-
-from src.core.orchestrator import ActiveLearningOrchestrator
-from src.domain_models.config import PipelineConfig
-from src.dynamics.dynamics_engine import DynamicsEngine
-from src.generators.adaptive_policy import AdaptivePolicy
-from src.oracles.dft_oracle import DFTOracle
-from src.trainers.ace_trainer import ACETrainer
-from src.validators.validator import Validator
+from src.core.orchestrator import Orchestrator
+from src.domain_models.config import ProjectConfig
 
 
-def _create_test_orchestrator(config: PipelineConfig) -> ActiveLearningOrchestrator:
-    return ActiveLearningOrchestrator(
-        config=config,
-        md_engine=DynamicsEngine(config.lammps, config.otf_loop, config.material),
-        oracle=DFTOracle(config.dft),
-        trainer=ACETrainer(config.training),
-        validator=Validator(config.validation, config.material),
-        policy_engine=AdaptivePolicy(
-            {"elements": config.material.elements},
-            {
-                "band_gap": config.material.band_gap,
-                "melting_point": config.material.melting_point,
-                "bulk_modulus": config.material.bulk_modulus,
-            },
-            config.policy,
-        ),
-    )
+def test_orchestrator_initialization(mock_project_config: ProjectConfig):
+    orch = Orchestrator(mock_project_config)
+    assert orch.config.system.elements == ["Fe", "Pt"]
+    assert orch.iteration == 0
 
 
-def test_orchestrator_get_latest_potential(
-    mock_pipeline_config: PipelineConfig, tmp_path: Path
-) -> None:
-    # Modify config to point to our tmp_path
-    mock_pipeline_config.potential_path_template = str(
-        tmp_path / "potentials" / "generation_{iteration:03d}.yace"
-    )
-    config = mock_pipeline_config
-    orchestrator = _create_test_orchestrator(config)
-    pot_dir = tmp_path / "potentials"
+def test_run_cycle(monkeypatch, mock_project_config: ProjectConfig):
+    orch = Orchestrator(mock_project_config)
 
-    # Scenario 1: Directory does not exist
-    assert orchestrator.get_latest_potential() is None
+    # Mock all internal models
+    class MockMD:
+        def run_exploration(self, *args, **kwargs):
+            return {"halted": True, "dump_file": "dummy_dump"}
 
-    # Scenario 2: Directory exists but no files
-    pot_dir.mkdir()
-    assert orchestrator.get_latest_potential() is None
+        def extract_high_gamma_structures(self, *args, **kwargs):
+            from ase import Atoms
 
-    # Scenario 3: Returns files
-    (pot_dir / "generation_001.yace").touch()
-    (pot_dir / "generation_002.yace").touch()
+            return [Atoms("Fe", positions=[(0, 0, 0)])]
 
-    latest = orchestrator.get_latest_potential()
-    assert latest is not None
-    assert latest.name == "generation_002.yace"
+    class MockOracle:
+        def compute_batch(self, *args, **kwargs):
+            from ase import Atoms
 
+            return [Atoms("Fe", positions=[(0, 0, 0)])]
 
-def test_orchestrator_run_cycle_converged(mock_pipeline_config: PipelineConfig) -> None:
-    import copy
+    class MockTrainer:
+        def get_latest_potential(self):
+            return "dummy_pot.yace"
 
-    config = copy.deepcopy(mock_pipeline_config)
-    orchestrator = _create_test_orchestrator(config)
+        def select_local_active_set(self, *args, **kwargs):
+            from ase import Atoms
 
-    with (
-        patch.object(orchestrator, "get_latest_potential", return_value=None),
-        patch.object(orchestrator.md_engine, "run_exploration") as mock_explore,
-        patch.object(
-            orchestrator.md_engine, "extract_high_gamma_structures"
-        ) as mock_extract,  # To appease the auditor strictly even though it shouldn't be reached
-    ):
-        mock_explore.return_value = {"halted": False}
+            return [Atoms("Fe", positions=[(0, 0, 0)])] * 5
 
-        result = orchestrator.run_cycle()
+        def update_dataset(self, *args, **kwargs):
+            from pathlib import Path
 
-        assert result == "CONVERGED"
-        mock_explore.assert_called_once()
-        mock_extract.assert_not_called()
+            return Path("dummy.pckl")
 
+        def train(self, dataset, initial_potential, output_dir):
+            pot = output_dir / "new_pot.yace"
+            pot.parent.mkdir(parents=True, exist_ok=True)
+            pot.write_text("dummy potential")
+            return pot
 
-def test_orchestrator_run_cycle_error_dft(mock_pipeline_config: PipelineConfig) -> None:
-    import copy
+    class MockValidator:
+        def validate(self, *args, **kwargs):
+            from src.domain_models.dtos import ValidationReport
 
-    config = copy.deepcopy(mock_pipeline_config)
-    orchestrator = _create_test_orchestrator(config)
+            return ValidationReport(
+                passed=True,
+                energy_rmse=0.001,
+                force_rmse=0.01,
+                stress_rmse=0.05,
+                phonon_stable=True,
+                mechanically_stable=True,
+            )
 
-    with (
-        patch.object(orchestrator, "get_latest_potential", return_value=None),
-        patch.object(orchestrator.md_engine, "run_exploration") as mock_explore,
-        patch.object(orchestrator.md_engine, "extract_high_gamma_structures") as mock_extract,
-        patch.object(orchestrator.trainer, "select_local_active_set") as mock_select,
-        patch.object(orchestrator.oracle, "compute_batch") as mock_compute,
-    ):
-        mock_explore.return_value = {"halted": True, "dump_file": Path("dummy")}
-        from ase.build import bulk
+    orch.md_engine = MockMD()
+    orch.oracle = MockOracle()
+    orch.trainer = MockTrainer()
+    orch.validator = MockValidator()
 
-        mock_extract.return_value = [bulk("Fe", cubic=True)]
-        mock_select.return_value = [bulk("Pt", cubic=True)]
-        mock_compute.return_value = []  # Empty list = error
+    # Mock structure generator
+    class MockGenerator:
+        def generate_local_candidates(self, s0, n=20):
+            from ase import Atoms
 
-        result = orchestrator.run_cycle()
+            return [Atoms("Fe", positions=[(0, 0, 0)])] * n
 
-        assert result == "ERROR"
+    orch.structure_generator = MockGenerator()
 
-
-def test_orchestrator_run_cycle_validation_failed(mock_pipeline_config: PipelineConfig) -> None:
-    import copy
-
-    config = copy.deepcopy(mock_pipeline_config)
-    orchestrator = _create_test_orchestrator(config)
-
-    with (
-        patch.object(orchestrator, "get_latest_potential", return_value=None),
-        patch.object(orchestrator.md_engine, "run_exploration") as mock_explore,
-        patch.object(orchestrator.md_engine, "extract_high_gamma_structures") as mock_extract,
-        patch.object(orchestrator.trainer, "select_local_active_set") as mock_select,
-        patch.object(orchestrator.oracle, "compute_batch") as mock_compute,
-        patch.object(orchestrator.trainer, "update_dataset") as mock_update,
-        patch.object(orchestrator.trainer, "train") as mock_train,
-        patch.object(orchestrator.validator, "validate") as mock_validate,
-    ):
-        mock_explore.return_value = {"halted": True, "dump_file": Path("dummy")}
-        from ase.build import bulk
-
-        mock_extract.return_value = [bulk("Fe", cubic=True)]
-        mock_select.return_value = [bulk("Pt", cubic=True)]
-        mock_compute.return_value = ["dummy_result"]
-        mock_update.return_value = Path("dummy_dataset")
-        mock_train.return_value = Path("dummy_pot")
-        mock_validate.return_value = {"passed": False, "reason": "Failed test"}
-
-        result = orchestrator.run_cycle()
-
-        assert result == "VALIDATION_FAILED"
-
-
-def test_orchestrator_run_cycle_continue(mock_pipeline_config: PipelineConfig) -> None:
-    import copy
-
-    config = copy.deepcopy(mock_pipeline_config)
-    orchestrator = _create_test_orchestrator(config)
-
-    with (
-        patch.object(orchestrator, "get_latest_potential", return_value=None),
-        patch.object(orchestrator.md_engine, "run_exploration") as mock_explore,
-        patch.object(orchestrator.md_engine, "extract_high_gamma_structures") as mock_extract,
-        patch.object(orchestrator.trainer, "select_local_active_set") as mock_select,
-        patch.object(orchestrator.oracle, "compute_batch") as mock_compute,
-        patch.object(orchestrator.trainer, "update_dataset") as mock_update,
-        patch.object(orchestrator.trainer, "train") as mock_train,
-        patch.object(orchestrator.validator, "validate") as mock_validate,
-        patch("src.core.orchestrator.shutil.copy") as mock_copy,
-    ):
-        mock_explore.return_value = {"halted": True, "dump_file": Path("dummy")}
-        from ase.build import bulk
-
-        mock_extract.return_value = [bulk("Fe", cubic=True)]
-        mock_select.return_value = [bulk("Pt", cubic=True)]
-        mock_compute.return_value = ["dummy_result"]
-        mock_update.return_value = Path("dummy_dataset")
-        mock_train.return_value = Path("dummy_pot")
-        mock_validate.return_value = {"passed": True}
-
-        result = orchestrator.run_cycle()
-
-        assert result == "CONTINUE"
-        assert orchestrator.iteration == 2
-        mock_copy.assert_called_once()
+    res = orch.run_cycle()
+    assert orch.iteration == 1
+    assert res is not None
+    assert str(res).endswith("generation_001.yace")

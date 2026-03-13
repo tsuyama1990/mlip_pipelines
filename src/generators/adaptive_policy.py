@@ -1,55 +1,51 @@
-from typing import Any
+from src.domain_models.config import PolicyConfig
+from src.domain_models.dtos import ExplorationStrategy, MaterialFeatures
 
-from src.domain_models.dtos import ExplorationStrategy
 
+class AdaptiveExplorationPolicyEngine:
+    """Decides the optimal exploration strategy based on material features."""
 
-class AdaptivePolicy:
-    """Adaptive exploration policy engine to dynamically output parameters."""
+    def __init__(self, config: PolicyConfig) -> None:
+        self.config = config
 
-    def __init__(
-        self,
-        material_dna: dict[str, Any],
-        predicted_properties: dict[str, Any],
-        policy_config: Any = None,
-    ) -> None:
-        self.material_dna = material_dna
-        self.predicted_properties = predicted_properties
-        # Fallback for existing tests, though we should inject real one
-        if policy_config is None:
-            from src.domain_models.config import PolicyConfig
+    def decide_policy(self, features: MaterialFeatures) -> ExplorationStrategy:
+        if features.melting_point <= 0:
+            msg = "melting_point must be positive"
+            raise ValueError(msg)
 
-            self.policy_config = PolicyConfig()
-        else:
-            self.policy_config = policy_config
+        # Default strategy
+        strategy = ExplorationStrategy(
+            policy_name="Standard",
+            md_mc_ratio=self.config.default_md_mc_ratio,
+            t_max=self.config.default_t_max_scale * features.melting_point,
+            n_defects=self.config.default_n_defects,
+            strain_range=self.config.default_strain_range,
+        )
 
-    def generate_strategy(self) -> ExplorationStrategy:
-        """Determines the exploration strategy based on material parameters."""
-        eg = self.predicted_properties.get("band_gap", 0.0)
-        tm = self.predicted_properties.get("melting_point", 1000.0)
-        b0 = self.predicted_properties.get("bulk_modulus", 50.0)
-        components = len(self.material_dna.get("elements", ["Fe", "Pt"]))
+        # Rule 1: High Initial Uncertainty -> Cautious Exploration
+        if features.initial_gamma_variance > 1.0:
+            strategy.policy_name = "Cautious Exploration"
+            strategy.t_max = self.config.cautious_t_max_scale * features.melting_point
+            return strategy
 
-        # Driven by PolicyConfig without hardcoded if/else trees for logic.
-        # We evaluate rules mapped to configs.
+        # Rule 2: Metal & Multi-component -> High-MC Policy
+        if features.band_gap <= 0.1 and len(features.elements) > 1:
+            strategy.policy_name = "High-MC Policy"
+            strategy.md_mc_ratio = self.config.high_mc_ratio
+            strategy.t_max = self.config.high_mc_t_max_scale * features.melting_point
+            return strategy
 
-        # Rule evaluation helper
-        def apply_strategy(prefix: str, t_max_calc: float) -> ExplorationStrategy:
-            return ExplorationStrategy(
-                policy_type=prefix,
-                r_md_mc=getattr(self.policy_config, f"{prefix}_r_md_mc"),
-                t_schedule=(300.0, t_max_calc, getattr(self.policy_config, f"{prefix}_steps")),
-                n_defects=getattr(self.policy_config, f"{prefix}_defects"),
-                strain_range=getattr(self.policy_config, f"{prefix}_strain"),
-            )
+        # Rule 3: Insulator -> Defect-Driven Policy
+        if features.band_gap > 0.1:
+            strategy.policy_name = "Defect-Driven Policy"
+            strategy.n_defects = self.config.defect_driven_n_defects
+            strategy.md_mc_ratio = self.config.default_md_mc_ratio
+            return strategy
 
-        # Mapping conditions to configs
-        if eg < self.policy_config.metal_eg_threshold and components > 1:
-            return apply_strategy("high_mc", tm * self.policy_config.high_mc_t_max_ratio)
+        # Rule 4: Hard material -> Strain-Heavy Policy
+        if features.bulk_modulus > 200.0:
+            strategy.policy_name = "Strain-Heavy Policy"
+            strategy.strain_range = self.config.strain_heavy_range
+            return strategy
 
-        if eg >= self.policy_config.metal_eg_threshold:
-            return apply_strategy("defect", tm * self.policy_config.defect_t_max_ratio)
-
-        if b0 > self.policy_config.hard_b0_threshold:
-            return apply_strategy("strain", self.policy_config.strain_t_max)
-
-        return apply_strategy("std", self.policy_config.std_t_max)
+        return strategy
