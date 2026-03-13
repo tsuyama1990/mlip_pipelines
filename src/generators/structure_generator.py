@@ -13,7 +13,16 @@ class StructureGenerator(AbstractGenerator):
 
     def generate_initial_structures(self, strategy: ExplorationStrategy) -> list[Any]:
         """Generate a basic bulk structure of the first element."""
-        atoms = bulk(self.config.elements[0], "fcc", a=3.6)
+        element = self.config.elements[0]
+        structure = "fcc"
+        if self.config.structure_type and element in self.config.structure_type:
+            structure = self.config.structure_type[element]
+
+        a = 3.6
+        if self.config.lattice_parameters and element in self.config.lattice_parameters:
+            a = self.config.lattice_parameters[element]
+
+        atoms = bulk(element, structure, a=a)
         return [atoms]
 
     def generate_local_candidates(

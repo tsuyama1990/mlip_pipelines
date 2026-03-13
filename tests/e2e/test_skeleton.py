@@ -50,8 +50,8 @@ def test_pipeline_skeleton(tmp_path: Path, mock_pipeline_config: PipelineConfig)
         validator=validator,
     )
 
-    # Create the potentials directory locally in tmp_path
-    Path("potentials").mkdir(parents=True, exist_ok=True)
+    # Create the data directory locally in tmp_path
+    Path(mock_pipeline_config.data_directory).mkdir(parents=True, exist_ok=True)
 
     status = orchestrator.run_cycle()
 

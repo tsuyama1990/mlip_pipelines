@@ -18,7 +18,7 @@ class DynamicsEngine(AbstractDynamics):
         # In a real engine, we'd run lammps. For cycle 1, to prove it runs,
         # we check the strategy temperature. If it's too high, we throw a HaltEvent
 
-        if strategy.t_schedule and max(strategy.t_schedule) > 500.0:
+        if strategy.t_schedule and max(strategy.t_schedule) > self.config.max_temperature_threshold:
             # We construct a dummy atoms object representing the state when halted
             halt_atoms = bulk("Fe", "bcc", a=2.8)
 

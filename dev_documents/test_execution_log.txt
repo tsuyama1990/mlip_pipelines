@@ -20,22 +20,23 @@ src/__init__.py                             0      0   100%
 src/core/__init__.py                        2      0   100%
 src/core/exceptions.py                      6      0   100%
 src/core/interfaces.py                     23      0   100%
-src/core/orchestrator.py                   55     11    80%   68-69, 80-81, 91, 95-100
+src/core/orchestrator.py                   56     11    80%   63-64, 75-76, 86, 90-95
 src/domain_models/__init__.py               3      0   100%
-src/domain_models/config.py                24      0   100%
+src/domain_models/config.py                31      0   100%
 src/domain_models/dtos.py                  20      0   100%
 src/dynamics/__init__.py                    2      0   100%
 src/dynamics/dynamics_engine.py            13      1    92%   33
 src/generators/__init__.py                  2      0   100%
-src/generators/structure_generator.py      19      0   100%
+src/generators/adaptive_policy.py          18      4    78%   29-32
+src/generators/structure_generator.py      26      2    92%   19, 23
 src/oracles/__init__.py                     2      0   100%
-src/oracles/dft_oracle.py                  17      0   100%
+src/oracles/dft_oracle.py                  42     11    74%   36-68
 src/trainers/__init__.py                    2      0   100%
-src/trainers/ace_trainer.py                20      0   100%
+src/trainers/ace_trainer.py                42     15    64%   29-50, 63-82
 src/validators/__init__.py                  2      0   100%
-src/validators/validator.py                15      2    87%   15, 27
+src/validators/validator.py                28      3    89%   16, 48-49
 ---------------------------------------------------------------------
-TOTAL                                     227     14    94%
-============================== 18 passed in 2.66s ==============================
+TOTAL                                     320     47    85%
+============================== 18 passed in 3.66s ==============================
 /app/.venv/lib/python3.12/site-packages/coverage/inorout.py:561: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.4/messages.html#warning-module-not-imported
   self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")

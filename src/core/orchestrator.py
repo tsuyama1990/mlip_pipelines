@@ -10,7 +10,7 @@ from src.core.interfaces import (
     AbstractValidator,
 )
 from src.domain_models.config import PipelineConfig
-from src.domain_models.dtos import ExplorationStrategy
+from src.generators.adaptive_policy import AdaptivePolicy
 
 logger = logging.getLogger(__name__)
 
@@ -37,16 +37,11 @@ class ActiveLearningOrchestrator:
         """Runs a single active learning cycle."""
         logger.info(f"Starting Active Learning Cycle {self.iteration}")
         try:
-            # Note: The true policy engine generation belongs to Cycle 2. Here we provide a basic implementation to prevent mock rules violation.
-            strategy = ExplorationStrategy(
-                r_md_mc=10.0,
-                t_schedule=[300.0, 600.0],
-                n_defects=5,
-                strain_range=0.1,
-            )
+            strategy = AdaptivePolicy.generate_strategy(self.config.system)
 
             # Use current potential
-            current_pot = Path(f"potentials/generation_{self.iteration:03d}.yace")
+            pot_path_str = self.config.potential_path_template.format(iteration=self.iteration)
+            current_pot = Path(pot_path_str)
             if not current_pot.exists():
                 # For iteration 0, we might need initial training data.
                 logger.info(
