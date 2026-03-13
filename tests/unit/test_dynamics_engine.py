@@ -29,12 +29,19 @@ def test_run_exploration_watchdog(monkeypatch: pytest.MonkeyPatch, tmp_path: Pat
 
     dump_file = tmp_path / "md_run" / "dump.lammps"
     dump_file.parent.mkdir(parents=True)
-    dump_file.touch()
-
-    def mock_check_halt(self: Any, *args: Any, **kwargs: Any) -> dict[str, Any]:
-        return {"halted": True, "dump_file": dump_file}
-
-    monkeypatch.setattr(MDInterface, "_check_halt", mock_check_halt)
+    # Write a real dump file format that will trigger high gamma evaluation
+    dump_content = """ITEM: TIMESTEP
+0
+ITEM: NUMBER OF ATOMS
+1
+ITEM: BOX BOUNDS pp pp pp
+0.0 10.0
+0.0 10.0
+0.0 10.0
+ITEM: ATOMS id type x y z c_pace_gamma
+1 1 0.0 0.0 0.0 6.0
+"""
+    dump_file.write_text(dump_content)
 
     result = engine.run_exploration(potential=pot_file, work_dir=tmp_path / "md_run")
     assert result["halted"] is True
@@ -60,10 +67,20 @@ def test_resume(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
 
     monkeypatch.setattr(subprocess, "run", mock_run)
 
-    def mock_check_halt(self: Any, *args: Any, **kwargs: Any) -> dict[str, Any]:
-        return {"halted": False, "dump_file": None}
-
-    monkeypatch.setattr(MDInterface, "_check_halt", mock_check_halt)
+    dump_file = tmp_path / "resume_run" / "dump.lammps"
+    dump_file.parent.mkdir(parents=True, exist_ok=True)
+    dump_content = """ITEM: TIMESTEP
+0
+ITEM: NUMBER OF ATOMS
+1
+ITEM: BOX BOUNDS pp pp pp
+0.0 10.0
+0.0 10.0
+0.0 10.0
+ITEM: ATOMS id type x y z c_pace_gamma
+1 1 0.0 0.0 0.0 1.0
+"""
+    dump_file.write_text(dump_content)
 
     res = engine.resume(pot_file, restart_dir, work_dir)
     assert res["halted"] is False
@@ -150,12 +167,18 @@ def test_run_exploration_cold_start(monkeypatch: pytest.MonkeyPatch, tmp_path: P
     monkeypatch.setattr(subprocess, "run", mock_run)
     dump_file = tmp_path / "md_run" / "dump.lammps"
     dump_file.parent.mkdir(parents=True)
-    dump_file.touch()
-
-    def mock_check_halt(self: Any, *args: Any, **kwargs: Any) -> dict[str, Any]:
-        return {"halted": False, "dump_file": dump_file}
-
-    monkeypatch.setattr(MDInterface, "_check_halt", mock_check_halt)
+    dump_content = """ITEM: TIMESTEP
+0
+ITEM: NUMBER OF ATOMS
+1
+ITEM: BOX BOUNDS pp pp pp
+0.0 10.0
+0.0 10.0
+0.0 10.0
+ITEM: ATOMS id type x y z c_pace_gamma
+1 1 0.0 0.0 0.0 1.0
+"""
+    dump_file.write_text(dump_content)
 
     result = engine.run_exploration(potential=None, work_dir=tmp_path / "md_run")
     assert result["halted"] is False

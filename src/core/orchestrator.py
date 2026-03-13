@@ -2,6 +2,7 @@ import logging
 import shutil
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 from ase import Atoms
 
@@ -62,106 +63,125 @@ class Orchestrator:
                 return None
             return latest_pot
 
-    def run_cycle(self) -> str | None:  # noqa: PLR0915
+    def _run_exploration(self, current_pot: Path | None, tmp_work_dir: Path) -> dict[str, Any] | str:
+        halt_info = self.md_engine.run_exploration(
+            potential=current_pot,
+            work_dir=tmp_work_dir / "md_run",
+        )
+
+        if not halt_info.get("halted", False):
+            logging.info("MD completed without high uncertainty. Converged.")
+            return "CONVERGED"
+
+        logging.warning("Halt triggered by uncertainty watchdog!")
+        return halt_info
+
+    def _select_candidates(self, halt_info: dict[str, Any]) -> Iterator[list[Atoms]]:
+        high_gamma_atoms = self.md_engine.extract_high_gamma_structures(
+            dump_file=halt_info["dump_file"],
+            threshold=self.config.dynamics.uncertainty_threshold,
+        )
+
+        for s0 in high_gamma_atoms:
+            candidates = self.structure_generator.generate_local_candidates(s0, n=20)
+            yield self.trainer.select_local_active_set(candidates, anchor=s0, n=5)
+
+    def _run_dft_and_train(self, candidate_generator: Iterator[list[Atoms]], tmp_work_dir: Path, current_pot: Path | None) -> Path | str:
+        has_new_data = False
+        data_dir = self.config.project_root / "data"
+        data_dir.mkdir(parents=True, exist_ok=True)
+        dataset_path = data_dir / "accumulated.extxyz"
+
+        for i, batch in enumerate(candidate_generator):
+            batch_calc_dir = tmp_work_dir / f"dft_calc_batch_{i}"
+            new_data = self.oracle.compute_batch(batch, batch_calc_dir)
+            if new_data:
+                self.trainer.update_dataset(new_data, dataset_path=dataset_path)
+                has_new_data = True
+
+        if not has_new_data:
+            logging.error("No valid data obtained from DFT.")
+            return "ERROR"
+
+        return self.trainer.train(
+            dataset=dataset_path,
+            initial_potential=current_pot,
+            output_dir=tmp_work_dir / "training",
+        )
+
+    def _validate_and_deploy(self, new_pot_path: Path, tmp_work_dir: Path, work_dir: Path) -> str:
+        validation_result = self.validator.validate(new_pot_path)
+        if not validation_result.passed:
+            logging.error(f"Validation failed: {validation_result.reason}")
+            return "VALIDATION_FAILED"
+
+        self.iteration += 1
+        pot_dir = self.config.project_root / "potentials"
+        pot_dir.mkdir(parents=True, exist_ok=True)
+        final_dest = pot_dir / f"generation_{self.iteration:03d}.yace"
+
+        src_pot = tmp_work_dir / "training" / "output_potential.yace"
+        if not src_pot.is_file() or not src_pot.resolve().is_relative_to(tmp_work_dir.resolve()):
+            msg = "Source potential file missing or invalid"
+            raise FileNotFoundError(msg)
+
+        if not src_pot.name.endswith(".yace"):
+            msg = "Source potential file must have .yace extension"
+            raise ValueError(msg)
+
+        shutil.copy(src_pot, final_dest)
+
+        if not tmp_work_dir.resolve().is_relative_to((self.config.project_root / "active_learning").resolve()):
+             msg = "tmp_work_dir is outside the expected base directory"
+             raise ValueError(msg)
+
+        if work_dir.exists():
+            shutil.rmtree(work_dir, ignore_errors=True)
+        shutil.move(str(tmp_work_dir), str(work_dir))
+
+        self.md_engine.resume(
+            potential=final_dest,
+            restart_dir=work_dir / "md_run",
+            work_dir=work_dir / "resume_run",
+        )
+
+        return str(final_dest)
+
+    def run_cycle(self) -> str | None:
         """Runs one full loop: Exploration -> Selection -> DFT -> Update -> Resume."""
         logging.info(f"Starting iteration {self.iteration}")
 
         current_pot = self.get_latest_potential()
         if current_pot is None:
-            logging.info(
-                "No initial potential found. Starting cold-start exploration (Baseline only)."
-            )
+            logging.info("No initial potential found. Starting cold-start exploration (Baseline only).")
 
-        # Build directory mapping
         base_dir = self.config.project_root / "active_learning"
         base_dir.mkdir(parents=True, exist_ok=True)
 
         work_dir = base_dir / f"iter_{self.iteration:03d}"
-        # For atomic transactions, work in a fully isolated temporary space
-        # and only map to the final `work_dir` if everything passes smoothly
-        import tempfile
 
+        import tempfile
         cycle_successful = False
         tmp_work_dir = Path(tempfile.mkdtemp(dir=str(base_dir)))
 
         try:
-            # 1. EXPLORATION
-            halt_info = self.md_engine.run_exploration(
-                potential=current_pot,
-                work_dir=tmp_work_dir / "md_run",
-            )
-
-            if not halt_info.get("halted", False):
-                logging.info("MD completed without high uncertainty. Converged.")
+            halt_info = self._run_exploration(current_pot, tmp_work_dir)
+            if isinstance(halt_info, str):
                 cycle_successful = True
-                return "CONVERGED"
+                return halt_info
 
-            logging.warning("Halt triggered by uncertainty watchdog!")
+            candidate_generator = self._select_candidates(halt_info)
 
-            # 2. DETECTION & SELECTION
-            high_gamma_atoms = self.md_engine.extract_high_gamma_structures(
-                dump_file=halt_info["dump_file"],
-                threshold=self.config.dynamics.uncertainty_threshold,
-            )
+            new_pot_path = self._run_dft_and_train(candidate_generator, tmp_work_dir, current_pot)
+            if isinstance(new_pot_path, str):
+                return new_pot_path
 
-            def candidate_generator() -> Iterator[list[Atoms]]:
-                for s0 in high_gamma_atoms:
-                    candidates = self.structure_generator.generate_local_candidates(s0, n=20)
-                    yield self.trainer.select_local_active_set(candidates, anchor=s0, n=5)
-
-            # 3. LABELING (DFT Oracle) & 4. TRAINING
-            has_new_data = False
-            data_dir = self.config.project_root / "data"
-            data_dir.mkdir(parents=True, exist_ok=True)
-            dataset_path = data_dir / "accumulated.extxyz"
-
-            for i, batch in enumerate(candidate_generator()):
-                batch_calc_dir = tmp_work_dir / f"dft_calc_batch_{i}"
-                new_data = self.oracle.compute_batch(batch, batch_calc_dir)
-                if new_data:
-                    self.trainer.update_dataset(new_data, dataset_path=dataset_path)
-                    has_new_data = True
-
-            if not has_new_data:
-                logging.error("No valid data obtained from DFT.")
-                return "ERROR"
-
-            new_pot_path = self.trainer.train(
-                dataset=dataset_path,
-                initial_potential=current_pot,
-                output_dir=tmp_work_dir / "training",
-            )
-
-            # 5. VALIDATION
-            validation_result = self.validator.validate(new_pot_path)
-            if not validation_result.passed:
-                logging.error(f"Validation failed: {validation_result.reason}")
-                return "VALIDATION_FAILED"
-
-            # 6. DEPLOYMENT (Atomic transaction)
-            self.iteration += 1
-            pot_dir = self.config.project_root / "potentials"
-            pot_dir.mkdir(parents=True, exist_ok=True)
-            final_dest = pot_dir / f"generation_{self.iteration:03d}.yace"
-
-            # Atomically move temporary workspace to final iteration map
-            # First move the potential out
-            shutil.copy(tmp_work_dir / "training" / "output_potential.yace", final_dest)
-
-            # Then map the transaction completely
-            # Use shutil.move for reliable cross-fs/dir merge semantics
-            if work_dir.exists():
-                shutil.rmtree(work_dir, ignore_errors=True)
-            shutil.move(str(tmp_work_dir), str(work_dir))
-
-            self.md_engine.resume(
-                potential=final_dest,
-                restart_dir=work_dir / "md_run",
-                work_dir=work_dir / "resume_run",
-            )
+            final_dest = self._validate_and_deploy(new_pot_path, tmp_work_dir, work_dir)
+            if final_dest == "VALIDATION_FAILED":
+                 return "VALIDATION_FAILED"
 
             cycle_successful = True
-            return str(final_dest)
+            return final_dest
         finally:
             if not cycle_successful and tmp_work_dir.exists():
                 logging.warning(f"Cleaning up partial state due to failure: {tmp_work_dir}")

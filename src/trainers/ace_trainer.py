@@ -34,7 +34,7 @@ class PacemakerWrapper:
             write(str(resolved_path), new_atoms_list, format="extxyz", append=True)
         return resolved_path
 
-    def select_local_active_set(
+    def select_local_active_set(  # noqa: PLR0912
         self, candidates: list[Atoms], anchor: Atoms, n: int
     ) -> list[Atoms]:
         """Local D-Optimality selection of candidates."""
@@ -52,12 +52,35 @@ class PacemakerWrapper:
             write(str(in_file), all_atoms, format="extxyz")
 
             import shutil
+            import sys
 
-            pace_activeset_bin = shutil.which(self.config.pace_activeset_binary) or self.config.pace_activeset_binary
+            binary_setting = self.config.pace_activeset_binary
+            trusted_dirs = ["/usr/bin", "/usr/local/bin", "/opt/homebrew/bin", str(Path(sys.prefix) / "bin")]
+            if hasattr(self.config, 'project_root'):
+                 trusted_dirs.append(str(Path(self.config.project_root) / "bin"))
 
-            if not BINARY_NAME_PATTERN.match(Path(pace_activeset_bin).name):
-                msg = f"Invalid binary path: {pace_activeset_bin}"
-                raise ValueError(msg)
+            if Path(binary_setting).is_absolute():
+                if ".." in binary_setting:
+                     msg = f"Invalid absolute binary path: {binary_setting}"
+                     raise ValueError(msg)
+                resolved_bin = Path(binary_setting).resolve()
+                if not any(str(resolved_bin).startswith(td) for td in trusted_dirs):
+                     msg = f"Binary must reside in a trusted directory: {binary_setting}"
+                     raise ValueError(msg)
+                pace_activeset_bin = str(resolved_bin)
+            else:
+                 if not BINARY_NAME_PATTERN.match(binary_setting):
+                     msg = f"Invalid binary name: {binary_setting}"
+                     raise ValueError(msg)
+                 resolved_which = shutil.which(binary_setting)
+                 if resolved_which is None:
+                     pace_activeset_bin = binary_setting
+                 else:
+                     resolved_bin = Path(resolved_which).resolve()
+                     if not any(str(resolved_bin).startswith(td) for td in trusted_dirs):
+                         msg = f"Resolved binary must reside in a trusted directory: {resolved_bin}"
+                         raise ValueError(msg)
+                     pace_activeset_bin = str(resolved_bin)
 
             cmd = [
                 pace_activeset_bin,
@@ -88,7 +111,7 @@ class PacemakerWrapper:
             msg = "pace_activeset did not generate the output file."
             raise RuntimeError(msg)
 
-    def train(self, dataset: Path, initial_potential: Path | None, output_dir: Path) -> Path:
+    def train(self, dataset: Path, initial_potential: Path | None, output_dir: Path) -> Path:  # noqa: PLR0912
         """Trains or fine-tunes the ACE model."""
         if not dataset.exists():
             msg = f"Dataset not found: {dataset}"
@@ -96,7 +119,25 @@ class PacemakerWrapper:
 
         # Ensure output_dir is an absolute path and resolved to prevent directory traversal
         resolved_output_dir = Path(output_dir).resolve()
+
+        # Validation for directory traversal out of expected bounds
+        import os
+
+        # Check that we're inside a trusted directory.
+        # Since tempfile.mkdtemp() paths vary per OS (like /tmp or /var/folders),
+        # checking startswith(cwd) breaks valid temp directories.
+        # Instead, verify the directory doesn't have traversal artifacts after resolve.
+        # Since .resolve() removes `..`, we ensure the original path didn't try to escape it via traversal.
+
+        if ".." in str(output_dir):
+            msg = "output_dir contains directory traversal components"
+            raise ValueError(msg)
+
         resolved_output_dir.mkdir(parents=True, exist_ok=True)
+        if not os.access(resolved_output_dir, os.W_OK):
+             msg = f"output_dir is not writable: {resolved_output_dir}"
+             raise PermissionError(msg)
+
         out_pot = resolved_output_dir / "output_potential.yace"
 
         if not PARAM_PATTERN.match(self.config.baseline_potential):
@@ -107,11 +148,35 @@ class PacemakerWrapper:
             raise ValueError(msg)
 
         import shutil
+        import sys
 
-        pace_train_bin = shutil.which(self.config.pace_train_binary) or self.config.pace_train_binary
-        if not BINARY_NAME_PATTERN.match(Path(pace_train_bin).name):
-            msg = f"Invalid binary path: {pace_train_bin}"
-            raise ValueError(msg)
+        train_binary_setting = self.config.pace_train_binary
+        trusted_dirs = ["/usr/bin", "/usr/local/bin", "/opt/homebrew/bin", str(Path(sys.prefix) / "bin")]
+        if hasattr(self.config, 'project_root'):
+             trusted_dirs.append(str(Path(self.config.project_root) / "bin"))
+
+        if Path(train_binary_setting).is_absolute():
+            if ".." in train_binary_setting:
+                 msg = f"Invalid absolute binary path: {train_binary_setting}"
+                 raise ValueError(msg)
+            resolved_bin = Path(train_binary_setting).resolve()
+            if not any(str(resolved_bin).startswith(td) for td in trusted_dirs):
+                 msg = f"Binary must reside in a trusted directory: {train_binary_setting}"
+                 raise ValueError(msg)
+            pace_train_bin = str(resolved_bin)
+        else:
+             if not BINARY_NAME_PATTERN.match(train_binary_setting):
+                 msg = f"Invalid binary name: {train_binary_setting}"
+                 raise ValueError(msg)
+             resolved_which = shutil.which(train_binary_setting)
+             if resolved_which is None:
+                 pace_train_bin = train_binary_setting
+             else:
+                 resolved_bin = Path(resolved_which).resolve()
+                 if not any(str(resolved_bin).startswith(td) for td in trusted_dirs):
+                     msg = f"Resolved binary must reside in a trusted directory: {resolved_bin}"
+                     raise ValueError(msg)
+                 pace_train_bin = str(resolved_bin)
 
         cmd = [
             pace_train_bin,

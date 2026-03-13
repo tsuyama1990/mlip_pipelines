@@ -158,6 +158,9 @@ class ProjectConfig(BaseSettings):
     @field_validator("project_root")
     @classmethod
     def validate_project_root(cls, v: Path) -> Path:
+        if not v.is_absolute():
+            msg = f"Project root directory '{v}' must be an absolute path."
+            raise ValueError(msg)
         if not v.exists() or not v.is_dir():
             msg = f"Project root directory '{v}' does not exist or is not a directory."
             raise ValueError(msg)
