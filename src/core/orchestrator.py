@@ -43,13 +43,14 @@ class Orchestrator:
             # Validate format strictly to ensure file integrity
             with Path.open(latest_pot) as f:
                 content = f.read(100)
-                if "elements" not in content and "version" not in content:
-                    logging.warning(f"Potential {latest_pot} appears corrupted or invalid.")
-                    return None
-            return latest_pot
-        except (ValueError, OSError) as e:
-            logging.exception(f"Failed to load or validate latest potential: {e}")
+        except (ValueError, OSError):
+            logging.exception("Failed to load or validate latest potential")
             return None
+        else:
+            if "elements" not in content and "version" not in content:
+                logging.warning(f"Potential {latest_pot} appears corrupted or invalid.")
+                return None
+            return latest_pot
 
     def run_cycle(self) -> str | None:
         """Runs one full loop: Exploration -> Selection -> DFT -> Update -> Resume."""

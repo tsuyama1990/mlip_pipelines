@@ -34,13 +34,11 @@ def test_compute_batch(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     config = OracleConfig()
     manager = DFTManager(config)
 
-    from typing import Any
+    from typing import Any, ClassVar
 
     import numpy as np
     from ase import Atoms
     from ase.calculators.calculator import Calculator
-
-    from typing import Any, ClassVar
 
     class MockCalc(Calculator):  # type: ignore[misc]
         implemented_properties: ClassVar[list[str]] = ["energy", "forces", "stress"]
@@ -51,7 +49,12 @@ def test_compute_batch(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
                 "input_data": {"electrons": {"mixing_beta": 0.7, "diagonalization": "david"}}
             }
 
-        def calculate(self, atoms: Atoms | None = None, properties: list[str] | None = None, system_changes: Any = None) -> None:
+        def calculate(
+            self,
+            atoms: Atoms | None = None,
+            properties: list[str] | None = None,
+            system_changes: Any = None,
+        ) -> None:
             if properties is None:
                 properties = ["energy"]
             self.results = {

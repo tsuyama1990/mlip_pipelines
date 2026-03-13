@@ -21,7 +21,6 @@ class Validator:
         # Since we must execute actual code but don't have a dataset or real PACE,
         # we compute basic stats on a dummy structure to verify the API works.
 
-
         import numpy as np
         from ase.build import bulk
 
@@ -31,14 +30,15 @@ class Validator:
         phonon_stable = False
         mechanically_stable = False
 
-        try:
-            # Check format basic readability
-            with Path.open(potential_path) as f:
-                content = f.read(100)
-                if "elements" not in content and "version" not in content:
-                    msg = f"Potential file {potential_path} does not appear to be a valid YACE format."
-                    raise ValueError(msg)
+        # Check format basic readability
+        with Path.open(potential_path) as f:
+            content = f.read(100)
 
+        if "elements" not in content and "version" not in content:
+            msg = f"Potential file {potential_path} does not appear to be a valid YACE format."
+            raise ValueError(msg)
+
+        try:
             from pyacemaker.calculator import pyacemaker
 
             calc = pyacemaker(potential_path)
@@ -86,6 +86,7 @@ class Validator:
                     disp_atoms = atoms.copy()  # type: ignore[no-untyped-call]
                     # We need a proper supercell from ASE
                     from ase.build import make_supercell
+
                     disp_atoms = make_supercell(atoms, [[2, 0, 0], [0, 2, 0], [0, 0, 2]])
                     disp_atoms.set_positions(sc.get_positions())  # type: ignore[no-untyped-call]
                     disp_atoms.calc = calc

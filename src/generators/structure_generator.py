@@ -12,6 +12,7 @@ class StructureGenerator:
     def generate_local_candidates(self, s0: Atoms, n: int = 20) -> list[Atoms]:
         """Generates candidates via random rattling using streaming generation."""
         from collections.abc import Iterator
+
         # Scale down n if the structure is massive to avoid OOM
         actual_n = n if len(s0) < 1000 else max(1, n // 10)
 

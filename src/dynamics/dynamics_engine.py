@@ -36,7 +36,7 @@ class MDInterface:
         import shutil
         import tempfile
 
-        with tempfile.NamedTemporaryFile(mode='w', dir=work_dir, delete=False) as tmp_in_file:
+        with tempfile.NamedTemporaryFile(mode="w", dir=work_dir, delete=False) as tmp_in_file:
             if potential is None:
                 # Cold start logic: Run MD using only the ZBL baseline potential
                 tmp_in_file.write(f"""
@@ -95,7 +95,7 @@ run {self.config.md_steps}
             # For the pipeline logic, we assume it halted.
             if not dump_file.exists():
                 msg = "LAMMPS halted but no dump file was generated."
-                raise RuntimeError(msg)
+                raise RuntimeError(msg) from None
             return {"halted": True, "dump_file": dump_file}
         except FileNotFoundError as e:
             msg = "LAMMPS executable not found."

@@ -1,3 +1,6 @@
+from pathlib import Path
+
+import pytest
 
 from src.domain_models.config import ValidatorConfig
 from src.validators.validator import Validator
@@ -8,10 +11,6 @@ def test_validator_initialization() -> None:
     validator = Validator(config)
     assert validator.config.energy_rmse_threshold == 0.01
 
-
-import pytest
-
-from pathlib import Path
 
 def test_validate(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     config = ValidatorConfig()
@@ -28,8 +27,15 @@ def test_validate(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
 
     class MockCalc(Calculator):  # type: ignore[misc]
         implemented_properties: ClassVar[list[str]] = ["energy", "forces", "stress"]
-        def calculate(self, atoms: Atoms | None = None, properties: list[str] | None = None, system_changes: Any = None) -> None:
+
+        def calculate(
+            self,
+            atoms: Atoms | None = None,
+            properties: list[str] | None = None,
+            system_changes: Any = None,
+        ) -> None:
             import numpy as np
+
             if properties is None:
                 properties = ["energy"]
             self.results = {
@@ -39,9 +45,11 @@ def test_validate(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
             }
 
     import sys
+
     class MockPyacemaker:
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             pass
+
         def __call__(self, *args: Any, **kwargs: Any) -> MockCalc:
             return MockCalc()
 
@@ -49,14 +57,19 @@ def test_validate(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     class MockPhonopy:
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             self.supercells_with_displacements: list[Any] = []
+
         def generate_displacements(self, distance: float) -> None:
             pass
+
         def produce_force_constants(self, forces: Any = None) -> None:
             pass
+
         def run_mesh(self, mesh: Any) -> None:
             pass
+
         def get_mesh_dict(self) -> dict[str, Any]:
             import numpy as np
+
             return {"frequencies": np.array([1.0, 2.0])}
 
     class MockPhonopyAtoms:
@@ -67,13 +80,13 @@ def test_validate(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
 
     # Create dummy modules for pyacemaker and phonopy
     pyacemaker_calc_mod = ModuleType("pyacemaker.calculator")
-    setattr(pyacemaker_calc_mod, "pyacemaker", MockPyacemaker())
+    setattr(pyacemaker_calc_mod, "pyacemaker", MockPyacemaker())  # type: ignore[attr-defined]
     sys.modules["pyacemaker.calculator"] = pyacemaker_calc_mod
 
     phonopy_mod = ModuleType("phonopy")
     phonopy_atoms_mod = ModuleType("phonopy.structure.atoms")
-    setattr(phonopy_mod, "Phonopy", MockPhonopy)  # type: ignore[attr-defined]
-    setattr(phonopy_atoms_mod, "PhonopyAtoms", MockPhonopyAtoms)  # type: ignore[attr-defined]
+    phonopy_mod.Phonopy = MockPhonopy  # type: ignore[attr-defined]
+    phonopy_atoms_mod.PhonopyAtoms = MockPhonopyAtoms  # type: ignore[attr-defined]
     sys.modules["phonopy"] = phonopy_mod
     sys.modules["phonopy.structure.atoms"] = phonopy_atoms_mod
 

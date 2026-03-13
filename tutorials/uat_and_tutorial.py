@@ -95,13 +95,15 @@ def __(config, USE_MOCK, mo, Any):
             def __init__(self, *args: Any, **kwargs: Any) -> None:
                 pass
 
-            def select_local_active_set(self, candidates: list[Any], anchor: Any, n: int) -> list[Any]:
+            def select_local_active_set(
+                self, candidates: list[Any], anchor: Any, n: int
+            ) -> list[Any]:
                 return candidates[:n]
 
             def update_dataset(self, new_data: Any, dataset_path: Any) -> Any:
                 return dataset_path
 
-            def train(self, dataset: Any, initial_potential: Any, output_dir: Path) -> Path:
+            def train(self, dataset: Any, initial_potential: Any, output_dir: __import__('pathlib').Path) -> __import__('pathlib').Path:
                 pot = output_dir / "new_pot.yace"
                 pot.parent.mkdir(parents=True, exist_ok=True)
                 pot.write_text("dummy potential")

@@ -10,6 +10,10 @@ def test_marimo_tutorial(tmp_path: Path) -> None:
 
     # Run the script directly since it's a valid python script via marimo
     res = subprocess.run(
-        [sys.executable, str(tutorial_path)], capture_output=True, text=True, cwd=str(Path.cwd()), check=False
+        [sys.executable, str(tutorial_path)],
+        capture_output=True,
+        text=True,
+        cwd=str(Path.cwd()),
+        check=False,
     )
     assert res.returncode == 0

@@ -27,6 +27,7 @@ class DFTManager:
         pos = embedded.get_positions()  # type: ignore[no-untyped-call]
 
         import numpy as np
+
         if np.isnan(pos).any() or np.isinf(pos).any():
             msg = "Atomic positions contain NaN or Inf values."
             raise ValueError(msg)
@@ -57,6 +58,7 @@ class DFTManager:
         """Creates the ESPRESSO calculator with self-healing parameters."""
         # Determine pseudopotentials from elements
         import re
+
         symbols: set[str] = set(atoms.get_chemical_symbols())  # type: ignore[no-untyped-call]
         pseudos = {}
         pseudo_dir_path = Path(self.config.pseudo_dir).resolve()

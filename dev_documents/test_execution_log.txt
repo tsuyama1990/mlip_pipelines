@@ -24,9 +24,9 @@ Name                                    Stmts   Miss  Cover   Missing
 ---------------------------------------------------------------------
 src/__init__.py                             0      0   100%
 src/core/__init__.py                        0      0   100%
-src/core/orchestrator.py                   93     26    72%   37-52, 69-71, 83-85, 114-115, 126-127, 141-142
+src/core/orchestrator.py                   93     26    72%   37-53, 70-72, 84-86, 115-116, 127-128, 142-143
 src/domain_models/__init__.py               3      0   100%
-src/domain_models/config.py                89      4    96%   43-44, 158-159
+src/domain_models/config.py                89      4    96%   43-44, 159-160
 src/domain_models/dtos.py                  39      2    95%   42-43
 src/dynamics/__init__.py                    0      0   100%
 src/dynamics/dynamics_engine.py            55     36    35%   22-104, 111-112, 116, 119-120
@@ -34,11 +34,11 @@ src/generators/__init__.py                  0      0   100%
 src/generators/adaptive_policy.py          29      7    76%   13-14, 46-51
 src/generators/structure_generator.py      14      0   100%
 src/oracles/__init__.py                     0      0   100%
-src/oracles/dft_oracle.py                  99     57    42%   19-20, 31-32, 39-40, 59-128, 161-180
+src/oracles/dft_oracle.py                  99     57    42%   19-20, 32-33, 40-41, 60-130, 163-182
 src/trainers/__init__.py                    0      0   100%
 src/trainers/ace_trainer.py                58     28    52%   26, 62, 64-73, 77-114
 src/validators/__init__.py                  0      0   100%
-src/validators/validator.py                75     18    76%   16-17, 39-40, 84-93, 105, 122-127
+src/validators/validator.py                75     18    76%   16-17, 38-39, 84-94, 106, 123-128
 tests/__init__.py                           0      0   100%
 tests/conftest.py                           9      0   100%
 tests/e2e/__init__.py                       0      0   100%
@@ -49,11 +49,11 @@ tests/unit/__init__.py                      0      0   100%
 tests/unit/test_ace_trainer.py             35      0   100%
 tests/unit/test_adaptive_policy.py         26      0   100%
 tests/unit/test_config.py                  23      0   100%
-tests/unit/test_dft_oracle.py              48      1    98%   56
+tests/unit/test_dft_oracle.py              47      1    98%   59
 tests/unit/test_domain_models.py           27      0   100%
 tests/unit/test_dynamics_engine.py         31      0   100%
 tests/unit/test_orchestrator.py            53      1    98%   38
-tests/unit/test_validator.py               57      1    98%   34
+tests/unit/test_validator.py               57      1    98%   40
 ---------------------------------------------------------------------
-TOTAL                                     918    181    80%
-============================== 28 passed in 4.48s ==============================
+TOTAL                                     917    181    80%
+============================== 28 passed in 5.04s ==============================

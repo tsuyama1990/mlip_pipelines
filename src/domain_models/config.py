@@ -143,6 +143,7 @@ class ProjectConfig(BaseSettings):
     @classmethod
     def convert_str_to_path(cls, v: str | Path) -> Path:
         return Path(v)
+
     system: SystemConfig
     dynamics: DynamicsConfig
     oracle: OracleConfig
