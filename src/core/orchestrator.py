@@ -72,7 +72,8 @@ class ActiveLearningOrchestrator:
         )
 
         # Process candidates in a scalable manner to prevent holding all structures in memory
-        from typing import Iterator
+        from collections.abc import Iterator
+
         from ase import Atoms
 
         def candidate_generator() -> Iterator[list[Atoms]]:

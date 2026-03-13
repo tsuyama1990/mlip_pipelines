@@ -60,8 +60,10 @@ material:
     assert config.project_name == "mlip_project"
     assert config.lammps.temperature == 300.0
 
+
 def test_pipeline_config_invalid_yaml(tmp_path: Path) -> None:
     import pytest
+
     config_file = tmp_path / "invalid_config.yaml"
     config_file.write_text("invalid_key: 123")
     with pytest.raises(ValueError, match="Invalid configuration file"):
