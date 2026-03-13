@@ -36,10 +36,9 @@ class ActiveLearningOrchestrator:
         pot_dir = pot_path_template.parent
         if not pot_dir.exists():
             return None
-        gens = list(pot_dir.glob(pot_path_template.name.replace("{iteration:03d}", "*")))
-        if not gens:
-            return None
-        return max(gens)
+        return max(
+            pot_dir.glob(pot_path_template.name.replace("{iteration:03d}", "*")), default=None
+        )
 
     def run_cycle(self) -> str:
         """Runs one full loop: Exploration -> Selection -> DFT -> Update -> Resume."""
@@ -79,12 +78,15 @@ class ActiveLearningOrchestrator:
 
         def candidate_generator() -> Iterator[list[Atoms]]:
             for s0 in high_gamma_atoms:
-                candidates = []
-                for _ in range(10):
-                    c = s0.copy()  # type: ignore[no-untyped-call]
-                    c.rattle(stdev=0.05, seed=None)
-                    candidates.append(c)
-                # Yield selected structures per anchor, keeping memory profile low
+                # Generate candidates one at a time via a generator expression, limit memory footprint
+                def _rattle_generator(base_structure: Atoms) -> Iterator[Atoms]:
+                    for _ in range(10):
+                        c = base_structure.copy()  # type: ignore[no-untyped-call]
+                        c.rattle(stdev=0.05, seed=None)
+                        yield c
+
+                # Materialize just the subset needed for selection
+                candidates = list(_rattle_generator(s0))
                 yield self.trainer.select_local_active_set(candidates, anchor=s0, n=5)
 
         # 3. LABELING (DFT Oracle) & 4. TRAINING

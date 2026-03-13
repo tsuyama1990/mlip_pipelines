@@ -1,5 +1,5 @@
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from src.core.orchestrator import ActiveLearningOrchestrator
 from src.domain_models.config import PipelineConfig
@@ -32,29 +32,28 @@ def _create_test_orchestrator(config: PipelineConfig) -> ActiveLearningOrchestra
 def test_orchestrator_get_latest_potential(
     mock_pipeline_config: PipelineConfig, tmp_path: Path
 ) -> None:
+    # Modify config to point to our tmp_path
+    mock_pipeline_config.potential_path_template = str(
+        tmp_path / "potentials" / "generation_{iteration:03d}.yace"
+    )
     config = mock_pipeline_config
     orchestrator = _create_test_orchestrator(config)
+    pot_dir = tmp_path / "potentials"
 
-    with patch("src.core.orchestrator.Path") as mock_path_cls:
-        # We need the parent object of the Path to also act as a Path mock since orchestrator uses `pot_path_template.parent`
-        mock_path_instance = MagicMock()
-        mock_parent = MagicMock()
-        mock_path_cls.return_value = mock_path_instance
-        mock_path_instance.parent = mock_parent
+    # Scenario 1: Directory does not exist
+    assert orchestrator.get_latest_potential() is None
 
-        # Scenario 1: Directory does not exist
-        mock_parent.exists.return_value = False
-        assert orchestrator.get_latest_potential() is None
+    # Scenario 2: Directory exists but no files
+    pot_dir.mkdir()
+    assert orchestrator.get_latest_potential() is None
 
-        # Scenario 2: Directory exists but no files
-        mock_parent.exists.return_value = True
-        mock_parent.glob.return_value = []
-        assert orchestrator.get_latest_potential() is None
+    # Scenario 3: Returns files
+    (pot_dir / "generation_001.yace").touch()
+    (pot_dir / "generation_002.yace").touch()
 
-        # Scenario 3: Returns files
-        # The mock path setup uses the mock's glob, so we yield real paths back
-        mock_parent.glob.return_value = [Path("potentials/generation_001.yace"), Path("potentials/generation_002.yace")]
-        assert orchestrator.get_latest_potential() == Path("potentials/generation_002.yace")
+    latest = orchestrator.get_latest_potential()
+    assert latest is not None
+    assert latest.name == "generation_002.yace"
 
 
 def test_orchestrator_run_cycle_converged(mock_pipeline_config: PipelineConfig) -> None:

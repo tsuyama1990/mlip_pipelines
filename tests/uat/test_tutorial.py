@@ -31,7 +31,7 @@ def test_tutorial_execution() -> None:
     ]
 
     # Run the subprocess safely
-    result = subprocess.run(cmd, capture_output=True, text=True, check=False)  # noqa: S603
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
 
     # Ensure the script completed successfully
     assert result.returncode == 0, (

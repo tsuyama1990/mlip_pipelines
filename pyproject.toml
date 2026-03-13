@@ -65,3 +65,5 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = "tutorials.*"
 ignore_errors = true
+[tool.ruff.lint.extend-per-file-ignores]
+"tests/**/*.py" = ["S101", "S603"]
