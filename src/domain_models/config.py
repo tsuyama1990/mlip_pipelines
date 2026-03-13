@@ -138,6 +138,11 @@ class ProjectConfig(BaseSettings):
     )
 
     project_root: Path = Field(..., description="Root directory of the project")
+
+    @field_validator("project_root", mode="before")
+    @classmethod
+    def convert_str_to_path(cls, v: str | Path) -> Path:
+        return Path(v)
     system: SystemConfig
     dynamics: DynamicsConfig
     oracle: OracleConfig

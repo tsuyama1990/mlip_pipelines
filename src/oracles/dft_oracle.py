@@ -25,6 +25,12 @@ class DFTManager:
         # We need an orthorhombic cell for embedding.
         # Find bounds and pad by buffer
         pos = embedded.positions
+
+        import numpy as np
+        if np.isnan(pos).any() or np.isinf(pos).any():
+            msg = "Atomic positions contain NaN or Inf values."
+            raise ValueError(msg)
+
         min_pos = pos.min(axis=0)
         max_pos = pos.max(axis=0)
 
@@ -47,12 +53,25 @@ class DFTManager:
     def _get_calculator(self, atoms: Atoms, work_dir: Path) -> Espresso:
         """Creates the ESPRESSO calculator with self-healing parameters."""
         # Determine pseudopotentials from elements
+        import re
         symbols = set(atoms.get_chemical_symbols())
         pseudos = {}
-        pseudo_dir_path = Path(self.config.pseudo_dir)
+        pseudo_dir_path = Path(self.config.pseudo_dir).resolve()
+
         for el in symbols:
+            # Validate element names against whitelist of valid chemical symbols structure
+            if not re.match(r"^[A-Z][a-z]?$", el):
+                msg = f"Invalid chemical symbol detected: {el}"
+                raise ValueError(msg)
+
             upf_name = f"{el}.upf"
-            if not (pseudo_dir_path / upf_name).exists():
+            upf_path = (pseudo_dir_path / upf_name).resolve()
+
+            if not upf_path.is_relative_to(pseudo_dir_path):
+                msg = f"Path traversal detected for pseudopotential: {upf_name}"
+                raise ValueError(msg)
+
+            if not upf_path.exists():
                 msg = f"Pseudopotential file not found: {upf_name} in {pseudo_dir_path}"
                 raise FileNotFoundError(msg)
             pseudos[el] = upf_name
@@ -68,11 +87,11 @@ class DFTManager:
         b = np.linalg.norm(cell, axis=0)  # roughly real lattice vectors lengths
 
         # Validate cell dimensions for kspacing
-        if any(x == 0 for x in b):
-            msg = "Cell dimensions must be non-zero for kspacing calculation"
+        if any(x <= 1e-5 or np.isnan(x) or np.isinf(x) for x in b):
+            msg = "Cell dimensions must be strictly positive and finite for kspacing calculation"
             raise ValueError(msg)
 
-        kpts = [int(np.ceil(2 * np.pi / (self.config.kspacing * x))) if x > 0 else 1 for x in b]
+        kpts = [int(np.ceil(2 * np.pi / (self.config.kspacing * x))) for x in b]
 
         # Validated smearing
         degauss = self.config.smearing_width if self.config.smearing_width > 0.0 else 0.02

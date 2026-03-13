@@ -33,9 +33,13 @@ class MDInterface:
 
         zbl_elements = get_zbl_mapping(self.system_config.elements)
 
-        if potential is None:
-            # Cold start logic: Run MD using only the ZBL baseline potential
-            in_file.write_text(f"""
+        import shutil
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(mode='w', dir=work_dir, delete=False) as tmp_in_file:
+            if potential is None:
+                # Cold start logic: Run MD using only the ZBL baseline potential
+                tmp_in_file.write(f"""
 units metal
 boundary p p p
 atom_style atomic
@@ -48,8 +52,8 @@ pair_coeff * * {zbl_elements}
 dump 1 all custom 10 {dump_file.name} id type x y z
 run {min(self.config.md_steps, 1000)}  # Short run for cold start
 """)
-        else:
-            in_file.write_text(f"""
+            else:
+                tmp_in_file.write(f"""
 units metal
 boundary p p p
 atom_style atomic
@@ -65,6 +69,10 @@ fix watchdog all halt 10 v_max_gamma > {self.config.uncertainty_threshold} error
 dump 1 all custom 10 {dump_file.name} id type x y z
 run {self.config.md_steps}
 """)
+            tmp_path = tmp_in_file.name
+
+        # Atomically rename to target input file
+        Path(tmp_path).replace(in_file)
 
         # Execute lammps
         try:

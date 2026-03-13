@@ -33,6 +33,13 @@ class Validator:
         mechanically_stable = False
 
         try:
+            # Check format basic readability
+            with Path.open(potential_path) as f:
+                content = f.read(100)
+                if "elements" not in content and "version" not in content:
+                    msg = f"Potential file {potential_path} does not appear to be a valid YACE format."
+                    raise ValueError(msg)
+
             from pyacemaker.calculator import pyacemaker
 
             calc = pyacemaker(potential_path)

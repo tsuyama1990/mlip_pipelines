@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from src.domain_models.config import (
@@ -17,8 +19,6 @@ def mock_system_config() -> SystemConfig:
         baseline_potential="zbl",
     )
 
-
-from pathlib import Path
 
 @pytest.fixture
 def mock_project_config(mock_system_config: SystemConfig, tmp_path: Path) -> ProjectConfig:

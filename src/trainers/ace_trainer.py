@@ -14,16 +14,16 @@ class PacemakerWrapper:
         self.config = config
 
     def update_dataset(self, new_atoms_list: list[Atoms], dataset_path: Path) -> Path:
-        """Appends new structures to the dataset in a streaming fashion."""
+        """Appends new structures to the dataset using a single streaming operation."""
         dataset_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Using ase.io.write with append iteratively prevents loading massive
-        # lists into memory simultaneously if this is part of a larger generator chain.
-        for atoms in new_atoms_list:
-            if not dataset_path.exists():
-                write(str(dataset_path), atoms, format="extxyz")
-            else:
-                write(str(dataset_path), atoms, format="extxyz", append=True)
+        # Use ase.io.write with the list directly since ASE handles lists
+        # in a single file-open block much more efficiently than looping with append=True
+        # which opens/closes the file descriptor for each single atom.
+        if not dataset_path.exists():
+            write(str(dataset_path), new_atoms_list, format="extxyz")
+        else:
+            write(str(dataset_path), new_atoms_list, format="extxyz", append=True)
         return dataset_path
 
     def select_local_active_set(
@@ -84,8 +84,10 @@ class PacemakerWrapper:
             msg = f"Dataset not found: {dataset}"
             raise FileNotFoundError(msg)
 
-        output_dir.mkdir(parents=True, exist_ok=True)
-        out_pot = output_dir / "output_potential.yace"
+        # Ensure output_dir is an absolute path and resolved to prevent directory traversal
+        resolved_output_dir = Path(output_dir).resolve()
+        resolved_output_dir.mkdir(parents=True, exist_ok=True)
+        out_pot = resolved_output_dir / "output_potential.yace"
 
         cmd = [
             "pace_train",

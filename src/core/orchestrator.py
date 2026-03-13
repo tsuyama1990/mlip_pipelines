@@ -39,8 +39,16 @@ class Orchestrator:
             return None
 
         try:
-            return max(files)
-        except ValueError:
+            latest_pot = max(files)
+            # Validate format strictly to ensure file integrity
+            with Path.open(latest_pot) as f:
+                content = f.read(100)
+                if "elements" not in content and "version" not in content:
+                    logging.warning(f"Potential {latest_pot} appears corrupted or invalid.")
+                    return None
+            return latest_pot
+        except (ValueError, OSError) as e:
+            logging.error(f"Failed to load or validate latest potential: {e}")
             return None
 
     def run_cycle(self) -> str | None:
