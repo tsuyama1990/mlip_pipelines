@@ -22,22 +22,17 @@ class Validator:
         return check_phonopy_stability(atoms, calc)
 
     def _check_dependencies(self) -> None:
-        import logging
-
         try:
-            from pyacemaker.calculator import pyacemaker
-
-            if not hasattr(pyacemaker, "__version__"):
-                logging.debug("pyacemaker module found.")
-        except ImportError:
-            logging.warning(
-                "pyacemaker dependency missing. Validation will be mocked/skipped if accessed."
-            )
+            from pyacemaker.calculator import pyacemaker  # noqa: F401
+        except ImportError as e:
+            msg = "pyacemaker dependency missing. pyacemaker is required for validation."
+            raise ImportError(msg) from e
 
         try:
             import phonopy  # noqa: F401
-        except ImportError:
-            logging.warning("phonopy dependency missing. Stability checks will use fallback.")
+        except ImportError as e:
+            msg = "phonopy dependency missing. phonopy is required for validation."
+            raise ImportError(msg) from e
 
     def _check_file_format(self, resolved_path: Path) -> None:
         if not resolved_path.is_file():
@@ -55,27 +50,12 @@ class Validator:
             msg = f"Potential file {resolved_path} does not appear to be a valid YACE format."
             raise ValueError(msg)
 
-    def _compute_metrics(self, resolved_path: Path) -> tuple[float, float, float, bool, bool]:  # noqa: C901
+    def _compute_metrics(self, resolved_path: Path) -> tuple[float, float, float, bool, bool]:
         import numpy as np
         from ase.build import bulk
+        from pyacemaker.calculator import pyacemaker
 
-        try:
-            from pyacemaker.calculator import pyacemaker
-
-            calc = pyacemaker(str(resolved_path))
-        except ImportError:
-            import logging
-
-            logging.warning(
-                "pyacemaker missing. Skipping real metric computation, using fallback values."
-            )
-            return (
-                self.config.fallback_energy_rmse,
-                self.config.fallback_force_rmse,
-                self.config.fallback_stress_rmse,
-                True,
-                True,
-            )
+        calc = pyacemaker(str(resolved_path))
 
         atoms = bulk(
             self.config.validation_element,
@@ -84,9 +64,10 @@ class Validator:
         )
         atoms.calc = calc
 
-        energy_rmse: float = self.config.fallback_energy_rmse
-        force_rmse: float = self.config.fallback_force_rmse
-        stress_rmse: float = self.config.fallback_stress_rmse
+        # Real validation without fallbacks. Initialize to zero if no test dataset.
+        energy_rmse: float = 0.0
+        force_rmse: float = 0.0
+        stress_rmse: float = 0.0
 
         if self.config.test_dataset_path is not None:
             test_path: Path = Path(self.config.test_dataset_path).resolve(strict=True)
