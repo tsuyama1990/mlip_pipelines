@@ -12,6 +12,7 @@
 - **Data Efficiency via Active Learning:** Employs an Adaptive Exploration Policy combined with D-Optimality active set selection to achieve high precision (RMSE Energy < 1 meV/atom) with less than 1/10th the typical DFT cost.
 - **Physics-Informed Robustness:** Integrates a physical baseline (Lennard-Jones/ZBL) for Delta Learning, ensuring strict core-repulsion physics to prevent atomic overlap and segmentation faults in unseen environments.
 - **On-The-Fly (OTF) Self-Healing:** Monitors extrapolation grades ($\gamma$) during Molecular Dynamics (MD) or kinetic Monte Carlo (kMC) runs, automatically halting, generating local embedded clusters for DFT, and fine-tuning the potential before resuming.
+- **Strict Data Validation:** Employs rigorous Pydantic schema checking to prevent missing parameters, ensuring that exploration strategies, oracle settings, and training hyperparameters are guaranteed to be correct at runtime.
 
 ## Architecture Overview
 The system revolves around the central **Active Learning Orchestrator**, coordinating four stateless modules via strict dependency injection. The **Structure Generator** proposes unseen states; the **DFT Oracle** computes ground truth forces with self-healing SCF routines and periodic embedding; the **Trainer** fits the ACE potential; and the **Dynamics Engine** runs LAMMPS/EON simulations while monitoring uncertainties.
@@ -45,14 +46,12 @@ cd mlip-pipelines
 uv sync
 ```
 
-*(Note: In CI or Mock Mode, external physical solvers like LAMMPS or Quantum Espresso are mocked by default.)*
-
 ## Usage
-The primary interaction is through the CLI orchestrator, pointing to your setup file.
+The primary interaction is through the CLI orchestrator, pointing to your setup file. Currently, the application accepts a single configuration which will be strongly validated.
 
 **Quick Start:**
 ```bash
-uv run src/main.py --config config.yaml
+uv run main.py --config config.yaml
 ```
 
 To run the interactive tutorials (e.g., computing the FePt/MgO interface energy):
@@ -61,7 +60,6 @@ uv run marimo edit tutorials/UAT_AND_TUTORIAL.py
 ```
 
 ## Development Workflow
-The system is built sequentially across 8 distinct architecture cycles.
 Code quality is strictly enforced via `ruff` and `mypy`.
 
 - **Run Linters & Type Checking:**
@@ -79,14 +77,9 @@ Code quality is strictly enforced via `ruff` and `mypy`.
 ```ascii
 project_root/
 ├── src/
-│   ├── core/              # Orchestration & Pydantic Configs
-│   ├── generators/        # Adaptive Structure Policies
-│   ├── oracles/           # DFT Integration (QE) & Embedding
-│   ├── trainers/          # Pacemaker & Active Set Logic
-│   ├── dynamics/          # LAMMPS / EON kMC wrappers
-│   └── validators/        # QA gating (Phonon, Elasticity)
+│   ├── core/              # Orchestration & Pydantic Configs & Exceptions
+│   ├── domain_models/     # Strongly typed schemas & DTOs for the pipeline
 ├── tests/                 # Isolated test suites
-├── dev_documents/         # System designs and UAT
 ├── pyproject.toml         # Linter and dependency configurations
 └── README.md
 ```
