@@ -41,8 +41,7 @@ class DFTOracle:
         symbols = set(atoms.get_chemical_symbols())  # type: ignore[no-untyped-call]
         pseudos = {}
         for sym in symbols:
-            # Look up standard SSSP library naming scheme
-            pseudos[sym] = f"{sym}.upf"
+            pseudos[sym] = self.config.pseudopotentials.get(sym, f"{sym}.upf")
         return pseudos
 
     def compute_batch(self, structures: list[Atoms], calc_dir: Path) -> list[Atoms]:
@@ -63,12 +62,12 @@ class DFTOracle:
                 "system": {
                     "ecutwfc": self.config.ecutwfc,
                     "ecutrho": self.config.ecutrho,
-                    "occupations": self.config.smearing,
-                    "smearing": "mv",
+                    "occupations": self.config.occupations,
+                    "smearing": self.config.smearing_type,
                     "degauss": self.config.degauss,
                 },
                 "control": {
-                    "calculation": "scf",
+                    "calculation": self.config.calculation,
                     "tprnfor": True,
                     "tstress": True,
                 },

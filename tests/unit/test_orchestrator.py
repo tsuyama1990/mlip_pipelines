@@ -5,8 +5,8 @@ from src.core.orchestrator import ActiveLearningOrchestrator
 from src.domain_models.config import PipelineConfig
 
 
-def test_orchestrator_get_latest_potential(tmp_path: Path) -> None:
-    config = PipelineConfig()
+def test_orchestrator_get_latest_potential(mock_pipeline_config: PipelineConfig, tmp_path: Path) -> None:
+    config = mock_pipeline_config
     orchestrator = ActiveLearningOrchestrator(config)
 
     with patch("src.core.orchestrator.Path") as mock_path_cls:
@@ -27,8 +27,8 @@ def test_orchestrator_get_latest_potential(tmp_path: Path) -> None:
         assert orchestrator.get_latest_potential() == Path("generation_002.yace")
 
 
-def test_orchestrator_run_cycle_converged() -> None:
-    config = PipelineConfig()
+def test_orchestrator_run_cycle_converged(mock_pipeline_config: PipelineConfig) -> None:
+    config = mock_pipeline_config
     orchestrator = ActiveLearningOrchestrator(config)
 
     with (
@@ -43,8 +43,8 @@ def test_orchestrator_run_cycle_converged() -> None:
         mock_explore.assert_called_once()
 
 
-def test_orchestrator_run_cycle_error_dft() -> None:
-    config = PipelineConfig()
+def test_orchestrator_run_cycle_error_dft(mock_pipeline_config: PipelineConfig) -> None:
+    config = mock_pipeline_config
     orchestrator = ActiveLearningOrchestrator(config)
 
     with (
@@ -55,8 +55,9 @@ def test_orchestrator_run_cycle_error_dft() -> None:
         patch.object(orchestrator.oracle, "compute_batch") as mock_compute,
     ):
         mock_explore.return_value = {"halted": True, "dump_file": Path("dummy")}
-        mock_extract.return_value = ["dummy_atom"]
-        mock_select.return_value = ["dummy_candidate"]
+        from ase.build import bulk
+        mock_extract.return_value = [bulk("Fe", cubic=True)]
+        mock_select.return_value = [bulk("Pt", cubic=True)]
         mock_compute.return_value = []  # Empty list = error
 
         result = orchestrator.run_cycle()
@@ -64,8 +65,8 @@ def test_orchestrator_run_cycle_error_dft() -> None:
         assert result == "ERROR"
 
 
-def test_orchestrator_run_cycle_validation_failed() -> None:
-    config = PipelineConfig()
+def test_orchestrator_run_cycle_validation_failed(mock_pipeline_config: PipelineConfig) -> None:
+    config = mock_pipeline_config
     orchestrator = ActiveLearningOrchestrator(config)
 
     with (
@@ -79,8 +80,9 @@ def test_orchestrator_run_cycle_validation_failed() -> None:
         patch.object(orchestrator.validator, "validate") as mock_validate,
     ):
         mock_explore.return_value = {"halted": True, "dump_file": Path("dummy")}
-        mock_extract.return_value = ["dummy_atom"]
-        mock_select.return_value = ["dummy_candidate"]
+        from ase.build import bulk
+        mock_extract.return_value = [bulk("Fe", cubic=True)]
+        mock_select.return_value = [bulk("Pt", cubic=True)]
         mock_compute.return_value = ["dummy_result"]
         mock_update.return_value = Path("dummy_dataset")
         mock_train.return_value = Path("dummy_pot")
@@ -91,8 +93,8 @@ def test_orchestrator_run_cycle_validation_failed() -> None:
         assert result == "VALIDATION_FAILED"
 
 
-def test_orchestrator_run_cycle_continue() -> None:
-    config = PipelineConfig()
+def test_orchestrator_run_cycle_continue(mock_pipeline_config: PipelineConfig) -> None:
+    config = mock_pipeline_config
     orchestrator = ActiveLearningOrchestrator(config)
 
     with (
@@ -107,8 +109,9 @@ def test_orchestrator_run_cycle_continue() -> None:
         patch("src.core.orchestrator.shutil.copy") as mock_copy,
     ):
         mock_explore.return_value = {"halted": True, "dump_file": Path("dummy")}
-        mock_extract.return_value = ["dummy_atom"]
-        mock_select.return_value = ["dummy_candidate"]
+        from ase.build import bulk
+        mock_extract.return_value = [bulk("Fe", cubic=True)]
+        mock_select.return_value = [bulk("Pt", cubic=True)]
         mock_compute.return_value = ["dummy_result"]
         mock_update.return_value = Path("dummy_dataset")
         mock_train.return_value = Path("dummy_pot")

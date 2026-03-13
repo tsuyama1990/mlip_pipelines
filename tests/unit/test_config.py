@@ -6,6 +6,15 @@ from src.domain_models.config import PipelineConfig
 def test_pipeline_config_from_yaml(tmp_path: Path) -> None:
     yaml_content = """
 project_name: test_project
+material:
+  elements: ["Fe", "Pt"]
+  atomic_numbers: [26, 78]
+  masses: [55.845, 195.084]
+  band_gap: 0.0
+  melting_point: 1500.0
+  bulk_modulus: 180.0
+  crystal: "bcc"
+  a: 2.8665
 lammps:
   temperature: 500.0
 dft:
@@ -32,7 +41,19 @@ otf_loop:
 
 def test_pipeline_config_from_empty_yaml(tmp_path: Path) -> None:
     config_file = tmp_path / "empty_config.yaml"
-    config_file.write_text("")
+    # An empty file will now fail because MaterialConfig has required fields.
+    # We provide a minimal material configuration.
+    config_file.write_text("""
+material:
+  elements: ["Fe", "Pt"]
+  atomic_numbers: [26, 78]
+  masses: [55.845, 195.084]
+  band_gap: 0.0
+  melting_point: 1500.0
+  bulk_modulus: 180.0
+  crystal: "bcc"
+  a: 2.8665
+""")
 
     config = PipelineConfig.from_yaml(config_file)
 

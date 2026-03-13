@@ -30,7 +30,7 @@ class ActiveLearningOrchestrator:
             "melting_point": self.config.material.melting_point,
             "bulk_modulus": self.config.material.bulk_modulus,
         }
-        self.policy_engine = AdaptivePolicy(self.material_dna, self.predicted_properties)
+        self.policy_engine = AdaptivePolicy(self.material_dna, self.predicted_properties, self.config.policy)
 
         self.iteration = 1
 
@@ -50,7 +50,8 @@ class ActiveLearningOrchestrator:
         current_pot = self.get_latest_potential()
 
         # Build directory mapping
-        work_dir = Path(f"active_learning/iter_{self.iteration:03d}")
+        base_dir = self.config.active_learning_dir
+        work_dir = base_dir / f"iter_{self.iteration:03d}"
         work_dir.mkdir(parents=True, exist_ok=True)
 
         strategy = self.policy_engine.generate_strategy()
@@ -76,10 +77,12 @@ class ActiveLearningOrchestrator:
 
         selected_structures = []
         for s0 in high_gamma_atoms:
-            from ase.build import bulk
-
-            # create some mock candidates centered around s0
-            candidates = [bulk("Fe", cubic=True)] * 10
+            # Create candidates properly by adding random permutations (rattle) to the anchor
+            candidates = []
+            for _ in range(10):
+                c = s0.copy()  # type: ignore[no-untyped-call]
+                c.rattle(stdev=0.05, seed=None)
+                candidates.append(c)
 
             selected = self.trainer.select_local_active_set(candidates, anchor=s0, n=5)
             selected_structures.extend(selected)

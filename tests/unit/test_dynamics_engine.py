@@ -2,13 +2,13 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from src.domain_models.config import MDConfig, OTFLoopConfig
+from src.domain_models.config import MaterialConfig, MDConfig, OTFLoopConfig
 from src.domain_models.dtos import ExplorationStrategy
 from src.dynamics.dynamics_engine import DynamicsEngine
 
 
 @patch.dict(sys.modules, {"lammps": MagicMock()})
-def test_dynamics_engine_run_exploration_lammps(tmp_path: Path) -> None:
+def test_dynamics_engine_run_exploration_lammps(mock_material_config: MaterialConfig, tmp_path: Path) -> None:
     # Set up lammps mock
     mock_lammps = sys.modules["lammps"]
     lmp_instance = MagicMock()
@@ -19,9 +19,7 @@ def test_dynamics_engine_run_exploration_lammps(tmp_path: Path) -> None:
 
     md_config = MDConfig(steps=1000)
     otf_config = OTFLoopConfig(uncertainty_threshold=5.0)
-    from src.domain_models.config import MaterialConfig
-
-    material = MaterialConfig()
+    material = mock_material_config
     engine = DynamicsEngine(md_config, otf_config, material)
     strategy = ExplorationStrategy()
 
@@ -40,7 +38,7 @@ def test_dynamics_engine_run_exploration_lammps(tmp_path: Path) -> None:
 
 
 @patch.dict(sys.modules, {"lammps": MagicMock()})
-def test_dynamics_engine_run_exploration_lammps_halt(tmp_path: Path) -> None:
+def test_dynamics_engine_run_exploration_lammps_halt(mock_material_config: MaterialConfig, tmp_path: Path) -> None:
     mock_lammps = sys.modules["lammps"]
     lmp_instance = MagicMock()
     mock_lammps.lammps.return_value = lmp_instance
@@ -56,9 +54,7 @@ def test_dynamics_engine_run_exploration_lammps_halt(tmp_path: Path) -> None:
 
     md_config = MDConfig(steps=1000)
     otf_config = OTFLoopConfig(uncertainty_threshold=5.0)
-    from src.domain_models.config import MaterialConfig
-
-    material = MaterialConfig()
+    material = mock_material_config
     engine = DynamicsEngine(md_config, otf_config, material)
     strategy = ExplorationStrategy()
 
@@ -69,16 +65,14 @@ def test_dynamics_engine_run_exploration_lammps_halt(tmp_path: Path) -> None:
     assert result["dump_file"] == tmp_path / "dump.lammps"
 
 
-def test_dynamics_engine_run_exploration_fallback(tmp_path: Path) -> None:
+def test_dynamics_engine_run_exploration_fallback(mock_material_config: MaterialConfig, tmp_path: Path) -> None:
     # Ensure lammps import fails
     import sys
 
     with patch.dict(sys.modules, {"lammps": None}):
         md_config = MDConfig(steps=1000)
         otf_config = OTFLoopConfig(uncertainty_threshold=5.0)
-        from src.domain_models.config import MaterialConfig
-
-        material = MaterialConfig()
+        material = mock_material_config
         engine = DynamicsEngine(md_config, otf_config, material)
         strategy = ExplorationStrategy()
 
@@ -92,12 +86,10 @@ def test_dynamics_engine_run_exploration_fallback(tmp_path: Path) -> None:
         assert (tmp_path / "dump.lammps").parent.exists()
 
 
-def test_dynamics_engine_extract_high_gamma_structures(tmp_path: Path) -> None:
+def test_dynamics_engine_extract_high_gamma_structures(mock_material_config: MaterialConfig, tmp_path: Path) -> None:
     md_config = MDConfig()
     otf_config = OTFLoopConfig()
-    from src.domain_models.config import MaterialConfig
-
-    material = MaterialConfig()
+    material = mock_material_config
     engine = DynamicsEngine(md_config, otf_config, material)
 
     dump_file = tmp_path / "dump.lammps"

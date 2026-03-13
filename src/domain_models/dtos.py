@@ -1,4 +1,3 @@
-from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -24,6 +23,4 @@ class ExplorationStrategy(BaseModel):
         ge=0.0,
         description="Range of strain to apply for EOS/elasticity calculation (+/-).",
     )
-    policy_type: Literal[
-        "High-MC", "Defect-Driven", "Strain-Heavy", "Cautious-Exploration", "Standard-MD"
-    ] = Field(default="Standard-MD")
+    policy_type: str = Field(default="Standard-MD")

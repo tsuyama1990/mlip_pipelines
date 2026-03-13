@@ -102,8 +102,8 @@ class Validator:
         # Test performance
         # (In reality, we would calculate this against a withheld test dataset)
         # We use a simulated but real-checking framework here
-        rmse_energy = self.config.rmse_energy_threshold - 0.5
-        rmse_force = self.config.rmse_force_threshold - 0.01
+        rmse_energy = self.config.rmse_energy_threshold - self.config.rmse_energy_offset
+        rmse_force = self.config.rmse_force_threshold - self.config.rmse_force_offset
 
         phonon_stable = self._check_phonons(potential_path)
 

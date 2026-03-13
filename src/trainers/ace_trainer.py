@@ -114,15 +114,19 @@ class ACETrainer:
                 "pace_train not found in PATH. Failing gracefully by not creating the file."
             )
 
-        cmd = [
-            "pace_train",
-            "--dataset",
-            str(dataset),
-            "--max_num_epochs",
-            str(self.config.max_epochs),
-            "--output_dir",
-            str(output_dir),
-        ]
+        cmd = ["pace_train"]
+        if self.config.pace_train_args:
+            cmd.extend(self.config.pace_train_args)
+
+        # Override specific necessary ones to maintain flow
+        # In a fully config-driven setup, user provides all args. But we must ensure dataset/output.
+        # Check if already in config, else append
+        if "--dataset" not in cmd:
+            cmd.extend(["--dataset", str(dataset)])
+        if "--output_dir" not in cmd:
+            cmd.extend(["--output_dir", str(output_dir)])
+        if "--max_num_epochs" not in cmd:
+            cmd.extend(["--max_num_epochs", str(self.config.max_epochs)])
 
         if initial_potential and initial_potential.exists():
             cmd.extend(["--initial_potential", str(initial_potential)])

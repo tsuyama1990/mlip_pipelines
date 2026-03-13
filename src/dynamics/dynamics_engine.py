@@ -53,33 +53,43 @@ class DynamicsEngine:
             f"create_box {num_types} box",
         ]
 
-        # Use an external tool like pymatgen or hardcode basic masses just to satisfy LAMMPS if needed,
-        # but the prompt requires no hardcoded masses.
-        # We can pass atomic masses from ASE
-        from ase.data import atomic_masses
-        from ase.data import atomic_numbers as ase_atomic_numbers
-
-        for i, el in enumerate(elements):
+        # Get mass dynamically from MaterialConfig
+        for i, _el in enumerate(elements):
             cmds.append(f"create_atoms {i + 1} box")
-            # Get mass dynamically
-            mass = atomic_masses[ase_atomic_numbers[el]]
-            cmds.append(f"mass {i + 1} {mass}")
+            if i < len(self.material.masses):
+                mass = self.material.masses[i]
+                cmds.append(f"mass {i + 1} {mass}")
 
-        cmds.extend(
-            [
-                # Hybrid setup
-                "pair_style hybrid/overlay pace zbl 1.0 2.0",
-                f"pair_coeff * * pace {potential_path} {elements_str}",
-                f"pair_coeff * * zbl {atomic_numbers_str}",
-                "compute pace_gamma all pace gamma_mode=1",
-                "variable max_gamma equal max(c_pace_gamma)",
-                f"fix watchdog all halt 10 v_max_gamma > {self.otf_config.uncertainty_threshold} error hard",
-                "velocity all create 300.0 87287 loop geom",
-                f"dump 1 all custom 100 {dump_path} id type x y z",
-                f"fix 1 all nvt temp {strategy.t_schedule[0]} {strategy.t_schedule[1]} 0.1",
-                f"run {self.md_config.steps}",
-            ]
-        )
+        # Inject configurable commands from md_config if present,
+        # else default hybrid setup
+        if self.md_config.lammps_commands:
+            for cmd in self.md_config.lammps_commands:
+                # Poor man's templating to replace critical paths
+                formatted_cmd = cmd.replace("{potential_path}", str(potential_path)) \
+                                   .replace("{dump_path}", str(dump_path)) \
+                                   .replace("{elements_str}", elements_str) \
+                                   .replace("{atomic_numbers_str}", atomic_numbers_str) \
+                                   .replace("{t_start}", str(strategy.t_schedule[0])) \
+                                   .replace("{t_end}", str(strategy.t_schedule[1])) \
+                                   .replace("{steps}", str(self.md_config.steps)) \
+                                   .replace("{threshold}", str(self.otf_config.uncertainty_threshold))
+                cmds.append(formatted_cmd)
+        else:
+            cmds.extend(
+                [
+                    # Hybrid setup fallback
+                    "pair_style hybrid/overlay pace zbl 1.0 2.0",
+                    f"pair_coeff * * pace {potential_path} {elements_str}",
+                    f"pair_coeff * * zbl {atomic_numbers_str}",
+                    "compute pace_gamma all pace gamma_mode=1",
+                    "variable max_gamma equal max(c_pace_gamma)",
+                    f"fix watchdog all halt 10 v_max_gamma > {self.otf_config.uncertainty_threshold} error hard",
+                    "velocity all create 300.0 87287 loop geom",
+                    f"dump 1 all custom 100 {dump_path} id type x y z",
+                    f"fix 1 all nvt temp {strategy.t_schedule[0]} {strategy.t_schedule[1]} 0.1",
+                    f"run {self.md_config.steps}",
+                ]
+            )
 
         lmp = lammps(cmdargs=["-log", "none"])
 

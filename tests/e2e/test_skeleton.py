@@ -7,9 +7,9 @@ from src.domain_models.config import PipelineConfig
 
 
 @patch.dict(sys.modules, {"lammps": MagicMock()})
-def test_pipeline_skeleton(tmp_path: Path) -> None:
+def test_pipeline_skeleton(mock_pipeline_config: PipelineConfig, tmp_path: Path) -> None:
     """Verifies that the orchestrator goes through the halt and heal cycle."""
-    config = PipelineConfig()
+    config = mock_pipeline_config
 
     orchestrator = ActiveLearningOrchestrator(config)
 

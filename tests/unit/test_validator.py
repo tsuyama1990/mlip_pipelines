@@ -1,13 +1,13 @@
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from src.domain_models.config import MaterialConfig, ValidationConfig
 from src.validators.validator import Validator
 
 
-def test_validator_pass() -> None:
-    config = ValidationConfig()
-    material = MaterialConfig()
+def test_validator_pass(mock_material_config: MaterialConfig) -> None:
+    config = ValidationConfig(rmse_energy_offset=0.5, rmse_force_offset=0.01)
+    material = mock_material_config
     validator = Validator(config, material)
 
     with patch.object(validator, "_check_phonons", return_value=True):
@@ -20,9 +20,9 @@ def test_validator_pass() -> None:
         assert result["metrics"]["rmse_force"] == 0.04
 
 
-def test_validator_fail_phonons() -> None:
-    config = ValidationConfig()
-    material = MaterialConfig()
+def test_validator_fail_phonons(mock_material_config: MaterialConfig) -> None:
+    config = ValidationConfig(rmse_energy_offset=0.5, rmse_force_offset=0.01)
+    material = mock_material_config
     validator = Validator(config, material)
 
     with patch.object(validator, "_check_phonons", return_value=False):
@@ -36,18 +36,12 @@ def test_validator_fail_phonons() -> None:
         assert result["metrics"]["phonon_stable"] is False
 
 
-def test_validator_fail_rmse() -> None:
-    config = ValidationConfig()
-    material = MaterialConfig()
+def test_validator_fail_rmse(mock_material_config: MaterialConfig) -> None:
+    # Set the offset such that threshold - offset > threshold
+    # Using negative offset achieves this to cause a fail
+    config = ValidationConfig(rmse_energy_offset=-1.0, rmse_force_offset=-1.0)
+    material = mock_material_config
     validator = Validator(config, material)
-
-    mock_config = MagicMock()
-    from unittest.mock import PropertyMock
-
-    type(mock_config).rmse_energy_threshold = PropertyMock(side_effect=[2.0, 1.0])
-    type(mock_config).rmse_force_threshold = PropertyMock(return_value=0.05)
-
-    validator.config = mock_config
 
     with patch.object(validator, "_check_phonons", return_value=True):
         result = validator.validate(Path("dummy.yace"))
@@ -57,9 +51,9 @@ def test_validator_fail_rmse() -> None:
 
 
 @patch.dict("sys.modules", {"pyacemaker.calculator": None})
-def test_validator_check_phonons_no_pacemaker() -> None:
+def test_validator_check_phonons_no_pacemaker(mock_material_config: MaterialConfig) -> None:
     config = ValidationConfig()
-    material = MaterialConfig()
+    material = mock_material_config
     validator = Validator(config, material)
 
     result = validator._check_phonons(Path("dummy.yace"))
