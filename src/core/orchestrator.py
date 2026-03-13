@@ -14,6 +14,7 @@ from src.generators.adaptive_policy import AdaptiveExplorationPolicyEngine
 from src.generators.structure_generator import StructureGenerator
 from src.oracles.dft_oracle import DFTManager
 from src.trainers.ace_trainer import PacemakerWrapper
+from src.validators.reporter import Reporter
 from src.validators.validator import Validator
 
 
@@ -27,6 +28,7 @@ class Orchestrator:
         self.oracle = DFTManager(config.oracle)
         self.trainer = PacemakerWrapper(config.trainer)
         self.validator = Validator(config.validator)
+        self.reporter = Reporter()
         self.policy_engine = AdaptiveExplorationPolicyEngine(config.policy)
         self.structure_generator = StructureGenerator(config.structure_generator)
         self.iteration = 0
@@ -140,6 +142,11 @@ class Orchestrator:
 
     def _validate_and_deploy(self, new_pot_path: Path, tmp_work_dir: Path, work_dir: Path) -> str:
         validation_result = self.validator.validate(new_pot_path)
+
+        # decoupled reporter usage
+        report_path = new_pot_path.parent / "validation_report.html"
+        self.reporter.generate_html_report(validation_result, report_path)
+
         if not validation_result.passed:
             logging.error(f"Validation failed: {validation_result.reason}")
             return "VALIDATION_FAILED"
@@ -203,6 +210,7 @@ class Orchestrator:
 
         cycle_successful = False
         tmp_work_dir = Path(tempfile.mkdtemp(dir=str(base_dir)))
+        tmp_work_dir.chmod(0o700)
 
         try:
             halt_info = self._run_exploration(current_pot, tmp_work_dir)

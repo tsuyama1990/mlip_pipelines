@@ -27,26 +27,27 @@ class MDInterface:
             msg = "Dump file name contains invalid characters"
             raise ValueError(msg)
 
-        tmp_in_file.write(f"""
-units metal
-boundary p p p
-atom_style atomic
-
-lattice fcc 3.5
-region box block 0 2 0 2 0 2
-create_box 2 box
-create_atoms 1 box
-
-# Cold start: using only ZBL
-pair_style zbl 1.0 2.0
-pair_coeff * * {self._get_zbl_mapping()}
-
-# Force dump to extract structures for initial training
-dump 1 all custom 10 {dump_name} id type x y z
-run {min(self.config.md_steps, 1000)}  # Short run for cold start
-write_restart {work_dir.resolve()}/restart.lammps
-write_data {work_dir.resolve()}/data.lammps
-""")
+        content = (
+            "units metal\n"
+            "boundary p p p\n"
+            "atom_style atomic\n"
+            "\n"
+            "lattice fcc 3.5\n"
+            "region box block 0 2 0 2 0 2\n"
+            "create_box 2 box\n"
+            "create_atoms 1 box\n"
+            "\n"
+            "# Cold start: using only ZBL\n"
+            "pair_style zbl 1.0 2.0\n"
+            f"pair_coeff * * {self._get_zbl_mapping()}\n"
+            "\n"
+            "# Force dump to extract structures for initial training\n"
+            f"dump 1 all custom 10 {dump_name} id type x y z\n"
+            f"run {min(self.config.md_steps, 1000)}\n"
+            f"write_restart {work_dir.resolve()!s}/restart.lammps\n"
+            f"write_data {work_dir.resolve()!s}/data.lammps\n"
+        )
+        tmp_in_file.write(content)
 
     def _write_potential_input(
         self, tmp_in_file: Any, potential: Path, dump_name: str, work_dir: Path
@@ -66,36 +67,53 @@ write_data {work_dir.resolve()}/data.lammps
             msg = "Dump file name contains invalid characters"
             raise ValueError(msg)
 
-        tmp_in_file.write(f"""
-units metal
-boundary p p p
-atom_style atomic
+        template = self.config.lammps_script_template
+        if template is None:
+            template = (
+                "units metal\n"
+                "boundary p p p\n"
+                "atom_style atomic\n"
+                "\n"
+                "lattice fcc 3.5\n"
+                "region box block 0 2 0 2 0 2\n"
+                "create_box 2 box\n"
+                "create_atoms 1 box\n"
+                "\n"
+                "pair_style hybrid/overlay pace zbl 1.0 2.0\n"
+                "pair_coeff * * pace {pot_path}\n"
+                "pair_coeff * * zbl {zbl_mapping}\n"
+                "\n"
+                "compute pace_gamma all pace gamma_mode=1\n"
+                "variable max_gamma equal max(c_pace_gamma)\n"
+                "fix watchdog all halt 10 v_max_gamma > {threshold} error soft\n"
+                "\n"
+                "dump 1 all custom 10 {dump_name} id type x y z c_pace_gamma\n"
+                "run {md_steps}\n"
+                "write_restart {work_dir}/restart.lammps\n"
+                "write_data {work_dir}/data.lammps\n"
+            )
 
-lattice fcc 3.5
-region box block 0 2 0 2 0 2
-create_box 2 box
-create_atoms 1 box
+        script = template.format(
+            pot_path=pot_path_str,
+            zbl_mapping=self._get_zbl_mapping(),
+            threshold=self.config.uncertainty_threshold,
+            dump_name=dump_name,
+            md_steps=self.config.md_steps,
+            work_dir=str(work_dir.resolve()),
+        )
+        tmp_in_file.write(script)
 
-pair_style hybrid/overlay pace zbl 1.0 2.0
-pair_coeff * * pace {pot_path_str}
-pair_coeff * * zbl {self._get_zbl_mapping()}
-
-compute pace_gamma all pace gamma_mode=1
-variable max_gamma equal max(c_pace_gamma)
-fix watchdog all halt 10 v_max_gamma > {self.config.uncertainty_threshold} error soft
-
-dump 1 all custom 10 {dump_name} id type x y z c_pace_gamma
-run {self.config.md_steps}
-write_restart {work_dir.resolve()}/restart.lammps
-write_data {work_dir.resolve()}/data.lammps
-""")
-
-    def _execute_lammps(self, work_dir: Path, in_file_name: str) -> None:
+    def _execute_lammps(self, work_dir: Path, in_file_name: str) -> None:  # noqa: C901
+        import re
         import shutil
+        import sys
+
+        # Sanitize in_file_name against injection
+        if not re.match(r"^[-a-zA-Z0-9_.]+$", in_file_name):
+            msg = "Invalid input file name"
+            raise ValueError(msg)
 
         lmp_binary = self.config.lmp_binary
-        import re
-        import sys
 
         trusted_dirs = [
             "/usr/bin",
@@ -206,7 +224,7 @@ write_data {work_dir.resolve()}/data.lammps
 
         return {"halted": is_halted, "dump_file": dump_file}
 
-    def resume(self, potential: Path, restart_dir: Path, work_dir: Path) -> dict[str, Any]:  # noqa: C901, PLR0915
+    def resume(self, potential: Path, restart_dir: Path, work_dir: Path) -> dict[str, Any]:  # noqa: C901, PLR0912, PLR0915
         """Resumes the MD simulation with the newly updated potential."""
         logging.info(f"Resuming dynamics with new potential: {potential}")
         work_dir.mkdir(parents=True, exist_ok=True)
@@ -253,6 +271,11 @@ write_data {work_dir.resolve()}/data.lammps
         ]
         if hasattr(self.config, "project_root"):
             trusted_dirs.append(str(Path(self.config.project_root) / "bin"))
+
+        # Sanitize in_file.name against injection
+        if not re.match(r"^[-a-zA-Z0-9_.]+$", in_file.name):
+            msg = "Invalid input file name"
+            raise ValueError(msg)
 
         lmp_binary = self.config.lmp_binary
 

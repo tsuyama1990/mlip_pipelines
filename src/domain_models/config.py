@@ -24,6 +24,9 @@ class DynamicsConfig(BaseModel):
     temperature: float = Field(default=300.0, ge=0.0, description="Temperature for MD exploration")
     pressure: float = Field(default=0.0, description="Pressure for NPT MD exploration")
     lmp_binary: str = Field(default="lmp", description="Binary name or path for LAMMPS")
+    lammps_script_template: str | None = Field(
+        default=None, description="Optional custom LAMMPS template using python str.format syntax"
+    )
 
 
 class OracleConfig(BaseModel):
@@ -162,10 +165,26 @@ class ProjectConfig(BaseSettings):
     @field_validator("project_root")
     @classmethod
     def validate_project_root(cls, v: Path) -> Path:
-        if not v.is_absolute():
+        import os
+
+        # Canonicalize path and resolve symlinks
+        resolved_path = v.resolve(strict=False)
+
+        if not resolved_path.is_absolute():
             msg = f"Project root directory '{v}' must be an absolute path."
             raise ValueError(msg)
-        if not v.exists() or not v.is_dir():
+
+        if ".." in str(resolved_path):
+            msg = "Project root directory must not contain directory traversal characters."
+            raise ValueError(msg)
+
+        if not resolved_path.exists() or not resolved_path.is_dir():
             msg = f"Project root directory '{v}' does not exist or is not a directory."
             raise ValueError(msg)
-        return v
+
+        # Check permissions
+        if not os.access(resolved_path, os.R_OK | os.W_OK | os.X_OK):
+            msg = f"Project root directory '{v}' must have read, write, and execute permissions."
+            raise ValueError(msg)
+
+        return resolved_path

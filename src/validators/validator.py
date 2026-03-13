@@ -116,7 +116,7 @@ class Validator:
 
         reason = None if passed else "Thresholds exceeded or instability detected."
 
-        report = ValidationReport(
+        return ValidationReport(
             passed=passed,
             reason=reason,
             energy_rmse=energy_rmse,
@@ -125,11 +125,3 @@ class Validator:
             phonon_stable=phonon_stable,
             mechanically_stable=mechanically_stable,
         )
-
-        from src.validators.reporter import generate_html_report
-
-        # Save validation report alongside the potential
-        report_path = potential_path.parent / "validation_report.html"
-        generate_html_report(report, report_path)
-
-        return report

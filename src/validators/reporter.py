@@ -3,12 +3,15 @@ from pathlib import Path
 from src.domain_models.dtos import ValidationReport
 
 
-def generate_html_report(report: ValidationReport, save_path: Path) -> None:
-    """Generates an HTML validation report with metrics."""
-    # Build simple HTML string
+class Reporter:
+    """Handles report generation and IO operations."""
 
-    html_content = f"""
-    <!DOCTYPE html>
+    def generate_html_report(self, report: ValidationReport, save_path: Path) -> None:
+        """Generates an HTML validation report with metrics."""
+        # Build simple HTML string
+
+        html_content = f"""
+        <!DOCTYPE html>
     <html lang="en">
     <head>
         <meta charset="UTF-8">
@@ -55,11 +58,11 @@ def generate_html_report(report: ValidationReport, save_path: Path) -> None:
             </tr>
         </table>
 
-        <h2>Visualizations</h2>
-        <p>Parity Plots and Phonon bands will be linked here when generated.</p>
-    </body>
-    </html>
-    """
+            <h2>Visualizations</h2>
+            <p>Parity Plots and Phonon bands will be linked here when generated.</p>
+        </body>
+        </html>
+        """
 
-    with Path.open(save_path, "w") as f:
-        f.write(html_content)
+        with Path.open(save_path, "w") as f:
+            f.write(html_content)

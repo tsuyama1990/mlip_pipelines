@@ -17,8 +17,12 @@ def check_phonopy_stability(atoms: "Atoms", calc: "Calculator") -> bool:
         msg = f"Expected ase.calculators.calculator.Calculator object, got {type(calc)}"
         raise TypeError(msg)
 
-    import phonopy
-    from phonopy.structure.atoms import PhonopyAtoms
+    try:
+        import phonopy
+        from phonopy.structure.atoms import PhonopyAtoms
+    except ImportError as e:
+        msg = "The 'phonopy' module is required for stability testing but is not installed."
+        raise RuntimeError(msg) from e
 
     # Real phonopy initialization
     unitcell = PhonopyAtoms(

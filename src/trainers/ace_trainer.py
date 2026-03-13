@@ -43,6 +43,10 @@ class PacemakerWrapper:
 
         from ase.io import read
 
+        if not isinstance(n, int) or n < 1:
+            msg = "n must be a positive integer"
+            raise ValueError(msg)
+
         with tempfile.TemporaryDirectory() as td:
             td_path = Path(td)
 
@@ -119,25 +123,23 @@ class PacemakerWrapper:
 
     def train(self, dataset: Path, initial_potential: Path | None, output_dir: Path) -> Path:  # noqa: PLR0912
         """Trains or fine-tunes the ACE model."""
-        if not dataset.exists():
-            msg = f"Dataset not found: {dataset}"
+        resolved_dataset = dataset.resolve(strict=True)
+        if not resolved_dataset.exists():
+            msg = f"Dataset not found: {resolved_dataset}"
             raise FileNotFoundError(msg)
 
         # Ensure output_dir is an absolute path and resolved to prevent directory traversal
-        resolved_output_dir = Path(output_dir).resolve()
+        resolved_output_dir = Path(output_dir).resolve(strict=False)
 
         # Validation for directory traversal out of expected bounds
         import os
+        import tempfile
 
-        # Check that we're inside a trusted directory.
-        # Since tempfile.mkdtemp() paths vary per OS (like /tmp or /var/folders),
-        # checking startswith(cwd) breaks valid temp directories.
-        # Instead, verify the directory doesn't have traversal artifacts after resolve.
-        # Since .resolve() removes `..`, we ensure the original path didn't try to escape it via traversal.
-
-        if ".." in str(output_dir):
-            msg = "output_dir contains directory traversal components"
-            raise ValueError(msg)
+        if hasattr(self.config, "project_root"):
+            proj_root = Path(self.config.project_root).resolve(strict=True)
+            if not resolved_output_dir.is_relative_to(proj_root) and not str(resolved_output_dir).startswith(tempfile.gettempdir()):
+                msg = f"output_dir is outside the trusted base directory: {resolved_output_dir}"
+                raise ValueError(msg)
 
         resolved_output_dir.mkdir(parents=True, exist_ok=True)
         if not os.access(resolved_output_dir, os.W_OK):

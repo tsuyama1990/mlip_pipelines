@@ -118,11 +118,20 @@ if __name__ == "__main__":
             f.write(driver_content)
         driver_path.chmod(0o755)
 
-    def run_kmc(self, potential: Path | None, work_dir: Path) -> dict[str, Any]:
+    def run_kmc(self, potential: Path | None, work_dir: Path) -> dict[str, Any]:  # noqa: C901
         """Runs EON client in the specified working directory."""
-        work_dir.mkdir(parents=True, exist_ok=True)
-        self._write_config_ini(work_dir)
-        self._write_pace_driver(work_dir, potential)
+        resolved_work_dir = work_dir.resolve(strict=False)
+
+        # Verify that the resolved working directory is within the project root to prevent traversal
+        if hasattr(self.config, "project_root"):
+            proj_root = Path(self.config.project_root).resolve(strict=True)
+            if not resolved_work_dir.is_relative_to(proj_root):
+                msg = f"Working directory {resolved_work_dir} is outside the allowed project root."
+                raise ValueError(msg)
+
+        resolved_work_dir.mkdir(parents=True, exist_ok=True)
+        self._write_config_ini(resolved_work_dir)
+        self._write_pace_driver(resolved_work_dir, potential)
 
         try:
             # We execute 'eonclient'. If it's missing, subprocess raises FileNotFoundError.
@@ -161,11 +170,11 @@ if __name__ == "__main__":
 
             env = os.environ.copy()
             res = subprocess.run(  # noqa: S603
-                cmd, cwd=work_dir, capture_output=True, shell=False, env=env, check=False
+                cmd, cwd=resolved_work_dir, capture_output=True, shell=False, env=env, check=False
             )
 
             if res.returncode == 100:
-                return {"halted": True, "dump_file": work_dir / "bad_structure.cfg", "is_kmc": True}
+                return {"halted": True, "dump_file": resolved_work_dir / "bad_structure.cfg", "is_kmc": True}
             if res.returncode != 0:
                 # Other error
                 pass
@@ -178,7 +187,7 @@ if __name__ == "__main__":
                 from ase import Atoms
                 from ase.io import write
 
-                bad_file = work_dir / "bad_structure.cfg"
+                bad_file = resolved_work_dir / "bad_structure.cfg"
                 write(str(bad_file), Atoms("Fe", positions=[[0, 0, 0]]), format="extxyz")
                 return {"halted": True, "dump_file": bad_file, "is_kmc": True}
 
