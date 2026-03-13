@@ -22,12 +22,24 @@ class ExplorationStrategy(BaseModel):
     policy_name: str = Field(..., description="Name of the decided policy")
 
 
+from typing import Self
+
+from pydantic import model_validator
+
+
 class HaltInfo(BaseModel):
     model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
     halted: bool = Field(..., description="Whether the simulation halted due to uncertainty")
     dump_file: Path | None = Field(default=None, description="Path to the LAMMPS dump file at halt")
     high_gamma_atoms: list[Atoms] | None = Field(default=None, description="Extracted high gamma environments")
     max_gamma: float | None = Field(default=None, description="Max gamma recorded at halt")
+
+    @model_validator(mode="after")
+    def validate_halted_state(self) -> Self:
+        if self.halted and self.high_gamma_atoms is None:
+            msg = "high_gamma_atoms must not be None when halted is True"
+            raise ValueError(msg)
+        return self
 
 
 class ValidationReport(BaseModel):

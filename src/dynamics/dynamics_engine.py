@@ -29,6 +29,10 @@ class MDInterface:
             dump_file.write_text("dummy")
             return {"halted": True, "dump_file": dump_file}
 
+        if not potential.exists():
+            msg = f"Potential file not found: {potential}"
+            raise FileNotFoundError(msg)
+
         # Example of how to structure LAMMPS Python API if we wanted to:
         # We'll use subprocess to run LAMMPS because python module might not be fully linked.
         # But we don't have a real structural input file, so for pure code structural logic:

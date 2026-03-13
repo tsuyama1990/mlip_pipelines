@@ -34,8 +34,12 @@ class Orchestrator:
             return None
 
         # Glob generation_XXX.yace
+        files = list(pot_dir.glob("generation_*.yace"))
+        if not files:
+            return None
+
         try:
-            return max(pot_dir.glob("generation_*.yace"), default=None)
+            return max(files)
         except ValueError:
             return None
 
@@ -44,6 +48,9 @@ class Orchestrator:
         logging.info(f"Starting iteration {self.iteration}")
 
         current_pot = self.get_latest_potential()
+        if current_pot is None:
+            logging.error("No valid generation potential found to start active learning loop.")
+            return "ERROR"
 
         # Build directory mapping
         base_dir = self.config.project_root / "active_learning"

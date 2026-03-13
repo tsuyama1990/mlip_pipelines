@@ -9,6 +9,10 @@ class AdaptiveExplorationPolicyEngine:
         self.config = config
 
     def decide_policy(self, features: MaterialFeatures) -> ExplorationStrategy:
+        if features.melting_point <= 0:
+            msg = "melting_point must be positive"
+            raise ValueError(msg)
+
         # Default strategy
         strategy = ExplorationStrategy(
             policy_name="Standard",

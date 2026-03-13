@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -30,6 +30,14 @@ class OracleConfig(BaseModel):
     pseudo_dir: str = Field(
         default=str(Path.home() / "pseudos"), description="Path to pseudopotentials directory (can be overridden by MLIP_PSEUDO_DIR env var)"
     )
+
+    @field_validator("kspacing")
+    @classmethod
+    def validate_kspacing(cls, v: float) -> float:
+        if v < 0.01 or v > 0.15:
+            msg = "kspacing must be within a reasonable range for typical DFT calculations (0.01 to 0.15)"
+            raise ValueError(msg)
+        return v
     max_retries: int = Field(default=3, ge=0, description="Max retries for SCF convergence failure")
     buffer_size: float = Field(default=4.0, ge=0.0, description="Buffer size in Angstroms for periodic embedding")
     transition_metals: list[str] = Field(
@@ -102,3 +110,11 @@ class ProjectConfig(BaseSettings):
     validator: ValidatorConfig
     structure_generator: StructureGeneratorConfig = Field(default_factory=StructureGeneratorConfig)
     policy: PolicyConfig = Field(default_factory=PolicyConfig)
+
+    @field_validator("project_root")
+    @classmethod
+    def validate_project_root(cls, v: Path) -> Path:
+        if not v.exists() or not v.is_dir():
+            msg = f"Project root directory '{v}' does not exist or is not a directory."
+            raise ValueError(msg)
+        return v

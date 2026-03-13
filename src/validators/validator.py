@@ -12,6 +12,9 @@ class Validator:
 
     def validate(self, potential_path: Path) -> ValidationReport:
         """Executes full validation suite on the newly trained potential."""
+        if not potential_path.exists():
+            msg = f"Potential file not found: {potential_path}"
+            raise FileNotFoundError(msg)
 
         # In a real environment, we'd load the test set dataset and compute RMSEs
         # using the newly trained PACE calculator.

@@ -25,6 +25,9 @@ class DFTManager:
         max_pos = pos.max(axis=0)
 
         buffer = self.config.buffer_size
+        if buffer < 0:
+            msg = "buffer_size must be positive"
+            raise ValueError(msg)
         lengths = max_pos - min_pos + 2 * buffer
 
         # Shift positions so they center within the box

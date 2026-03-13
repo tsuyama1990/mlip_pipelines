@@ -72,6 +72,10 @@ class PacemakerWrapper:
 
     def train(self, dataset: Path, initial_potential: Path | None, output_dir: Path) -> Path:
         """Trains or fine-tunes the ACE model."""
+        if not dataset.exists():
+            msg = f"Dataset not found: {dataset}"
+            raise FileNotFoundError(msg)
+
         output_dir.mkdir(parents=True, exist_ok=True)
         out_pot = output_dir / "output_potential.yace"
 
