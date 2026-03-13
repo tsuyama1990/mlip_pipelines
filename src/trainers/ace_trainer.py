@@ -1,3 +1,4 @@
+import re
 import subprocess
 from pathlib import Path
 
@@ -6,6 +7,8 @@ from ase.io import write
 
 from src.domain_models.config import TrainerConfig
 
+BINARY_NAME_PATTERN = re.compile(r"^[-a-zA-Z0-9_.]+$")
+PARAM_PATTERN = re.compile(r"^[-a-zA-Z0-9_.]+$")
 
 class PacemakerWrapper:
     """Manages Pacemaker active set selection and training."""
@@ -48,12 +51,20 @@ class PacemakerWrapper:
             out_file = td_path / "selected.extxyz"
             write(str(in_file), all_atoms, format="extxyz")
 
+            import shutil
+
+            pace_activeset_bin = shutil.which(self.config.pace_activeset_binary) or self.config.pace_activeset_binary
+
+            if not BINARY_NAME_PATTERN.match(Path(pace_activeset_bin).name):
+                msg = f"Invalid binary path: {pace_activeset_bin}"
+                raise ValueError(msg)
+
             cmd = [
-                "pace_activeset",
+                pace_activeset_bin,
                 "--input",
-                str(in_file),
+                str(in_file.resolve()),
                 "--output",
-                str(out_file),
+                str(out_file.resolve()),
                 "--n",
                 str(n),
             ]
@@ -88,17 +99,22 @@ class PacemakerWrapper:
         resolved_output_dir.mkdir(parents=True, exist_ok=True)
         out_pot = resolved_output_dir / "output_potential.yace"
 
-        import re
-
-        if not re.match(r"^[a-zA-Z0-9_.-]+$", self.config.baseline_potential):
+        if not PARAM_PATTERN.match(self.config.baseline_potential):
             msg = "Invalid baseline potential format"
             raise ValueError(msg)
-        if not re.match(r"^[a-zA-Z0-9_.-]+$", self.config.regularization):
+        if not PARAM_PATTERN.match(self.config.regularization):
             msg = "Invalid regularization format"
             raise ValueError(msg)
 
+        import shutil
+
+        pace_train_bin = shutil.which(self.config.pace_train_binary) or self.config.pace_train_binary
+        if not BINARY_NAME_PATTERN.match(Path(pace_train_bin).name):
+            msg = f"Invalid binary path: {pace_train_bin}"
+            raise ValueError(msg)
+
         cmd = [
-            "pace_train",
+            pace_train_bin,
             "--dataset",
             str(dataset.resolve()),
             "--max_num_epochs",

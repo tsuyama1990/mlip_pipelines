@@ -52,7 +52,7 @@ class Validator:
 
         return not (freqs is not None and (freqs < -0.05).any())
 
-    def validate(self, potential_path: Path) -> ValidationReport:  # noqa: PLR0915
+    def validate(self, potential_path: Path) -> ValidationReport:  # noqa: PLR0915, C901
         """Executes full validation suite on the newly trained potential."""
         resolved_path = potential_path.resolve()
 
@@ -76,6 +76,10 @@ class Validator:
         mechanically_stable = False
 
         # Check format basic readability
+        if not resolved_path.exists():
+            msg = f"Potential file not found: {resolved_path}"
+            raise FileNotFoundError(msg)
+
         with Path.open(resolved_path) as f:
             content = f.read(100)
 

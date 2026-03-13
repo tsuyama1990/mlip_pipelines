@@ -39,23 +39,20 @@ class Orchestrator:
             return None
 
         try:
-            latest_pot = max(files).resolve()
+            latest_pot = max(files).resolve(strict=True)
 
             # Directory traversal vulnerability fix
             if not latest_pot.is_relative_to(pot_dir.resolve()):
                 msg = "Invalid potential path"
                 raise ValueError(msg)
 
-            # Validate format strictly to ensure file integrity
-            # Use fcntl to lock the file preventing race conditions on access
-            import fcntl
+            if latest_pot.is_symlink():
+                msg = "Potential path cannot be a symlink"
+                raise ValueError(msg)
 
+            # Validate format strictly to ensure file integrity
             with Path.open(latest_pot) as f:
-                fcntl.flock(f, fcntl.LOCK_SH)
-                try:
-                    content = f.read(100)
-                finally:
-                    fcntl.flock(f, fcntl.LOCK_UN)
+                content = f.read(100)
         except (ValueError, OSError):
             logging.exception("Failed to load or validate latest potential")
             return None

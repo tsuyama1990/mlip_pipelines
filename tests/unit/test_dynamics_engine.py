@@ -15,22 +15,6 @@ def test_md_interface_initialization() -> None:
     assert engine.config.uncertainty_threshold == 6.0
 
 
-def test_md_run_exploration_mock(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    config = DynamicsConfig()
-    sys_config = SystemConfig(elements=["Fe", "Pt"])
-    engine = MDInterface(config, sys_config)
-
-    # Mock LAMMPS run
-    def mock_run(*args: Any, **kwargs: Any) -> dict[str, Any]:
-        return {"halted": True, "dump_file": tmp_path / "dump.lammps"}
-
-    monkeypatch.setattr(engine, "run_exploration", mock_run)
-
-    result = engine.run_exploration(potential=Path("dummy.yace"), work_dir=tmp_path)
-    assert result["halted"] is True
-    assert result["dump_file"] == tmp_path / "dump.lammps"
-
-
 def test_run_exploration_watchdog(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     config = DynamicsConfig()
     sys_config = SystemConfig(elements=["Fe", "Pt"])
