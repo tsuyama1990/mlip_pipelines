@@ -93,17 +93,23 @@ class MDInterface:
         )
         tmp_in_file.write(script)
 
-    def _execute_lammps(self, work_dir: Path, in_file_name: str) -> None:  # noqa: C901
+    def _execute_lammps(self, work_dir: Path, in_file_name: str) -> None:  # noqa: C901, PLR0912, PLR0915
         import os
         import re
         import shutil
         import sys
 
-        # Sanitize in_file_name against injection using a strict alphanumeric + underscore + period pattern
-        if not re.match(r"^[a-zA-Z0-9_]+\.lammps$", in_file_name) and not re.match(
-            r"^[a-zA-Z0-9_]+$", in_file_name
-        ):
-            msg = f"Invalid input file name: {in_file_name}"
+        # Use os.path.realpath to construct and validate the actual path instead of pure regex
+        resolved_in_file = Path(os.path.realpath(work_dir / in_file_name)).resolve(strict=False)
+        resolved_work_dir = work_dir.resolve(strict=True)
+
+        if not resolved_in_file.is_relative_to(resolved_work_dir):
+            msg = f"Invalid input file name causing path traversal: {in_file_name}"
+            raise ValueError(msg)
+
+        # Optional basic sanity regex to prevent weird spaces/characters that mess with shell strings
+        if not re.match(r"^[a-zA-Z0-9_.-]+$", resolved_in_file.name):
+            msg = f"Invalid characters in input file name: {resolved_in_file.name}"
             raise ValueError(msg)
 
         lmp_binary: str = self.config.lmp_binary
@@ -146,9 +152,7 @@ class MDInterface:
 
         lmp_bin = str(resolved_bin.absolute())
 
-        import shlex
-
-        cmd: list[str] = [lmp_bin, "-in", shlex.quote(in_file_name)]
+        cmd: list[str] = [lmp_bin, "-in", in_file_name]
 
         try:
             _res: subprocess.CompletedProcess[bytes] = subprocess.run(  # noqa: S603
@@ -309,9 +313,7 @@ write_data {work_dir.resolve()}/data.lammps
 
         lmp_bin = str(resolved_bin.absolute())
 
-        import shlex
-
-        cmd = [lmp_bin, "-in", shlex.quote(in_file.name)]
+        cmd = [lmp_bin, "-in", in_file.name]
 
         try:
             subprocess.run(  # noqa: S603

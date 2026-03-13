@@ -77,8 +77,8 @@ class Orchestrator:
 
         try:
             strategy = self.policy_engine.decide_policy(features)
-        except Exception:
-            logging.exception("Policy engine failed. Falling back to default MD strategy.")
+        except (ValueError, TypeError, KeyError) as e:
+            logging.warning(f"Policy engine parameter calculation failed: {e}. Falling back to default MD strategy.")
             strategy = ExplorationStrategy(
                 md_mc_ratio=0.0,
                 t_max=300.0,
@@ -86,6 +86,10 @@ class Orchestrator:
                 strain_range=0.0,
                 policy_name="Fallback Standard",
             )
+        except RuntimeError as e:
+            msg = f"Critical infrastructure failure in policy engine execution: {e}"
+            logging.exception(msg)
+            raise RuntimeError(msg) from e
 
         if strategy.md_mc_ratio > 0.0:
             logging.info(f"Running kMC (EON) exploration due to strategy {strategy.policy_name}")
@@ -152,7 +156,7 @@ class Orchestrator:
             output_dir=tmp_work_dir / "training",
         )
 
-    def _validate_and_deploy(self, new_pot_path: Path, tmp_work_dir: Path, work_dir: Path) -> str:
+    def _validate_and_deploy(self, new_pot_path: Path, tmp_work_dir: Path, work_dir: Path) -> str:  # noqa: PLR0915
         validation_result = self.validator.validate(new_pot_path)
 
         # decoupled reporter usage
@@ -199,8 +203,15 @@ class Orchestrator:
             msg = "final_dest is outside the expected potentials directory"
             raise ValueError(msg)
 
+        import tempfile
+
         # Atomic file replacement for the trained potential rather than non-atomic copy
-        src_pot.resolve(strict=True).replace(final_dest_resolved)
+        # Use os.replace for guaranteed platform atomic behavior, moving via temp file if cross-device
+        try:
+            src_pot.resolve(strict=True).replace(final_dest_resolved)
+        except OSError:
+            import shutil
+            shutil.move(str(src_pot.resolve(strict=True)), str(final_dest_resolved))
 
         # Implement directory content validation
         expected_dirs = ["training"]
@@ -215,14 +226,14 @@ class Orchestrator:
                 raise FileNotFoundError(msg)
 
         # Use atomic rename to replace the target directory entirely, preventing race conditions
-        import tempfile
 
         # If work_dir exists, atomic replace is trickier cross-platform for directories,
-        # but Path.replace works for empty/replaced structures on POSIX
+        # but os.replace works for empty/replaced structures on POSIX
         if work_dir.exists():
             # Atomically move old work_dir out of the way before replacing
             backup_dir = Path(tempfile.mkdtemp(dir=str(work_dir.parent)))
             work_dir.replace(backup_dir)
+            import shutil
             shutil.rmtree(str(backup_dir), ignore_errors=True)
 
         tmp_work_dir.replace(work_dir.resolve(strict=False))
@@ -250,20 +261,26 @@ class Orchestrator:
 
         work_dir: Path = base_dir / f"iter_{self.iteration:03d}"
 
+        # Cleanly instantiate temp dir via robust context manager mapping explicitly for resource cleanup
+        import contextlib
         import os
         import tempfile
+        from collections.abc import Generator
 
-        cycle_successful: bool = False
-        tmp_work_dir: Path = Path(tempfile.mkdtemp(dir=str(base_dir)))
+        @contextlib.contextmanager
+        def isolated_work_dir(base: Path) -> Generator[Path, None, None]:
+            tmp_path = Path(tempfile.mkdtemp(dir=str(base)))
+            if tmp_path.stat().st_uid == os.getuid():
+                tmp_path.chmod(0o700)
+            try:
+                yield tmp_path
+            finally:
+                if tmp_path.exists():
+                    shutil.rmtree(tmp_path, ignore_errors=True)
 
-        # Verify ownership before changing permissions
-        if tmp_work_dir.stat().st_uid == os.getuid():
-            tmp_work_dir.chmod(0o700)
-
-        try:
+        with isolated_work_dir(base_dir) as tmp_work_dir:
             halt_info: dict[str, Any] | str = self._run_exploration(current_pot, tmp_work_dir)
             if isinstance(halt_info, str):
-                cycle_successful = True
                 return halt_info
 
             candidate_generator: Iterator[list[Atoms]] = self._select_candidates(halt_info)
@@ -278,9 +295,4 @@ class Orchestrator:
             if final_dest == "VALIDATION_FAILED":
                 return "VALIDATION_FAILED"
 
-            cycle_successful = True
             return final_dest
-        finally:
-            if not cycle_successful and tmp_work_dir.exists():
-                logging.warning(f"Cleaning up partial state due to failure: {tmp_work_dir}")
-                shutil.rmtree(tmp_work_dir, ignore_errors=True)

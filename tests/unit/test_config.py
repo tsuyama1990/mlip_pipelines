@@ -39,6 +39,8 @@ def test_oracle_config_invalid() -> None:
 
 def test_project_config(tmp_path: Path) -> None:
     # Should be valid with minimal required setup (since most have defaults)
+    (tmp_path / "README.md").touch()
+
     config = ProjectConfig(
         project_root=tmp_path,
         system=SystemConfig(elements=["Fe", "O"]),
