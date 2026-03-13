@@ -13,17 +13,11 @@ class EONWrapper:
         self.system_config = system_config
 
     def _write_config_ini(self, work_dir: Path) -> None:
-        ini_content = f"""[Main]
-job = {self.config.eon_job}
-temperature = {self.config.temperature}
-
-[Potential]
-potential = script
-script_path = ./potentials/pace_driver.py
-
-[Process Search]
-min_mode_method = {self.config.eon_min_mode_method}
-"""
+        ini_content = self.config.eon_config_template.format(
+            eon_job=self.config.eon_job,
+            temperature=self.config.temperature,
+            eon_min_mode_method=self.config.eon_min_mode_method,
+        )
         with Path.open(work_dir / "config.ini", "w") as f:
             f.write(ini_content)
 
@@ -37,83 +31,11 @@ min_mode_method = {self.config.eon_min_mode_method}
         import sys
 
         executable = sys.executable
-        driver_content = f"""#!{executable}
-import sys
-import numpy as np
-
-try:
-    from pyacemaker.calculator import pyacemaker
-except ImportError:
-    sys.stderr.write("pyacemaker is not available.\\n")
-    sys.exit(100)
-
-try:
-    import ase
-    from ase import Atoms
-    from ase.io import write
-except ImportError:
-    sys.stderr.write("ase is not available.\\n")
-    sys.exit(100)
-
-THRESHOLD = {self.config.uncertainty_threshold}
-
-def read_coordinates_from_stdin():
-    # Placeholder for reading structures from EON format via stdin
-    # For simulation, we return a mock Atoms object if inputs are not present
-    try:
-        # We read EON style xyz or internal format
-        lines = sys.stdin.readlines()
-        if not lines:
-            raise ValueError("Empty stdin")
-
-        # simplified parsing for hook
-        # expecting elements in elements order from config if not specified
-        return Atoms('Fe', positions=[[0, 0, 0]], cell=[5,5,5], pbc=True)
-    except Exception:
-        return Atoms('Fe', positions=[[0, 0, 0]], cell=[5,5,5], pbc=True)
-
-def write_bad_structure(path, atoms):
-    write(path, atoms, format='extxyz')
-
-def print_forces(forces):
-    for f in forces:
-        print(f"{{f[0]}} {{f[1]}} {{f[2]}}")
-
-def main():
-    atoms = read_coordinates_from_stdin()
-
-    potential_path = {pot_str}
-    if potential_path is None or potential_path == "None":
-        sys.exit(0)
-
-    calc = pyacemaker(potential_path)
-    atoms.calc = calc
-
-    # Check gamma
-    gamma = 0.0
-    # In real pyacemaker it might be accessible via atoms.get_array('c_pace_gamma') or a calc method
-    # Here we mock checking
-
-    # We output a mock bad structure if it exceeds threshold for tests
-    # Mock behavior to trigger halt in test environments easily if requested by mock
-    import os
-    if os.environ.get('MOCK_EON_HALT') == '1':
-        write_bad_structure("bad_structure.cfg", atoms)
-        sys.exit(100)
-
-    try:
-        energy = atoms.get_potential_energy()
-        forces = atoms.get_forces()
-        print(energy)
-        print_forces(forces)
-    except Exception:
-        # If calculation completely fails, we also write a bad structure
-        write_bad_structure("bad_structure.cfg", atoms)
-        sys.exit(100)
-
-if __name__ == "__main__":
-    main()
-"""
+        driver_content = self.config.eon_driver_template.format(
+            executable=executable,
+            threshold=self.config.uncertainty_threshold,
+            pot_str=pot_str,
+        )
         with Path.open(driver_path, "w") as f:
             f.write(driver_content)
         driver_path.chmod(0o755)
@@ -138,7 +60,7 @@ if __name__ == "__main__":
             import shutil
             import sys
 
-            eon_binary = "eonclient"
+            eon_binary = self.config.eon_binary
             trusted_dirs = [
                 "/usr/bin",
                 "/usr/local/bin",

@@ -38,8 +38,11 @@ def test_select_local_active_set(monkeypatch: pytest.MonkeyPatch) -> None:
     from typing import Any
 
     def mock_run(cmd: Sequence[str], *args: Any, **kwargs: Any) -> subprocess.CompletedProcess[Any]:
-        # Mocking pace_activeset to write a dummy file
-        out_file = Path(cmd[4])
+        # Mocking pace_activeset to write a dummy file.
+        # In the builder, out_file is the 4th item because of quotes: ['pace_activeset', '--input', "'input_path'", '--output', "'output_path'", '--n', "'5'"]
+        # To be robust, search for '--output'
+        out_idx = cmd.index("--output") + 1
+        out_file = Path(cmd[out_idx].strip("'\""))
         from ase.io import write
 
         # Write dummy

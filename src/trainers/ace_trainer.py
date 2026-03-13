@@ -1,6 +1,7 @@
 import re
 import subprocess
 from pathlib import Path
+from typing import Any
 
 from ase import Atoms
 from ase.io import write
@@ -111,15 +112,28 @@ class PacemakerWrapper:
                         raise ValueError(msg)
                     pace_activeset_bin = str(resolved_bin)
 
-            cmd = [
-                pace_activeset_bin,
-                "--input",
-                str(in_file.resolve()),
-                "--output",
-                str(out_file.resolve()),
-                "--n",
-                str(n),
-            ]
+            import shlex
+
+            class PaceActivesetCommandBuilder:
+                def __init__(self, binary: str, template: list[str]) -> None:
+                    self.cmd: list[str] = [binary]
+                    self.template = template
+
+                def build(self, **kwargs: Any) -> list[str]:
+                    for arg in self.template:
+                        formatted_arg = arg.format(**kwargs)
+                        if formatted_arg != arg:
+                            self.cmd.append(shlex.quote(formatted_arg))
+                        else:
+                            self.cmd.append(arg)
+                    return self.cmd
+
+            builder = PaceActivesetCommandBuilder(pace_activeset_bin, self.config.pace_activeset_args_template)
+            cmd = builder.build(
+                input=str(in_file.resolve()),
+                output=str(out_file.resolve()),
+                n=str(n)
+            )
 
             try:
                 subprocess.run(cmd, check=True, capture_output=True, text=True, shell=False)  # noqa: S603
@@ -228,29 +242,37 @@ class PacemakerWrapper:
                     raise ValueError(msg)
                 pace_train_bin = str(resolved_bin)
 
-        class PaceCommandBuilder:
-            def __init__(self, binary: str) -> None:
+        import shlex
+
+        class PaceTrainCommandBuilder:
+            def __init__(self, binary: str, template: list[str]) -> None:
                 self.cmd: list[str] = [binary]
+                self.template = template
 
-            def add_arg(self, flag: str, value: str) -> None:
-                self.cmd.extend([flag, value])
-
-            def build(self) -> list[str]:
+            def build(self, **kwargs: Any) -> list[str]:
+                for arg in self.template:
+                    formatted_arg = arg.format(**kwargs)
+                    if formatted_arg != arg:
+                        self.cmd.append(shlex.quote(formatted_arg))
+                    else:
+                        self.cmd.append(arg)
                 return self.cmd
 
-        builder = PaceCommandBuilder(pace_train_bin)
-        builder.add_arg("--dataset", str(dataset.resolve()))
-        builder.add_arg("--max_num_epochs", str(self.config.max_epochs))
-        builder.add_arg("--active_set_size", str(self.config.active_set_size))
-        builder.add_arg("--baseline_potential", self.config.baseline_potential)
-        builder.add_arg("--regularization", self.config.regularization)
-        builder.add_arg("--output_dir", str(resolved_output_dir))
+        builder = PaceTrainCommandBuilder(pace_train_bin, self.config.pace_train_args_template)
+        cmd = builder.build(
+            dataset=str(dataset.resolve()),
+            max_epochs=str(self.config.max_epochs),
+            active_set_size=str(self.config.active_set_size),
+            baseline_potential=self.config.baseline_potential,
+            regularization=self.config.regularization,
+            output_dir=str(resolved_output_dir)
+        )
 
         if initial_potential and initial_potential.exists():
-            builder.add_arg("--initial_potential", str(initial_potential.resolve()))
+            cmd.extend(["--initial_potential", shlex.quote(str(initial_potential.resolve()))])
 
         try:
-            subprocess.run(builder.build(), check=True, capture_output=True, text=True, shell=False)  # noqa: S603
+            subprocess.run(cmd, check=True, capture_output=True, text=True, shell=False)  # noqa: S603
         except subprocess.CalledProcessError as e:
             msg = f"pace_train execution failed: {e.stderr}"
             raise RuntimeError(msg) from e
