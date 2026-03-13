@@ -66,7 +66,9 @@ class Orchestrator:
                 return None
             return latest_pot
 
-    def _run_exploration(self, current_pot: Path | None, tmp_work_dir: Path) -> dict[str, Any] | str:
+    def _run_exploration(
+        self, current_pot: Path | None, tmp_work_dir: Path
+    ) -> dict[str, Any] | str:
         # Deduce features to get policy
         features = MaterialFeatures(elements=self.config.system.elements)
         strategy = self.policy_engine.decide_policy(features)
@@ -94,6 +96,7 @@ class Orchestrator:
     def _select_candidates(self, halt_info: dict[str, Any]) -> Iterator[list[Atoms]]:
         if halt_info.get("is_kmc"):
             import ase.io
+
             high_gamma_atoms = [ase.io.read(halt_info["dump_file"])]
             if not isinstance(high_gamma_atoms[0], Atoms):
                 high_gamma_atoms = [high_gamma_atoms[0][0]]  # type: ignore[index]
@@ -107,7 +110,12 @@ class Orchestrator:
             candidates = self.structure_generator.generate_local_candidates(s0, n=20)
             yield self.trainer.select_local_active_set(candidates, anchor=s0, n=5)
 
-    def _run_dft_and_train(self, candidate_generator: Iterator[list[Atoms]], tmp_work_dir: Path, current_pot: Path | None) -> Path | str:
+    def _run_dft_and_train(
+        self,
+        candidate_generator: Iterator[list[Atoms]],
+        tmp_work_dir: Path,
+        current_pot: Path | None,
+    ) -> Path | str:
         has_new_data = False
         data_dir = self.config.project_root / "data"
         data_dir.mkdir(parents=True, exist_ok=True)
@@ -152,9 +160,17 @@ class Orchestrator:
 
         shutil.copy(src_pot, final_dest)
 
-        if not tmp_work_dir.resolve().is_relative_to((self.config.project_root / "active_learning").resolve()):
-             msg = "tmp_work_dir is outside the expected base directory"
-             raise ValueError(msg)
+        resolved_tmp = tmp_work_dir.resolve(strict=True)
+        if not resolved_tmp.is_relative_to(
+            (self.config.project_root / "active_learning").resolve(strict=True)
+        ):
+            msg = "tmp_work_dir is outside the expected base directory"
+            raise ValueError(msg)
+
+        resolved_dest = final_dest.resolve(strict=False)
+        if not resolved_dest.is_relative_to(pot_dir.resolve(strict=True)):
+            msg = "final_dest is outside the expected potentials directory"
+            raise ValueError(msg)
 
         if work_dir.exists():
             shutil.rmtree(work_dir, ignore_errors=True)
@@ -174,7 +190,9 @@ class Orchestrator:
 
         current_pot = self.get_latest_potential()
         if current_pot is None:
-            logging.info("No initial potential found. Starting cold-start exploration (Baseline only).")
+            logging.info(
+                "No initial potential found. Starting cold-start exploration (Baseline only)."
+            )
 
         base_dir = self.config.project_root / "active_learning"
         base_dir.mkdir(parents=True, exist_ok=True)
@@ -182,6 +200,7 @@ class Orchestrator:
         work_dir = base_dir / f"iter_{self.iteration:03d}"
 
         import tempfile
+
         cycle_successful = False
         tmp_work_dir = Path(tempfile.mkdtemp(dir=str(base_dir)))
 
@@ -199,7 +218,7 @@ class Orchestrator:
 
             final_dest = self._validate_and_deploy(new_pot_path, tmp_work_dir, work_dir)
             if final_dest == "VALIDATION_FAILED":
-                 return "VALIDATION_FAILED"
+                return "VALIDATION_FAILED"
 
             cycle_successful = True
             return final_dest

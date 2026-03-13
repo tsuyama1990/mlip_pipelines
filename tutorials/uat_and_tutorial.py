@@ -43,6 +43,9 @@ def __(USE_MOCK):
     # Path patching for headless test execution directly
     sys.path.insert(0, str(Path.cwd()))
 
+    if USE_MOCK:
+        sys.modules["pyacemaker.calculator"] = type("pyacemaker", (), {"pyacemaker": True})
+
     from src.domain_models.config import (
         DynamicsConfig,
         OracleConfig,
@@ -92,7 +95,9 @@ def __(orchestrator, mo):
         missing_tools.append(orchestrator.config.trainer.pace_train_binary)
 
     if missing_tools:
-        mo.md(f"**Warning:** Missing required execution tools: {', '.join(missing_tools)}. Execution will be simulated or skipped.")
+        mo.md(
+            f"**Warning:** Missing required execution tools: {', '.join(missing_tools)}. Execution will be simulated or skipped."
+        )
         result_pot = None
         calculated_interface_energy = 0.0
         calculated_order_parameter = 0.0

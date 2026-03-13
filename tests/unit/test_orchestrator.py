@@ -8,13 +8,17 @@ from src.domain_models.config import ProjectConfig
 from src.domain_models.dtos import ValidationReport
 
 
-def test_orchestrator_initialization(mock_project_config: ProjectConfig) -> None:
+def test_orchestrator_initialization(mock_project_config: ProjectConfig, monkeypatch: pytest.MonkeyPatch) -> None:
+    import sys
+    monkeypatch.setitem(sys.modules, "pyacemaker.calculator", type("pyacemaker", (), {"pyacemaker": True}))
     orch = Orchestrator(mock_project_config)
     assert orch.config.system.elements == ["Fe", "Pt"]
     assert orch.iteration == 0
 
 
 def test_run_cycle(monkeypatch: pytest.MonkeyPatch, mock_project_config: ProjectConfig) -> None:  # noqa: C901
+    import sys
+    monkeypatch.setitem(sys.modules, "pyacemaker.calculator", type("pyacemaker", (), {"pyacemaker": True}))
     orch = Orchestrator(mock_project_config)
 
     # Mock all internal models
@@ -86,12 +90,13 @@ def test_run_cycle(monkeypatch: pytest.MonkeyPatch, mock_project_config: Project
     class MockPolicyEngine:
         def decide_policy(self, *args: Any, **kwargs: Any) -> Any:
             from src.domain_models.dtos import ExplorationStrategy
+
             return ExplorationStrategy(
                 md_mc_ratio=0.0,  # Run MD
                 t_max=300.0,
                 n_defects=0.0,
                 strain_range=0.0,
-                policy_name="Standard"
+                policy_name="Standard",
             )
 
     orch.policy_engine = MockPolicyEngine()  # type: ignore[assignment]
@@ -105,6 +110,8 @@ def test_run_cycle(monkeypatch: pytest.MonkeyPatch, mock_project_config: Project
 def test_run_cycle_converged(
     monkeypatch: pytest.MonkeyPatch, mock_project_config: ProjectConfig
 ) -> None:
+    import sys
+    monkeypatch.setitem(sys.modules, "pyacemaker.calculator", type("pyacemaker", (), {"pyacemaker": True}))
     orch = Orchestrator(mock_project_config)
 
     class MockMD:
@@ -118,12 +125,13 @@ def test_run_cycle_converged(
     class MockPolicyEngine:
         def decide_policy(self, *args: Any, **kwargs: Any) -> Any:
             from src.domain_models.dtos import ExplorationStrategy
+
             return ExplorationStrategy(
                 md_mc_ratio=0.0,  # Run MD
                 t_max=300.0,
                 n_defects=0.0,
                 strain_range=0.0,
-                policy_name="Standard"
+                policy_name="Standard",
             )
 
     orch.md_engine = MockMD()  # type: ignore[assignment]
@@ -137,6 +145,8 @@ def test_run_cycle_converged(
 def test_get_latest_potential(
     monkeypatch: pytest.MonkeyPatch, mock_project_config: ProjectConfig, tmp_path: Path
 ) -> None:
+    import sys
+    monkeypatch.setitem(sys.modules, "pyacemaker.calculator", type("pyacemaker", (), {"pyacemaker": True}))
     orch = Orchestrator(mock_project_config)
     pot_dir = tmp_path / "potentials"
     pot_dir.mkdir(parents=True)
@@ -148,14 +158,24 @@ def test_get_latest_potential(
     latest = orch.get_latest_potential()
     assert latest == pot_path.resolve()
 
-def test_get_latest_potential_no_dir(monkeypatch: pytest.MonkeyPatch, mock_project_config: ProjectConfig, tmp_path: Path) -> None:
+
+def test_get_latest_potential_no_dir(
+    monkeypatch: pytest.MonkeyPatch, mock_project_config: ProjectConfig, tmp_path: Path
+) -> None:
+    import sys
+    monkeypatch.setitem(sys.modules, "pyacemaker.calculator", type("pyacemaker", (), {"pyacemaker": True}))
     orch = Orchestrator(mock_project_config)
     orch.config.project_root = tmp_path
 
     latest = orch.get_latest_potential()
     assert latest is None
 
-def test_get_latest_potential_no_files(monkeypatch: pytest.MonkeyPatch, mock_project_config: ProjectConfig, tmp_path: Path) -> None:
+
+def test_get_latest_potential_no_files(
+    monkeypatch: pytest.MonkeyPatch, mock_project_config: ProjectConfig, tmp_path: Path
+) -> None:
+    import sys
+    monkeypatch.setitem(sys.modules, "pyacemaker.calculator", type("pyacemaker", (), {"pyacemaker": True}))
     orch = Orchestrator(mock_project_config)
     pot_dir = tmp_path / "potentials"
     pot_dir.mkdir(parents=True)
@@ -165,7 +185,12 @@ def test_get_latest_potential_no_files(monkeypatch: pytest.MonkeyPatch, mock_pro
     latest = orch.get_latest_potential()
     assert latest is None
 
-def test_get_latest_potential_invalid_file(monkeypatch: pytest.MonkeyPatch, mock_project_config: ProjectConfig, tmp_path: Path) -> None:
+
+def test_get_latest_potential_invalid_file(
+    monkeypatch: pytest.MonkeyPatch, mock_project_config: ProjectConfig, tmp_path: Path
+) -> None:
+    import sys
+    monkeypatch.setitem(sys.modules, "pyacemaker.calculator", type("pyacemaker", (), {"pyacemaker": True}))
     orch = Orchestrator(mock_project_config)
     pot_dir = tmp_path / "potentials"
     pot_dir.mkdir(parents=True)

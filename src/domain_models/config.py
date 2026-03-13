@@ -70,8 +70,12 @@ class TrainerConfig(BaseModel):
     )
     baseline_potential: str = Field(default="zbl", description="Baseline potential strategy")
     regularization: str = Field(default="L2", description="Regularization strategy for PACE")
-    pace_train_binary: str = Field(default="pace_train", description="Binary name or path for pace_train")
-    pace_activeset_binary: str = Field(default="pace_activeset", description="Binary name or path for pace_activeset")
+    pace_train_binary: str = Field(
+        default="pace_train", description="Binary name or path for pace_train"
+    )
+    pace_activeset_binary: str = Field(
+        default="pace_activeset", description="Binary name or path for pace_activeset"
+    )
 
 
 class ValidatorConfig(BaseModel):

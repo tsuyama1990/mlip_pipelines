@@ -34,18 +34,32 @@ min_mode_method = dimer
 
         # the pace_driver should be executable by python
         pot_str = f"'{potential.resolve()}'" if potential else "None"
-        driver_content = f"""#!/usr/bin/env python3
+        import sys
+
+        executable = sys.executable
+        driver_content = f"""#!{executable}
 import sys
 import numpy as np
-from pyacemaker.calculator import pyacemaker
+
+try:
+    from pyacemaker.calculator import pyacemaker
+except ImportError:
+    sys.stderr.write("pyacemaker is not available.\\n")
+    sys.exit(100)
+
+try:
+    import ase
+    from ase import Atoms
+    from ase.io import write
+except ImportError:
+    sys.stderr.write("ase is not available.\\n")
+    sys.exit(100)
 
 THRESHOLD = {self.config.uncertainty_threshold}
 
 def read_coordinates_from_stdin():
     # Placeholder for reading structures from EON format via stdin
     # For simulation, we return a mock Atoms object if inputs are not present
-    from ase import Atoms
-    from ase.data import atomic_numbers
     try:
         # We read EON style xyz or internal format
         lines = sys.stdin.readlines()
@@ -59,7 +73,6 @@ def read_coordinates_from_stdin():
         return Atoms('Fe', positions=[[0, 0, 0]], cell=[5,5,5], pbc=True)
 
 def write_bad_structure(path, atoms):
-    from ase.io import write
     write(path, atoms, format='extxyz')
 
 def print_forces(forces):
@@ -117,33 +130,42 @@ if __name__ == "__main__":
             import sys
 
             eon_binary = "eonclient"
-            trusted_dirs = ["/usr/bin", "/usr/local/bin", "/opt/homebrew/bin", str(Path(sys.prefix) / "bin")]
-            if hasattr(self.config, 'project_root'):
-                 trusted_dirs.append(str(Path(self.config.project_root) / "bin"))
+            trusted_dirs = [
+                "/usr/bin",
+                "/usr/local/bin",
+                "/opt/homebrew/bin",
+                str(Path(sys.prefix) / "bin"),
+            ]
+            if hasattr(self.config, "project_root"):
+                trusted_dirs.append(str(Path(self.config.project_root) / "bin"))
 
             resolved_which = shutil.which(eon_binary)
-            eon_bin = eon_binary if resolved_which is None else str(Path(resolved_which).resolve())
+            if resolved_which is None:
+                eon_bin = eon_binary  # fallback, will trigger FileNotFoundError
+            else:
+                eon_bin = str(Path(resolved_which).resolve(strict=True))
+
+            eon_path = Path(eon_bin)
+            if eon_path.is_absolute() and eon_path.exists():
+                if not any(str(eon_path).startswith(td) for td in trusted_dirs):
+                    msg = f"Resolved EON binary must reside in a trusted directory: {eon_path}"
+                    raise ValueError(msg)
+            elif not eon_path.is_absolute() and resolved_which is not None:
+                msg = "Resolved binary path is not absolute"
+                raise ValueError(msg)
 
             cmd = [eon_bin]
 
             # We use check=False to capture return code 100 gracefully
             import os
+
             env = os.environ.copy()
             res = subprocess.run(  # noqa: S603
-                cmd,
-                cwd=work_dir,
-                capture_output=True,
-                shell=False,
-                env=env,
-                check=False
+                cmd, cwd=work_dir, capture_output=True, shell=False, env=env, check=False
             )
 
             if res.returncode == 100:
-                return {
-                    "halted": True,
-                    "dump_file": work_dir / "bad_structure.cfg",
-                    "is_kmc": True
-                }
+                return {"halted": True, "dump_file": work_dir / "bad_structure.cfg", "is_kmc": True}
             if res.returncode != 0:
                 # Other error
                 pass
@@ -151,11 +173,13 @@ if __name__ == "__main__":
         except FileNotFoundError:
             # For testing/mocking environments where eonclient isn't installed
             import os
-            if os.environ.get('MOCK_EON_HALT') == '1':
+
+            if os.environ.get("MOCK_EON_HALT") == "1":
                 from ase import Atoms
                 from ase.io import write
+
                 bad_file = work_dir / "bad_structure.cfg"
-                write(str(bad_file), Atoms('Fe', positions=[[0, 0, 0]]), format='extxyz')
+                write(str(bad_file), Atoms("Fe", positions=[[0, 0, 0]]), format="extxyz")
                 return {"halted": True, "dump_file": bad_file, "is_kmc": True}
 
         return {"halted": False}

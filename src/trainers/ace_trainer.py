@@ -10,6 +10,7 @@ from src.domain_models.config import TrainerConfig
 BINARY_NAME_PATTERN = re.compile(r"^[-a-zA-Z0-9_.]+$")
 PARAM_PATTERN = re.compile(r"^[-a-zA-Z0-9_.]+$")
 
+
 class PacemakerWrapper:
     """Manages Pacemaker active set selection and training."""
 
@@ -55,32 +56,37 @@ class PacemakerWrapper:
             import sys
 
             binary_setting = self.config.pace_activeset_binary
-            trusted_dirs = ["/usr/bin", "/usr/local/bin", "/opt/homebrew/bin", str(Path(sys.prefix) / "bin")]
-            if hasattr(self.config, 'project_root'):
-                 trusted_dirs.append(str(Path(self.config.project_root) / "bin"))
+            trusted_dirs = [
+                "/usr/bin",
+                "/usr/local/bin",
+                "/opt/homebrew/bin",
+                str(Path(sys.prefix) / "bin"),
+            ]
+            if hasattr(self.config, "project_root"):
+                trusted_dirs.append(str(Path(self.config.project_root) / "bin"))
 
             if Path(binary_setting).is_absolute():
                 if ".." in binary_setting:
-                     msg = f"Invalid absolute binary path: {binary_setting}"
-                     raise ValueError(msg)
+                    msg = f"Invalid absolute binary path: {binary_setting}"
+                    raise ValueError(msg)
                 resolved_bin = Path(binary_setting).resolve()
                 if not any(str(resolved_bin).startswith(td) for td in trusted_dirs):
-                     msg = f"Binary must reside in a trusted directory: {binary_setting}"
-                     raise ValueError(msg)
+                    msg = f"Binary must reside in a trusted directory: {binary_setting}"
+                    raise ValueError(msg)
                 pace_activeset_bin = str(resolved_bin)
             else:
-                 if not BINARY_NAME_PATTERN.match(binary_setting):
-                     msg = f"Invalid binary name: {binary_setting}"
-                     raise ValueError(msg)
-                 resolved_which = shutil.which(binary_setting)
-                 if resolved_which is None:
-                     pace_activeset_bin = binary_setting
-                 else:
-                     resolved_bin = Path(resolved_which).resolve()
-                     if not any(str(resolved_bin).startswith(td) for td in trusted_dirs):
-                         msg = f"Resolved binary must reside in a trusted directory: {resolved_bin}"
-                         raise ValueError(msg)
-                     pace_activeset_bin = str(resolved_bin)
+                if not BINARY_NAME_PATTERN.match(binary_setting):
+                    msg = f"Invalid binary name: {binary_setting}"
+                    raise ValueError(msg)
+                resolved_which = shutil.which(binary_setting)
+                if resolved_which is None:
+                    pace_activeset_bin = binary_setting
+                else:
+                    resolved_bin = Path(resolved_which).resolve()
+                    if not any(str(resolved_bin).startswith(td) for td in trusted_dirs):
+                        msg = f"Resolved binary must reside in a trusted directory: {resolved_bin}"
+                        raise ValueError(msg)
+                    pace_activeset_bin = str(resolved_bin)
 
             cmd = [
                 pace_activeset_bin,
@@ -135,8 +141,8 @@ class PacemakerWrapper:
 
         resolved_output_dir.mkdir(parents=True, exist_ok=True)
         if not os.access(resolved_output_dir, os.W_OK):
-             msg = f"output_dir is not writable: {resolved_output_dir}"
-             raise PermissionError(msg)
+            msg = f"output_dir is not writable: {resolved_output_dir}"
+            raise PermissionError(msg)
 
         out_pot = resolved_output_dir / "output_potential.yace"
 
@@ -151,32 +157,37 @@ class PacemakerWrapper:
         import sys
 
         train_binary_setting = self.config.pace_train_binary
-        trusted_dirs = ["/usr/bin", "/usr/local/bin", "/opt/homebrew/bin", str(Path(sys.prefix) / "bin")]
-        if hasattr(self.config, 'project_root'):
-             trusted_dirs.append(str(Path(self.config.project_root) / "bin"))
+        trusted_dirs = [
+            "/usr/bin",
+            "/usr/local/bin",
+            "/opt/homebrew/bin",
+            str(Path(sys.prefix) / "bin"),
+        ]
+        if hasattr(self.config, "project_root"):
+            trusted_dirs.append(str(Path(self.config.project_root) / "bin"))
 
         if Path(train_binary_setting).is_absolute():
             if ".." in train_binary_setting:
-                 msg = f"Invalid absolute binary path: {train_binary_setting}"
-                 raise ValueError(msg)
+                msg = f"Invalid absolute binary path: {train_binary_setting}"
+                raise ValueError(msg)
             resolved_bin = Path(train_binary_setting).resolve()
             if not any(str(resolved_bin).startswith(td) for td in trusted_dirs):
-                 msg = f"Binary must reside in a trusted directory: {train_binary_setting}"
-                 raise ValueError(msg)
+                msg = f"Binary must reside in a trusted directory: {train_binary_setting}"
+                raise ValueError(msg)
             pace_train_bin = str(resolved_bin)
         else:
-             if not BINARY_NAME_PATTERN.match(train_binary_setting):
-                 msg = f"Invalid binary name: {train_binary_setting}"
-                 raise ValueError(msg)
-             resolved_which = shutil.which(train_binary_setting)
-             if resolved_which is None:
-                 pace_train_bin = train_binary_setting
-             else:
-                 resolved_bin = Path(resolved_which).resolve()
-                 if not any(str(resolved_bin).startswith(td) for td in trusted_dirs):
-                     msg = f"Resolved binary must reside in a trusted directory: {resolved_bin}"
-                     raise ValueError(msg)
-                 pace_train_bin = str(resolved_bin)
+            if not BINARY_NAME_PATTERN.match(train_binary_setting):
+                msg = f"Invalid binary name: {train_binary_setting}"
+                raise ValueError(msg)
+            resolved_which = shutil.which(train_binary_setting)
+            if resolved_which is None:
+                pace_train_bin = train_binary_setting
+            else:
+                resolved_bin = Path(resolved_which).resolve()
+                if not any(str(resolved_bin).startswith(td) for td in trusted_dirs):
+                    msg = f"Resolved binary must reside in a trusted directory: {resolved_bin}"
+                    raise ValueError(msg)
+                pace_train_bin = str(resolved_bin)
 
         cmd = [
             pace_train_bin,

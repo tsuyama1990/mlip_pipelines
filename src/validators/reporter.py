@@ -24,8 +24,8 @@ def generate_html_report(report: ValidationReport, save_path: Path) -> None:
     </head>
     <body>
         <h1>Validation Report</h1>
-        <p>Overall Status: <span class="{'passed' if report.passed else 'failed'}">{'PASS' if report.passed else 'FAIL'}</span></p>
-        {f'<p>Reason: {report.reason}</p>' if report.reason else ''}
+        <p>Overall Status: <span class="{"passed" if report.passed else "failed"}">{"PASS" if report.passed else "FAIL"}</span></p>
+        {f"<p>Reason: {report.reason}</p>" if report.reason else ""}
 
         <h2>Metrics</h2>
         <table>
@@ -47,11 +47,11 @@ def generate_html_report(report: ValidationReport, save_path: Path) -> None:
             </tr>
             <tr>
                 <td>Phonon Stable</td>
-                <td>{'Yes' if report.phonon_stable else 'No'}</td>
+                <td>{"Yes" if report.phonon_stable else "No"}</td>
             </tr>
             <tr>
                 <td>Mechanically Stable</td>
-                <td>{'Yes' if report.mechanically_stable else 'No'}</td>
+                <td>{"Yes" if report.mechanically_stable else "No"}</td>
             </tr>
         </table>
 

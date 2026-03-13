@@ -20,7 +20,9 @@ def sys_config() -> SystemConfig:
     return SystemConfig(elements=["Fe", "Pt"], baseline_potential="zbl")
 
 
-def test_eon_wrapper_ini_creation(tmp_path: Path, config: DynamicsConfig, sys_config: SystemConfig) -> None:
+def test_eon_wrapper_ini_creation(
+    tmp_path: Path, config: DynamicsConfig, sys_config: SystemConfig
+) -> None:
     wrapper = EONWrapper(config, sys_config)
     wrapper._write_config_ini(tmp_path)
     ini_file = tmp_path / "config.ini"
@@ -31,7 +33,9 @@ def test_eon_wrapper_ini_creation(tmp_path: Path, config: DynamicsConfig, sys_co
     assert "job = process_search" in content
 
 
-def test_eon_wrapper_driver_creation(tmp_path: Path, config: DynamicsConfig, sys_config: SystemConfig) -> None:
+def test_eon_wrapper_driver_creation(
+    tmp_path: Path, config: DynamicsConfig, sys_config: SystemConfig
+) -> None:
     wrapper = EONWrapper(config, sys_config)
     potential = tmp_path / "potential.yace"
     potential.touch()
@@ -41,10 +45,16 @@ def test_eon_wrapper_driver_creation(tmp_path: Path, config: DynamicsConfig, sys
 
     # Must be executable
     import os
+
     assert os.access(driver_file, os.X_OK)
 
 
-def test_eon_wrapper_run_kmc_halt_mock(tmp_path: Path, config: DynamicsConfig, sys_config: SystemConfig, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_eon_wrapper_run_kmc_halt_mock(
+    tmp_path: Path,
+    config: DynamicsConfig,
+    sys_config: SystemConfig,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     # Use the mock hook built into EONWrapper for testing
     monkeypatch.setenv("MOCK_EON_HALT", "1")
     wrapper = EONWrapper(config, sys_config)
@@ -60,14 +70,21 @@ def test_eon_wrapper_run_kmc_halt_mock(tmp_path: Path, config: DynamicsConfig, s
     assert Path(res["dump_file"]).exists()
 
 
-def test_eon_wrapper_run_kmc_no_halt(tmp_path: Path, config: DynamicsConfig, sys_config: SystemConfig, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_eon_wrapper_run_kmc_no_halt(
+    tmp_path: Path,
+    config: DynamicsConfig,
+    sys_config: SystemConfig,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     # Use the mock hook to not halt
     monkeypatch.setenv("MOCK_EON_HALT", "0")
 
     # We mock shutil.which so it acts like eonclient is not found, letting the FileNotFoundError block handle it
     import shutil
+
     def mock_which(name: str) -> str | None:
         return None
+
     monkeypatch.setattr(shutil, "which", mock_which)
 
     wrapper = EONWrapper(config, sys_config)

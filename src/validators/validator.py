@@ -14,15 +14,19 @@ class Validator:
 
     def __init__(self, config: ValidatorConfig) -> None:
         self.config = config
+        self._check_dependencies()
 
     def _check_phonopy_stability(self, atoms: "Atoms", calc: "Calculator") -> bool:
         from src.validators.stability_tests import check_phonopy_stability
+
         return check_phonopy_stability(atoms, calc)
 
     def _check_dependencies(self) -> None:
         import logging
+
         try:
             from pyacemaker.calculator import pyacemaker
+
             if not hasattr(pyacemaker, "__version__"):
                 logging.debug("pyacemaker module found.")
         except ImportError as e:
@@ -83,6 +87,7 @@ class Validator:
         phonon_stable = self._check_phonopy_stability(atoms, calc)
 
         from src.validators.stability_tests import check_mechanical_stability
+
         mechanically_stable = check_mechanical_stability(atoms, calc)
 
         return energy_rmse, force_rmse, stress_rmse, phonon_stable, mechanically_stable
@@ -91,11 +96,12 @@ class Validator:
         """Executes full validation suite on the newly trained potential."""
         resolved_path = potential_path.resolve()
 
-        self._check_dependencies()
         self._check_file_format(resolved_path)
 
         try:
-            energy_rmse, force_rmse, stress_rmse, phonon_stable, mechanically_stable = self._compute_metrics(resolved_path)
+            energy_rmse, force_rmse, stress_rmse, phonon_stable, mechanically_stable = (
+                self._compute_metrics(resolved_path)
+            )
         except Exception as e:
             msg = f"Validation execution failed: {e}"
             raise RuntimeError(msg) from e
