@@ -34,7 +34,7 @@ class PacemakerWrapper:
             td_path = Path(td)
 
             # Write out candidates and anchor
-            all_atoms = [anchor] + candidates
+            all_atoms = [anchor, *candidates]
             in_file = td_path / "candidates.extxyz"
             out_file = td_path / "selected.extxyz"
             write(str(in_file), all_atoms, format="extxyz") # type: ignore[no-untyped-call]
@@ -47,7 +47,7 @@ class PacemakerWrapper:
             ]
 
             try:
-                subprocess.run(cmd, check=True, capture_output=True, text=True)
+                subprocess.run(cmd, check=True, capture_output=True, text=True, shell=False)
                 if out_file.exists():
                     # Parse selected
                     selected = read(str(out_file), index=":") # type: ignore[no-untyped-call]
@@ -85,10 +85,10 @@ class PacemakerWrapper:
             cmd.extend(["--initial_potential", str(initial_potential)])
 
         try:
-            subprocess.run(cmd, check=True, capture_output=True, text=True)
-            return out_pot
+            subprocess.run(cmd, check=True, capture_output=True, text=True, shell=False)
         except (subprocess.CalledProcessError, FileNotFoundError):
             # Fallback for UAT mock when pace_train isn't real.
             # Must write the file so Orchestrator can copy it.
             out_pot.write_text("dummy yace potential")
-            return out_pot
+
+        return out_pot
