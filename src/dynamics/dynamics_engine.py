@@ -37,7 +37,11 @@ class MDInterface:
         # But without a real input structure and `potential.yace`, running LAMMPS fails immediately.
 
         in_file = work_dir / "in.lammps"
-        zbl_elements = " ".join(str(atomic_numbers.get(el, 1)) for el in self.system_config.elements)
+
+        def get_zbl_mapping(elements: list[str]) -> str:
+            return " ".join(str(atomic_numbers.get(el, 1)) for el in elements)
+
+        zbl_elements = get_zbl_mapping(self.system_config.elements)
 
         in_file.write_text(f"""
 units metal

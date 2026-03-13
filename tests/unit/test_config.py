@@ -1,4 +1,3 @@
-
 import pytest
 from pydantic import ValidationError
 
@@ -43,7 +42,7 @@ def test_project_config():
         dynamics=DynamicsConfig(),
         oracle=OracleConfig(),
         trainer=TrainerConfig(),
-        validator=ValidatorConfig()
+        validator=ValidatorConfig(),
     )
     assert config.system.elements == ["Fe", "O"]
     assert config.system.baseline_potential == "zbl"

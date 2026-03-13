@@ -24,7 +24,7 @@ class DFTManager:
         min_pos = pos.min(axis=0)
         max_pos = pos.max(axis=0)
 
-        buffer = 4.0 # Angstroms
+        buffer = self.config.buffer_size
         lengths = max_pos - min_pos + 2 * buffer
 
         # Shift positions so they center within the box
@@ -62,18 +62,18 @@ class DFTManager:
 
         input_data = {
             "control": {
-                "calculation": "scf"
+                "calculation": self.config.calculation
             },
             "system": {
-                "ecutwfc": 40.0,
-                "ecutrho": 320.0,
-                "occupations": "smearing",
-                "smearing": "mv",
+                "ecutwfc": self.config.ecutwfc,
+                "ecutrho": self.config.ecutrho,
+                "occupations": self.config.occupations,
+                "smearing": self.config.smearing,
                 "degauss": degauss
             },
             "electrons": {
-                "mixing_beta": 0.7,
-                "diagonalization": "david"
+                "mixing_beta": self.config.mixing_beta,
+                "diagonalization": self.config.diagonalization
             }
         }
 
@@ -82,7 +82,7 @@ class DFTManager:
 
             # Start magnetisation heuristics
             start_mag = {}
-            for i, el in enumerate(atoms.get_chemical_symbols()):
+            for _i, el in enumerate(atoms.get_chemical_symbols()):
                 if el in transition_metals:
                     start_mag[el] = 1.0 # High spin initialization
 
@@ -131,8 +131,8 @@ class DFTManager:
                     embedded_atoms.get_potential_energy()
                     results.append(embedded_atoms)
                     continue
-                except Exception:
-                    pass
+                except Exception as inner_e:
+                    logging.warning(f"Self-healing retry 1 failed: {inner_e}")
 
                 # Retry 2: Change diagonalization
                 calc.parameters["input_data"]["electrons"]["diagonalization"] = "cg"

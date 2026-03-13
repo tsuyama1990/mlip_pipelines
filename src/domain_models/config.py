@@ -35,6 +35,13 @@ class OracleConfig(BaseModel):
     transition_metals: list[str] = Field(
         default=["Fe", "Co", "Ni", "Mn", "Cr", "V"], description="List of transition metals for spin-polarization heuristics"
     )
+    calculation: str = Field(default="scf", description="QE calculation type")
+    ecutwfc: float = Field(default=40.0, ge=0.0, description="Wavefunction cutoff")
+    ecutrho: float = Field(default=320.0, ge=0.0, description="Charge density cutoff")
+    occupations: str = Field(default="smearing", description="Occupations setting")
+    smearing: str = Field(default="mv", description="Smearing type")
+    mixing_beta: float = Field(default=0.7, ge=0.0, le=1.0, description="Mixing beta")
+    diagonalization: str = Field(default="david", description="Diagonalization algorithm")
 
 
 class TrainerConfig(BaseModel):
@@ -52,6 +59,12 @@ class ValidatorConfig(BaseModel):
     energy_rmse_threshold: float = Field(default=0.002, ge=0.0, description="Max allowed Energy RMSE (eV/atom)")
     force_rmse_threshold: float = Field(default=0.05, ge=0.0, description="Max allowed Force RMSE (eV/A)")
     stress_rmse_threshold: float = Field(default=0.1, ge=0.0, description="Max allowed Stress RMSE (GPa)")
+    validation_element: str = Field(default="Fe", description="Element to build bulk validation structure from")
+    validation_crystal: str = Field(default="bcc", description="Crystal type to build bulk validation structure from")
+    validation_a: float = Field(default=2.86, description="Lattice parameter a")
+    fallback_energy_rmse: float = Field(default=0.001, description="Fallback energy RMSE for mock CI environments")
+    fallback_force_rmse: float = Field(default=0.01, description="Fallback force RMSE for mock CI environments")
+    fallback_stress_rmse: float = Field(default=0.05, description="Fallback stress RMSE for mock CI environments")
 
 
 class StructureGeneratorConfig(BaseModel):
@@ -65,6 +78,12 @@ class PolicyConfig(BaseModel):
     default_t_max_scale: float = Field(default=0.5, ge=0.0, description="Default max temp scale vs melting point")
     cautious_t_max_scale: float = Field(default=0.3, ge=0.0, description="Cautious max temp scale vs melting point")
     high_mc_t_max_scale: float = Field(default=0.8, ge=0.0, description="High-MC max temp scale vs melting point")
+    default_md_mc_ratio: float = Field(default=0.0, description="Default md_mc_ratio")
+    default_n_defects: float = Field(default=0.0, description="Default n_defects")
+    default_strain_range: float = Field(default=0.0, description="Default strain_range")
+    high_mc_ratio: float = Field(default=100.0, description="MD/MC ratio for High-MC policy")
+    defect_driven_n_defects: float = Field(default=0.05, description="n_defects for Defect-Driven policy")
+    strain_heavy_range: float = Field(default=0.15, description="strain_range for Strain-Heavy policy")
 
 
 class ProjectConfig(BaseSettings):

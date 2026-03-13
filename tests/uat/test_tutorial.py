@@ -9,5 +9,7 @@ def test_marimo_tutorial(tmp_path):
     assert tutorial_path.exists()
 
     # Run the script directly since it's a valid python script via marimo
-    res = subprocess.run([sys.executable, str(tutorial_path)], capture_output=True, text=True, cwd=str(Path.cwd()))
+    res = subprocess.run(
+        [sys.executable, str(tutorial_path)], capture_output=True, text=True, cwd=str(Path.cwd())
+    )
     assert res.returncode == 0

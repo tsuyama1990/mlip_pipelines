@@ -7,6 +7,7 @@ def test_validator_initialization():
     validator = Validator(config)
     assert validator.config.energy_rmse_threshold == 0.01
 
+
 def test_validate(tmp_path):
     config = ValidatorConfig()
     validator = Validator(config)

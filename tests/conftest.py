@@ -25,5 +25,5 @@ def mock_project_config(mock_system_config: SystemConfig) -> ProjectConfig:
         dynamics=DynamicsConfig(),
         oracle=OracleConfig(),
         trainer=TrainerConfig(),
-        validator=ValidatorConfig()
+        validator=ValidatorConfig(),
     )

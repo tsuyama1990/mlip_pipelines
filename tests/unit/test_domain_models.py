@@ -6,7 +6,9 @@ from src.domain_models.dtos import ExplorationStrategy, HaltInfo, MaterialFeatur
 
 
 def test_material_features_valid():
-    feat = MaterialFeatures(elements=["Fe", "Pt"], band_gap=0.0, bulk_modulus=250.0, melting_point=1600.0)
+    feat = MaterialFeatures(
+        elements=["Fe", "Pt"], band_gap=0.0, bulk_modulus=250.0, melting_point=1600.0
+    )
     assert feat.elements == ["Fe", "Pt"]
 
 
@@ -43,5 +45,5 @@ def test_validation_report_invalid():
             stress_rmse=0.1,
             phonon_stable=True,
             mechanically_stable=True,
-            extra_field="invalid"  # extra="forbid"
+            extra_field="invalid",  # extra="forbid"
         )

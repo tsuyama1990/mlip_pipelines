@@ -10,7 +10,13 @@ class AdaptiveExplorationPolicyEngine:
 
     def decide_policy(self, features: MaterialFeatures) -> ExplorationStrategy:
         # Default strategy
-        strategy = ExplorationStrategy(policy_name="Standard", md_mc_ratio=0.0, t_max=self.config.default_t_max_scale * features.melting_point, n_defects=0.0, strain_range=0.0)
+        strategy = ExplorationStrategy(
+            policy_name="Standard",
+            md_mc_ratio=self.config.default_md_mc_ratio,
+            t_max=self.config.default_t_max_scale * features.melting_point,
+            n_defects=self.config.default_n_defects,
+            strain_range=self.config.default_strain_range
+        )
 
         # Rule 1: High Initial Uncertainty -> Cautious Exploration
         if features.initial_gamma_variance > 1.0:
@@ -21,21 +27,21 @@ class AdaptiveExplorationPolicyEngine:
         # Rule 2: Metal & Multi-component -> High-MC Policy
         if features.band_gap <= 0.1 and len(features.elements) > 1:
             strategy.policy_name = "High-MC Policy"
-            strategy.md_mc_ratio = 100.0  # Just an arbitrary positive number per spec
+            strategy.md_mc_ratio = self.config.high_mc_ratio
             strategy.t_max = self.config.high_mc_t_max_scale * features.melting_point
             return strategy
 
         # Rule 3: Insulator -> Defect-Driven Policy
         if features.band_gap > 0.1:
             strategy.policy_name = "Defect-Driven Policy"
-            strategy.n_defects = 0.05
-            strategy.md_mc_ratio = 0.0
+            strategy.n_defects = self.config.defect_driven_n_defects
+            strategy.md_mc_ratio = self.config.default_md_mc_ratio
             return strategy
 
         # Rule 4: Hard material -> Strain-Heavy Policy
         if features.bulk_modulus > 200.0:
             strategy.policy_name = "Strain-Heavy Policy"
-            strategy.strain_range = 0.15
+            strategy.strain_range = self.config.strain_heavy_range
             return strategy
 
         return strategy

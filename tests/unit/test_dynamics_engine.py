@@ -26,10 +26,8 @@ def test_md_run_exploration_mock(monkeypatch, tmp_path):
     assert result["halted"] is True
     assert result["dump_file"] == tmp_path / "dump.lammps"
 
-def test_extract_high_gamma_structures(tmp_path):
-    config = DynamicsConfig()
-    engine = MDInterface(config)
 
+def test_extract_high_gamma_structures(tmp_path):
     # We will just write a test that checks if the return type is a list of ASE atoms
     # Mocking a dump file might be complex, so we just verify the interface signature and basic return.
     dump_file = tmp_path / "dump.lammps"

@@ -9,6 +9,7 @@ def test_pacemaker_initialization():
     wrapper = PacemakerWrapper(config)
     assert wrapper.config.max_epochs == 10
 
+
 def test_update_dataset(tmp_path):
     config = TrainerConfig()
     wrapper = PacemakerWrapper(config)
@@ -21,12 +22,13 @@ def test_update_dataset(tmp_path):
     assert dataset_path.exists()
     assert str(dataset_path).endswith(".extxyz")
 
+
 def test_select_local_active_set():
     config = TrainerConfig()
     wrapper = PacemakerWrapper(config)
 
     anchor = Atoms("Fe", positions=[(0, 0, 0)])
-    candidates = [Atoms("Fe", positions=[(i*0.1, 0, 0)]) for i in range(1, 21)]
+    candidates = [Atoms("Fe", positions=[(i * 0.1, 0, 0)]) for i in range(1, 21)]
 
     selected = wrapper.select_local_active_set(candidates, anchor=anchor, n=5)
 
