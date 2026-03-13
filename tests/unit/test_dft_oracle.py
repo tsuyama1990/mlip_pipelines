@@ -69,8 +69,10 @@ def test_dft_oracle_compute_batch(mock_which: MagicMock, tmp_path: Path) -> None
             results = oracle.compute_batch([atoms1, atoms2], tmp_path)
 
             assert len(results) == 2
+            # Notice that in the new scalable version, the calculator is detached immediately after
+            # computing the forces to save memory! So `atoms.calc is None` is now the expected behavior.
             for atoms in results:
-                assert atoms.calc is not None
+                assert atoms.calc is None
 
 
 @patch("shutil.which", return_value="pw.x")

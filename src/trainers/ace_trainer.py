@@ -29,13 +29,21 @@ class ACETrainer:
 
         import shutil
 
-        has_pace = shutil.which("pace_activeset") is not None
+        has_pace = shutil.which(self.config.pace_activeset_executable) is not None
 
         if not has_pace:
-            logger.warning("pace_activeset not found in PATH. Defaulting to random selection.")
-            sys_random = random.SystemRandom()
-            sampled = sys_random.sample(candidates, num_to_select)
-            selected.extend(sampled)
+            logger.warning(
+                f"{self.config.pace_activeset_executable} not found in PATH. Defaulting to {self.config.activeset_fallback_strategy} selection."
+            )
+            if self.config.activeset_fallback_strategy == "random":
+                sys_random = random.SystemRandom()
+                sampled = sys_random.sample(candidates, num_to_select)
+                selected.extend(sampled)
+            elif self.config.activeset_fallback_strategy == "first_n":
+                selected.extend(candidates[:num_to_select])
+            else:
+                msg = f"Unknown fallback strategy: {self.config.activeset_fallback_strategy}"
+                raise RuntimeError(msg)
             return selected
 
         import tempfile
@@ -59,8 +67,11 @@ class ACETrainer:
             ]
 
             try:
+                import shlex
+
+                safe_cmd = [shlex.quote(c) for c in cmd]
                 subprocess.run(  # noqa: S603
-                    cmd, check=True, capture_output=True, text=True
+                    safe_cmd, check=True, capture_output=True, text=True
                 )
 
                 logger.info("pace_activeset completed successfully.")
@@ -89,6 +100,15 @@ class ACETrainer:
         if not new_data:
             return accumulated_xyz
 
+        # Prevent unbounded file growth (e.g. rotation if file > 100MB)
+        max_size_bytes = 100 * 1024 * 1024  # 100 MB
+        if accumulated_xyz.exists() and accumulated_xyz.stat().st_size > max_size_bytes:
+            import time
+
+            rotated_name = f"accumulated_{int(time.time())}.extxyz"
+            accumulated_xyz.rename(data_dir / rotated_name)
+            logger.info(f"Rotated large dataset to {rotated_name}")
+
         write(
             str(accumulated_xyz),
             new_data,
@@ -98,29 +118,21 @@ class ACETrainer:
 
         return accumulated_xyz
 
-    def train(self, dataset: Path, initial_potential: Path | None, output_dir: Path) -> Path:
-        """
-        Runs Pacemaker training with Delta Learning against LJ baseline.
-        """
-        output_dir.mkdir(parents=True, exist_ok=True)
-        output_pot = output_dir / "output_potential.yace"
+    def _build_pace_train_cmd(
+        self, dataset: Path, initial_potential: Path | None, output_dir: Path
+    ) -> list[str]:
+        import re
 
-        import shutil
+        safe_arg_pattern = re.compile(r"^[A-Za-z0-9\-_=.]+$")
 
-        has_pace = shutil.which("pace_train") is not None
-
-        if not has_pace:
-            logger.warning(
-                "pace_train not found in PATH. Failing gracefully by not creating the file."
-            )
-
-        cmd = ["pace_train"]
+        cmd = [self.config.pace_train_executable]
         if self.config.pace_train_args:
+            for arg in self.config.pace_train_args:
+                if not safe_arg_pattern.match(arg):
+                    msg = f"Invalid characters in pace_train_args: {arg}"
+                    raise ValueError(msg)
             cmd.extend(self.config.pace_train_args)
 
-        # Override specific necessary ones to maintain flow
-        # In a fully config-driven setup, user provides all args. But we must ensure dataset/output.
-        # Check if already in config, else append
         if "--dataset" not in cmd:
             cmd.extend(["--dataset", str(dataset)])
         if "--output_dir" not in cmd:
@@ -131,10 +143,33 @@ class ACETrainer:
         if initial_potential and initial_potential.exists():
             cmd.extend(["--initial_potential", str(initial_potential)])
 
+        return cmd
+
+    def train(self, dataset: Path, initial_potential: Path | None, output_dir: Path) -> Path:
+        """
+        Runs Pacemaker training with Delta Learning against LJ baseline.
+        """
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_pot = output_dir / "output_potential.yace"
+
+        import shutil
+
+        has_pace = shutil.which(self.config.pace_train_executable) is not None
+
+        if not has_pace:
+            logger.warning(
+                f"{self.config.pace_train_executable} not found in PATH. Failing gracefully by not creating the file."
+            )
+
+        cmd = self._build_pace_train_cmd(dataset, initial_potential, output_dir)
+
         if has_pace:
             try:
+                import shlex
+
+                safe_cmd = [shlex.quote(c) for c in cmd]
                 subprocess.run(  # noqa: S603
-                    cmd, check=True, capture_output=True, text=True
+                    safe_cmd, check=True, capture_output=True, text=True
                 )
             except subprocess.CalledProcessError as e:
                 logger.exception("pace_train failed")

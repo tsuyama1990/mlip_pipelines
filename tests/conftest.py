@@ -1,4 +1,3 @@
-
 import pytest
 
 from src.domain_models.config import MaterialConfig, PipelineConfig
@@ -14,8 +13,9 @@ def mock_material_config() -> MaterialConfig:
         melting_point=1500.0,
         bulk_modulus=180.0,
         crystal="bcc",
-        a=2.8665
+        a=2.8665,
     )
+
 
 @pytest.fixture
 def mock_pipeline_config(mock_material_config: MaterialConfig) -> PipelineConfig:

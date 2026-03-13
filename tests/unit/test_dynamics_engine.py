@@ -8,7 +8,9 @@ from src.dynamics.dynamics_engine import DynamicsEngine
 
 
 @patch.dict(sys.modules, {"lammps": MagicMock()})
-def test_dynamics_engine_run_exploration_lammps(mock_material_config: MaterialConfig, tmp_path: Path) -> None:
+def test_dynamics_engine_run_exploration_lammps(
+    mock_material_config: MaterialConfig, tmp_path: Path
+) -> None:
     # Set up lammps mock
     mock_lammps = sys.modules["lammps"]
     lmp_instance = MagicMock()
@@ -38,7 +40,9 @@ def test_dynamics_engine_run_exploration_lammps(mock_material_config: MaterialCo
 
 
 @patch.dict(sys.modules, {"lammps": MagicMock()})
-def test_dynamics_engine_run_exploration_lammps_halt(mock_material_config: MaterialConfig, tmp_path: Path) -> None:
+def test_dynamics_engine_run_exploration_lammps_halt(
+    mock_material_config: MaterialConfig, tmp_path: Path
+) -> None:
     mock_lammps = sys.modules["lammps"]
     lmp_instance = MagicMock()
     mock_lammps.lammps.return_value = lmp_instance
@@ -65,7 +69,9 @@ def test_dynamics_engine_run_exploration_lammps_halt(mock_material_config: Mater
     assert result["dump_file"] == tmp_path / "dump.lammps"
 
 
-def test_dynamics_engine_run_exploration_fallback(mock_material_config: MaterialConfig, tmp_path: Path) -> None:
+def test_dynamics_engine_run_exploration_fallback(
+    mock_material_config: MaterialConfig, tmp_path: Path
+) -> None:
     # Ensure lammps import fails
     import sys
 
@@ -86,7 +92,9 @@ def test_dynamics_engine_run_exploration_fallback(mock_material_config: Material
         assert (tmp_path / "dump.lammps").parent.exists()
 
 
-def test_dynamics_engine_extract_high_gamma_structures(mock_material_config: MaterialConfig, tmp_path: Path) -> None:
+def test_dynamics_engine_extract_high_gamma_structures(
+    mock_material_config: MaterialConfig, tmp_path: Path
+) -> None:
     md_config = MDConfig()
     otf_config = OTFLoopConfig()
     material = mock_material_config

@@ -7,7 +7,7 @@ def test_adaptive_policy_high_mc() -> None:
     policy = AdaptivePolicy(dna, props)
     strategy = policy.generate_strategy()
 
-    assert strategy.policy_type == "High-MC"
+    assert strategy.policy_type == "high_mc"
     assert strategy.r_md_mc == 100
     assert strategy.t_schedule == (300.0, 800.0, 20000)
     assert strategy.n_defects == 1
@@ -20,7 +20,7 @@ def test_adaptive_policy_defect_driven() -> None:
     policy = AdaptivePolicy(dna, props)
     strategy = policy.generate_strategy()
 
-    assert strategy.policy_type == "Defect-Driven"
+    assert strategy.policy_type == "defect"
     assert strategy.r_md_mc == 0
     assert strategy.t_schedule == (300.0, 500.0, 10000)
     assert strategy.n_defects == 3
@@ -33,7 +33,7 @@ def test_adaptive_policy_strain_heavy() -> None:
     policy = AdaptivePolicy(dna, props)
     strategy = policy.generate_strategy()
 
-    assert strategy.policy_type == "Strain-Heavy"
+    assert strategy.policy_type == "strain"
     assert strategy.r_md_mc == 0
     assert strategy.t_schedule == (300.0, 500.0, 10000)
     assert strategy.n_defects == 0
@@ -46,7 +46,7 @@ def test_adaptive_policy_standard_md() -> None:
     policy = AdaptivePolicy(dna, props)
     strategy = policy.generate_strategy()
 
-    assert strategy.policy_type == "Standard-MD"
+    assert strategy.policy_type == "std"
     assert strategy.r_md_mc == 0
     assert strategy.t_schedule == (300.0, 300.0, 10000)
     assert strategy.n_defects == 0

@@ -3,11 +3,37 @@ from unittest.mock import MagicMock, patch
 
 from src.core.orchestrator import ActiveLearningOrchestrator
 from src.domain_models.config import PipelineConfig
+from src.dynamics.dynamics_engine import DynamicsEngine
+from src.generators.adaptive_policy import AdaptivePolicy
+from src.oracles.dft_oracle import DFTOracle
+from src.trainers.ace_trainer import ACETrainer
+from src.validators.validator import Validator
 
 
-def test_orchestrator_get_latest_potential(mock_pipeline_config: PipelineConfig, tmp_path: Path) -> None:
+def _create_test_orchestrator(config: PipelineConfig) -> ActiveLearningOrchestrator:
+    return ActiveLearningOrchestrator(
+        config=config,
+        md_engine=DynamicsEngine(config.lammps, config.otf_loop, config.material),
+        oracle=DFTOracle(config.dft),
+        trainer=ACETrainer(config.training),
+        validator=Validator(config.validation, config.material),
+        policy_engine=AdaptivePolicy(
+            {"elements": config.material.elements},
+            {
+                "band_gap": config.material.band_gap,
+                "melting_point": config.material.melting_point,
+                "bulk_modulus": config.material.bulk_modulus,
+            },
+            config.policy,
+        ),
+    )
+
+
+def test_orchestrator_get_latest_potential(
+    mock_pipeline_config: PipelineConfig, tmp_path: Path
+) -> None:
     config = mock_pipeline_config
-    orchestrator = ActiveLearningOrchestrator(config)
+    orchestrator = _create_test_orchestrator(config)
 
     with patch("src.core.orchestrator.Path") as mock_path_cls:
         mock_path = MagicMock()
@@ -29,7 +55,7 @@ def test_orchestrator_get_latest_potential(mock_pipeline_config: PipelineConfig,
 
 def test_orchestrator_run_cycle_converged(mock_pipeline_config: PipelineConfig) -> None:
     config = mock_pipeline_config
-    orchestrator = ActiveLearningOrchestrator(config)
+    orchestrator = _create_test_orchestrator(config)
 
     with (
         patch.object(orchestrator, "get_latest_potential", return_value=None),
@@ -45,7 +71,7 @@ def test_orchestrator_run_cycle_converged(mock_pipeline_config: PipelineConfig) 
 
 def test_orchestrator_run_cycle_error_dft(mock_pipeline_config: PipelineConfig) -> None:
     config = mock_pipeline_config
-    orchestrator = ActiveLearningOrchestrator(config)
+    orchestrator = _create_test_orchestrator(config)
 
     with (
         patch.object(orchestrator, "get_latest_potential", return_value=None),
@@ -56,6 +82,7 @@ def test_orchestrator_run_cycle_error_dft(mock_pipeline_config: PipelineConfig) 
     ):
         mock_explore.return_value = {"halted": True, "dump_file": Path("dummy")}
         from ase.build import bulk
+
         mock_extract.return_value = [bulk("Fe", cubic=True)]
         mock_select.return_value = [bulk("Pt", cubic=True)]
         mock_compute.return_value = []  # Empty list = error
@@ -67,7 +94,7 @@ def test_orchestrator_run_cycle_error_dft(mock_pipeline_config: PipelineConfig) 
 
 def test_orchestrator_run_cycle_validation_failed(mock_pipeline_config: PipelineConfig) -> None:
     config = mock_pipeline_config
-    orchestrator = ActiveLearningOrchestrator(config)
+    orchestrator = _create_test_orchestrator(config)
 
     with (
         patch.object(orchestrator, "get_latest_potential", return_value=None),
@@ -81,6 +108,7 @@ def test_orchestrator_run_cycle_validation_failed(mock_pipeline_config: Pipeline
     ):
         mock_explore.return_value = {"halted": True, "dump_file": Path("dummy")}
         from ase.build import bulk
+
         mock_extract.return_value = [bulk("Fe", cubic=True)]
         mock_select.return_value = [bulk("Pt", cubic=True)]
         mock_compute.return_value = ["dummy_result"]
@@ -95,7 +123,7 @@ def test_orchestrator_run_cycle_validation_failed(mock_pipeline_config: Pipeline
 
 def test_orchestrator_run_cycle_continue(mock_pipeline_config: PipelineConfig) -> None:
     config = mock_pipeline_config
-    orchestrator = ActiveLearningOrchestrator(config)
+    orchestrator = _create_test_orchestrator(config)
 
     with (
         patch.object(orchestrator, "get_latest_potential", return_value=None),
@@ -110,6 +138,7 @@ def test_orchestrator_run_cycle_continue(mock_pipeline_config: PipelineConfig) -
     ):
         mock_explore.return_value = {"halted": True, "dump_file": Path("dummy")}
         from ase.build import bulk
+
         mock_extract.return_value = [bulk("Fe", cubic=True)]
         mock_select.return_value = [bulk("Pt", cubic=True)]
         mock_compute.return_value = ["dummy_result"]

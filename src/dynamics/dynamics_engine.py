@@ -20,6 +20,68 @@ class DynamicsEngine:
         self.otf_config = otf_config
         self.material = material
 
+    def _build_commands(
+        self, potential_path: Path, strategy: ExplorationStrategy, dump_path: Path
+    ) -> list[str]:
+        import re
+
+        element_pattern = re.compile(r"^[A-Za-z]+$")
+        for el in self.material.elements:
+            if not element_pattern.match(el):
+                msg = f"Invalid element symbol: {el}"
+                raise ValueError(msg)
+
+        elements = self.material.elements
+        atomic_numbers = self.material.atomic_numbers
+        num_types = len(elements)
+        elements_str = " ".join(elements)
+        atomic_numbers_str = " ".join(map(str, atomic_numbers))
+
+        cmds = [
+            "units metal",
+            "boundary p p p",
+            "atom_style atomic",
+            f"lattice {self.material.crystal} {self.material.a}",
+            "region box block 0 2 0 2 0 2",
+            f"create_box {num_types} box",
+        ]
+
+        for i, _el in enumerate(elements):
+            cmds.append(f"create_atoms {i + 1} box")
+            if i < len(self.material.masses):
+                mass = self.material.masses[i]
+                cmds.append(f"mass {i + 1} {mass}")
+
+        if self.md_config.lammps_commands:
+            for cmd in self.md_config.lammps_commands:
+                formatted_cmd = (
+                    cmd.replace("{potential_path}", str(potential_path))
+                    .replace("{dump_path}", str(dump_path))
+                    .replace("{elements_str}", elements_str)
+                    .replace("{atomic_numbers_str}", atomic_numbers_str)
+                    .replace("{t_start}", str(strategy.t_schedule[0]))
+                    .replace("{t_end}", str(strategy.t_schedule[1]))
+                    .replace("{steps}", str(self.md_config.steps))
+                    .replace("{threshold}", str(self.otf_config.uncertainty_threshold))
+                )
+                cmds.append(formatted_cmd)
+        else:
+            cmds.extend(
+                [
+                    "pair_style hybrid/overlay pace zbl 1.0 2.0",
+                    f"pair_coeff * * pace {potential_path} {elements_str}",
+                    f"pair_coeff * * zbl {atomic_numbers_str}",
+                    "compute pace_gamma all pace gamma_mode=1",
+                    "variable max_gamma equal max(c_pace_gamma)",
+                    f"fix watchdog all halt 10 v_max_gamma > {self.otf_config.uncertainty_threshold} error hard",
+                    "velocity all create 300.0 87287 loop geom",
+                    f"dump 1 all custom 100 {dump_path} id type x y z",
+                    f"fix 1 all nvt temp {strategy.t_schedule[0]} {strategy.t_schedule[1]} 0.1",
+                    f"run {self.md_config.steps}",
+                ]
+            )
+        return cmds
+
     def run_exploration(
         self, potential_path: Path, strategy: ExplorationStrategy, work_dir: Path
     ) -> dict[str, Any]:
@@ -37,59 +99,7 @@ class DynamicsEngine:
             )
             return self._fallback_exploration(strategy, dump_path)
 
-        # Build LAMMPS commands dynamically
-        elements = self.material.elements
-        atomic_numbers = self.material.atomic_numbers
-        num_types = len(elements)
-        elements_str = " ".join(elements)
-        atomic_numbers_str = " ".join(map(str, atomic_numbers))
-
-        cmds = [
-            "units metal",
-            "boundary p p p",
-            "atom_style atomic",
-            f"lattice {self.material.crystal} {self.material.a}",
-            "region box block 0 2 0 2 0 2",
-            f"create_box {num_types} box",
-        ]
-
-        # Get mass dynamically from MaterialConfig
-        for i, _el in enumerate(elements):
-            cmds.append(f"create_atoms {i + 1} box")
-            if i < len(self.material.masses):
-                mass = self.material.masses[i]
-                cmds.append(f"mass {i + 1} {mass}")
-
-        # Inject configurable commands from md_config if present,
-        # else default hybrid setup
-        if self.md_config.lammps_commands:
-            for cmd in self.md_config.lammps_commands:
-                # Poor man's templating to replace critical paths
-                formatted_cmd = cmd.replace("{potential_path}", str(potential_path)) \
-                                   .replace("{dump_path}", str(dump_path)) \
-                                   .replace("{elements_str}", elements_str) \
-                                   .replace("{atomic_numbers_str}", atomic_numbers_str) \
-                                   .replace("{t_start}", str(strategy.t_schedule[0])) \
-                                   .replace("{t_end}", str(strategy.t_schedule[1])) \
-                                   .replace("{steps}", str(self.md_config.steps)) \
-                                   .replace("{threshold}", str(self.otf_config.uncertainty_threshold))
-                cmds.append(formatted_cmd)
-        else:
-            cmds.extend(
-                [
-                    # Hybrid setup fallback
-                    "pair_style hybrid/overlay pace zbl 1.0 2.0",
-                    f"pair_coeff * * pace {potential_path} {elements_str}",
-                    f"pair_coeff * * zbl {atomic_numbers_str}",
-                    "compute pace_gamma all pace gamma_mode=1",
-                    "variable max_gamma equal max(c_pace_gamma)",
-                    f"fix watchdog all halt 10 v_max_gamma > {self.otf_config.uncertainty_threshold} error hard",
-                    "velocity all create 300.0 87287 loop geom",
-                    f"dump 1 all custom 100 {dump_path} id type x y z",
-                    f"fix 1 all nvt temp {strategy.t_schedule[0]} {strategy.t_schedule[1]} 0.1",
-                    f"run {self.md_config.steps}",
-                ]
-            )
+        cmds = self._build_commands(potential_path, strategy, dump_path)
 
         lmp = lammps(cmdargs=["-log", "none"])
 

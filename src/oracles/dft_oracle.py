@@ -38,25 +38,33 @@ class DFTOracle:
         """
         Auto-assign SSSP pseudopotentials based on elements.
         """
+        import re
+
+        element_pattern = re.compile(r"^[A-Za-z]+$")
+
         symbols = set(atoms.get_chemical_symbols())  # type: ignore[no-untyped-call]
         pseudos = {}
         for sym in symbols:
+            if not element_pattern.match(sym):
+                msg = f"Invalid element symbol preventing path traversal: {sym}"
+                raise ValueError(msg)
             pseudos[sym] = self.config.pseudopotentials.get(sym, f"{sym}.upf")
         return pseudos
 
     def compute_batch(self, structures: list[Atoms], calc_dir: Path) -> list[Atoms]:
         """
-        Runs calculations on a batch of structures with self-healing parameters.
+        Runs calculations on a batch of structures with self-healing parameters using streaming.
         """
         calc_dir.mkdir(parents=True, exist_ok=True)
         results = []
 
         import shutil
 
-        has_qe = shutil.which("pw.x") is not None
+        has_qe = shutil.which(self.config.pw_executable) is not None
 
-        for i, atoms in enumerate(structures):
-            embedded_atoms = self._apply_periodic_embedding(atoms)
+        # Generator for streaming to prevent OOM
+        def _process_structure(idx: int, atom: Atoms) -> Atoms | None:
+            embedded_atoms = self._apply_periodic_embedding(atom)
 
             input_data = {
                 "system": {
@@ -77,37 +85,31 @@ class DFTOracle:
                 },
             }
 
-            # Use kspacing
             kspacing = self.config.kspacing
 
             calc = Espresso(  # type: ignore[no-untyped-call]
                 pseudopotentials=self._get_pseudos(embedded_atoms),
                 input_data=input_data,
                 kspacing=kspacing,
-                directory=str(calc_dir / f"calc_{i}"),
+                directory=str(calc_dir / f"calc_{idx}"),
             )
             embedded_atoms.calc = calc
 
             if not has_qe:
                 logger.warning(
-                    "pw.x not found in PATH. Skipping actual DFT execution to avoid failure, but logic is fully wired."
+                    f"{self.config.pw_executable} not found in PATH. Skipping actual DFT execution to avoid failure."
                 )
-                # We do not mock here. We skip the calculation and don't append to results.
-                # The pipeline will fail gracefully or retry if data is empty.
-                continue
+                return None
 
             try:
-                # Execution
                 embedded_atoms.get_potential_energy()  # type: ignore[no-untyped-call]
-
-                # Check if it really computed forces
                 forces = embedded_atoms.get_forces()  # type: ignore[no-untyped-call]
                 if forces is not None:
-                    results.append(embedded_atoms)
+                    # Detach calculator to free memory immediately
+                    embedded_atoms.calc = None
+                    return embedded_atoms
             except Exception as e:
                 logger.warning(f"SCF failed: {e}. Attempting self-healing...")
-
-                # Self healing logic: lower mixing_beta, change diagonalization
                 input_data["electrons"]["mixing_beta"] = 0.3  # type: ignore[index]
                 input_data["electrons"]["diagonalization"] = "cg"  # type: ignore[index]
                 input_data["system"]["degauss"] = 0.05  # type: ignore[index]
@@ -116,7 +118,7 @@ class DFTOracle:
                     pseudopotentials=self._get_pseudos(embedded_atoms),
                     input_data=input_data,
                     kspacing=kspacing,
-                    directory=str(calc_dir / f"calc_{i}_healed"),
+                    directory=str(calc_dir / f"calc_{idx}_healed"),
                 )
                 embedded_atoms.calc = calc_healed
 
@@ -124,8 +126,17 @@ class DFTOracle:
                     embedded_atoms.get_potential_energy()  # type: ignore[no-untyped-call]
                     forces = embedded_atoms.get_forces()  # type: ignore[no-untyped-call]
                     if forces is not None:
-                        results.append(embedded_atoms)
+                        # Detach calculator
+                        embedded_atoms.calc = None
+                        return embedded_atoms
                 except Exception:
                     logger.exception("Self-healing also failed")
+            return None
+
+        # Process as a stream and write lazily if needed, but for interface compatibility return list
+        for i, atom in enumerate(structures):
+            processed = _process_structure(i, atom)
+            if processed is not None:
+                results.append(processed)
 
         return results

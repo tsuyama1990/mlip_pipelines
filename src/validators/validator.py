@@ -24,14 +24,10 @@ class Validator:
         el = self.material.elements[0] if self.material.elements else "Fe"
         atoms = bulk(el, cubic=True)
 
-        try:
-            from phonopy import Phonopy
-            from phonopy.structure.atoms import PhonopyAtoms
-        except ImportError:
-            logger.warning(
-                "phonopy not installed. Simulating Phonopy validation success to proceed."
-            )
-            return True
+        # We enforce strict dependency presence in production now.
+        # Removing the try-except fallback block for imports as per architecture rule.
+        from phonopy import Phonopy
+        from phonopy.structure.atoms import PhonopyAtoms
 
         # We need a Phonopy instance
         cell = PhonopyAtoms(
@@ -86,12 +82,12 @@ class Validator:
                 if freqs is not None and (freqs < -0.1).any():
                     return False
 
-        except ImportError:
-            logger.warning(
-                "pyacemaker not installed or PACE calculator missing. Simulating Phonopy validation success to proceed."
+        except ImportError as e:
+            logger.exception(
+                "pyacemaker not installed or PACE calculator missing. Failing strictly."
             )
-            # We don't have the calculator, so we just return True for the workflow
-            return True
+            msg = "Missing required PACE bindings for validation."
+            raise RuntimeError(msg) from e
 
         return True
 

@@ -56,6 +56,7 @@ def test_validator_check_phonons_no_pacemaker(mock_material_config: MaterialConf
     material = mock_material_config
     validator = Validator(config, material)
 
-    result = validator._check_phonons(Path("dummy.yace"))
+    import pytest
 
-    assert result is True  # simulated success since pyacemaker is missing
+    with pytest.raises(RuntimeError, match="Missing required PACE bindings for validation."):
+        validator._check_phonons(Path("dummy.yace"))
