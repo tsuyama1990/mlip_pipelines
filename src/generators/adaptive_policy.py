@@ -19,7 +19,7 @@ class AdaptiveExplorationPolicyEngine:
             md_mc_ratio=self.config.default_md_mc_ratio,
             t_max=self.config.default_t_max_scale * features.melting_point,
             n_defects=self.config.default_n_defects,
-            strain_range=self.config.default_strain_range
+            strain_range=self.config.default_strain_range,
         )
 
         # Rule 1: High Initial Uncertainty -> Cautious Exploration

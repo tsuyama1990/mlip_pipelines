@@ -15,6 +15,10 @@ class DFTManager:
 
     def _apply_periodic_embedding(self, atoms: Atoms) -> Atoms:
         """Applies Periodic Embedding to create Orthorhombic Box."""
+        if len(atoms) == 0:
+            msg = "Cannot embed an empty structure."
+            raise ValueError(msg)
+
         # Spec says to define a cubic or orthorhombic box around atoms.
         embedded = atoms.copy()  # type: ignore[no-untyped-call]
 
@@ -33,14 +37,10 @@ class DFTManager:
         # Shift positions so they center within the box
         center = (max_pos + min_pos) / 2
         box_center = lengths / 2
-        embedded.positions += (box_center - center)
+        embedded.positions += box_center - center
 
         # Set Orthorhombic cell
-        embedded.set_cell([
-            [lengths[0], 0.0, 0.0],
-            [0.0, lengths[1], 0.0],
-            [0.0, 0.0, lengths[2]]
-        ])
+        embedded.set_cell([[lengths[0], 0.0, 0.0], [0.0, lengths[1], 0.0], [0.0, 0.0, lengths[2]]])
         embedded.set_pbc(True)
         return embedded
 
@@ -48,7 +48,14 @@ class DFTManager:
         """Creates the ESPRESSO calculator with self-healing parameters."""
         # Determine pseudopotentials from elements
         symbols = set(atoms.get_chemical_symbols())
-        pseudos = {el: f"{el}.upf" for el in symbols}
+        pseudos = {}
+        pseudo_dir_path = Path(self.config.pseudo_dir)
+        for el in symbols:
+            upf_name = f"{el}.upf"
+            if not (pseudo_dir_path / upf_name).exists():
+                msg = f"Pseudopotential file not found: {upf_name} in {pseudo_dir_path}"
+                raise FileNotFoundError(msg)
+            pseudos[el] = upf_name
 
         # Check for transition metals
         transition_metals = set(self.config.transition_metals)
@@ -57,27 +64,32 @@ class DFTManager:
         # K-points from Kspacing
         cell = atoms.get_cell()
         import numpy as np
-        b = np.linalg.norm(cell, axis=0) # roughly real lattice vectors lengths
+
+        b = np.linalg.norm(cell, axis=0)  # roughly real lattice vectors lengths
+
+        # Validate cell dimensions for kspacing
+        if any(x == 0 for x in b):
+            msg = "Cell dimensions must be non-zero for kspacing calculation"
+            raise ValueError(msg)
+
         kpts = [int(np.ceil(2 * np.pi / (self.config.kspacing * x))) if x > 0 else 1 for x in b]
 
         # Validated smearing
         degauss = self.config.smearing_width if self.config.smearing_width > 0.0 else 0.02
 
         input_data = {
-            "control": {
-                "calculation": self.config.calculation
-            },
+            "control": {"calculation": self.config.calculation},
             "system": {
                 "ecutwfc": self.config.ecutwfc,
                 "ecutrho": self.config.ecutrho,
                 "occupations": self.config.occupations,
                 "smearing": self.config.smearing,
-                "degauss": degauss
+                "degauss": degauss,
             },
             "electrons": {
                 "mixing_beta": self.config.mixing_beta,
-                "diagonalization": self.config.diagonalization
-            }
+                "diagonalization": self.config.diagonalization,
+            },
         }
 
         if has_tm:
@@ -87,7 +99,7 @@ class DFTManager:
             start_mag = {}
             for _i, el in enumerate(atoms.get_chemical_symbols()):
                 if el in transition_metals:
-                    start_mag[el] = 1.0 # High spin initialization
+                    start_mag[el] = 1.0  # High spin initialization
 
             input_data["system"]["starting_magnetization"] = start_mag
 
@@ -98,7 +110,7 @@ class DFTManager:
             tprnfor=True,
             kpts=kpts,
             directory=str(work_dir),
-            input_data=input_data
+            input_data=input_data,
         )
 
     def compute_batch(self, structures: list[Atoms], calc_dir: Path) -> list[Atoms]:
@@ -143,6 +155,6 @@ class DFTManager:
                     embedded_atoms.get_potential_energy()
                     results.append(embedded_atoms)
                 except Exception as final_e:
-                    logging.exception(f"Failed completely for struct {i}: {final_e}")
+                    logging.error(f"Failed completely for struct {i}: {final_e}")
 
         return results

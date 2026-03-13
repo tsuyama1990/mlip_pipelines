@@ -35,9 +35,10 @@ def test_oracle_config_invalid():
         OracleConfig(kspacing=-0.1)  # gt=0.0 constraint violated
 
 
-def test_project_config():
+def test_project_config(tmp_path):
     # Should be valid with minimal required setup (since most have defaults)
     config = ProjectConfig(
+        project_root=tmp_path,
         system=SystemConfig(elements=["Fe", "O"]),
         dynamics=DynamicsConfig(),
         oracle=OracleConfig(),

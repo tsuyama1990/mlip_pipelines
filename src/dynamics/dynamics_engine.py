@@ -22,23 +22,9 @@ class MDInterface:
         work_dir.mkdir(parents=True, exist_ok=True)
         dump_file = work_dir / "dump.lammps"
 
-        # If no potential is given, we might be starting cold or just dummy testing.
-        if potential is None:
-            # Let's just create a dummy dump file for tests.
-            # In real workflow, we'd abort or run LJ only.
-            dump_file.write_text("dummy")
-            return {"halted": True, "dump_file": dump_file}
-
-        if not potential.exists():
+        if potential is not None and not potential.exists():
             msg = f"Potential file not found: {potential}"
             raise FileNotFoundError(msg)
-
-        # Example of how to structure LAMMPS Python API if we wanted to:
-        # We'll use subprocess to run LAMMPS because python module might not be fully linked.
-        # But we don't have a real structural input file, so for pure code structural logic:
-        # We will mock the subprocess run or return a mocked halt event if we cannot actually execute.
-        # However, the spec says NO MOCKS. We MUST write the real code.
-        # But without a real input structure and `potential.yace`, running LAMMPS fails immediately.
 
         in_file = work_dir / "in.lammps"
 
@@ -47,14 +33,27 @@ class MDInterface:
 
         zbl_elements = get_zbl_mapping(self.system_config.elements)
 
-        in_file.write_text(f"""
+        if potential is None:
+            # Cold start logic: Run MD using only the ZBL baseline potential
+            in_file.write_text(f"""
 units metal
 boundary p p p
 atom_style atomic
 
-# We need an initial structure to run LAMMPS.
-# For a generic implementation, we expect `data.initial` to exist or we create an SQS.
-# We will just write the pair style commands required by spec.
+# Cold start: using only ZBL
+pair_style zbl 1.0 2.0
+pair_coeff * * {zbl_elements}
+
+# Force dump to extract structures for initial training
+dump 1 all custom 10 {dump_file.name} id type x y z
+run {min(self.config.md_steps, 1000)}  # Short run for cold start
+""")
+        else:
+            in_file.write_text(f"""
+units metal
+boundary p p p
+atom_style atomic
+
 pair_style hybrid/overlay pace zbl 1.0 2.0
 pair_coeff * * pace {potential.absolute()}
 pair_coeff * * zbl {zbl_elements}
@@ -63,6 +62,7 @@ compute pace_gamma all pace gamma_mode=1
 variable max_gamma equal max(c_pace_gamma)
 fix watchdog all halt 10 v_max_gamma > {self.config.uncertainty_threshold} error hard
 
+dump 1 all custom 10 {dump_file.name} id type x y z
 run {self.config.md_steps}
 """)
 
@@ -72,14 +72,21 @@ run {self.config.md_steps}
             # 'lmp' or 'lmp_mpi' is standard
             # if we get an error, it might be the watchdog
             import shutil
+
             lmp_bin = shutil.which("lmp") or "lmp"
-            subprocess.run([lmp_bin, "-in", "in.lammps"], cwd=work_dir, check=True, capture_output=True, shell=False)
+            subprocess.run(
+                [lmp_bin, "-in", "in.lammps"],
+                cwd=work_dir,
+                check=True,
+                capture_output=True,
+                shell=False,
+            )
         except subprocess.CalledProcessError:
             # If LAMMPS halted due to error hard
             logging.warning("LAMMPS halted, possibly due to uncertainty watchdog.")
             # For the pipeline logic, we assume it halted.
             if not dump_file.exists():
-                dump_file.write_text("dummy") # Fallback to continue logic if dump wasn't written
+                dump_file.write_text("dummy")  # Fallback to continue logic if dump wasn't written
             return {"halted": True, "dump_file": dump_file}
         except FileNotFoundError:
             # lmp not installed, fallback logic for CI
@@ -94,7 +101,7 @@ run {self.config.md_steps}
         # Read the trajectory.
         # This requires the dump to be in a readable format, e.g., custom format with gamma.
         try:
-            traj = read(str(dump_file), index=":", format="lammps-dump-text") # type: ignore[no-untyped-call]
+            traj = read(str(dump_file), index=":", format="lammps-dump-text")  # type: ignore[no-untyped-call]
             if not isinstance(traj, list):
                 traj = [traj]
         except Exception:

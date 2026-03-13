@@ -36,12 +36,15 @@ def test_compute_batch(monkeypatch, tmp_path):
     import numpy as np
     from ase import Atoms
     from ase.calculators.calculator import Calculator
+
     class MockCalc(Calculator):
         implemented_properties: ClassVar[list[str]] = ["energy", "forces", "stress"]
 
         def __init__(self, **kwargs: Any) -> None:
             super().__init__(**kwargs)
-            self.parameters = {"input_data": {"electrons": {"mixing_beta": 0.7, "diagonalization": "david"}}}
+            self.parameters = {
+                "input_data": {"electrons": {"mixing_beta": 0.7, "diagonalization": "david"}}
+            }
 
         def calculate(self, atoms=None, properties=None, system_changes=None):
             if properties is None:

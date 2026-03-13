@@ -18,17 +18,22 @@ class DynamicsConfig(BaseModel):
     uncertainty_threshold: float = Field(
         default=5.0, ge=0.0, description="Gamma threshold to trigger halt"
     )
-    md_steps: int = Field(default=100000, ge=1, description="Number of MD steps per exploration run")
+    md_steps: int = Field(
+        default=100000, ge=1, description="Number of MD steps per exploration run"
+    )
     temperature: float = Field(default=300.0, ge=0.0, description="Temperature for MD exploration")
     pressure: float = Field(default=0.0, description="Pressure for NPT MD exploration")
 
 
 class OracleConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    kspacing: float = Field(default=0.05, gt=0.0, description="K-point spacing in inverse Angstroms")
+    kspacing: float = Field(
+        default=0.05, gt=0.0, description="K-point spacing in inverse Angstroms"
+    )
     smearing_width: float = Field(default=0.02, ge=0.0, description="Smearing width (Ry)")
     pseudo_dir: str = Field(
-        default=str(Path.home() / "pseudos"), description="Path to pseudopotentials directory (can be overridden by MLIP_PSEUDO_DIR env var)"
+        default=str(Path.home() / "pseudos"),
+        description="Path to pseudopotentials directory (can be overridden by MLIP_PSEUDO_DIR env var)",
     )
 
     @field_validator("kspacing")
@@ -38,10 +43,14 @@ class OracleConfig(BaseModel):
             msg = "kspacing must be within a reasonable range for typical DFT calculations (0.01 to 0.15)"
             raise ValueError(msg)
         return v
+
     max_retries: int = Field(default=3, ge=0, description="Max retries for SCF convergence failure")
-    buffer_size: float = Field(default=4.0, ge=0.0, description="Buffer size in Angstroms for periodic embedding")
+    buffer_size: float = Field(
+        default=4.0, ge=0.0, description="Buffer size in Angstroms for periodic embedding"
+    )
     transition_metals: list[str] = Field(
-        default=["Fe", "Co", "Ni", "Mn", "Cr", "V"], description="List of transition metals for spin-polarization heuristics"
+        default=["Fe", "Co", "Ni", "Mn", "Cr", "V"],
+        description="List of transition metals for spin-polarization heuristics",
     )
     calculation: str = Field(default="scf", description="QE calculation type")
     ecutwfc: float = Field(default=40.0, ge=0.0, description="Wavefunction cutoff")
@@ -64,15 +73,31 @@ class TrainerConfig(BaseModel):
 
 class ValidatorConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    energy_rmse_threshold: float = Field(default=0.002, ge=0.0, description="Max allowed Energy RMSE (eV/atom)")
-    force_rmse_threshold: float = Field(default=0.05, ge=0.0, description="Max allowed Force RMSE (eV/A)")
-    stress_rmse_threshold: float = Field(default=0.1, ge=0.0, description="Max allowed Stress RMSE (GPa)")
-    validation_element: str = Field(default="Fe", description="Element to build bulk validation structure from")
-    validation_crystal: str = Field(default="bcc", description="Crystal type to build bulk validation structure from")
+    energy_rmse_threshold: float = Field(
+        default=0.002, ge=0.0, description="Max allowed Energy RMSE (eV/atom)"
+    )
+    force_rmse_threshold: float = Field(
+        default=0.05, ge=0.0, description="Max allowed Force RMSE (eV/A)"
+    )
+    stress_rmse_threshold: float = Field(
+        default=0.1, ge=0.0, description="Max allowed Stress RMSE (GPa)"
+    )
+    validation_element: str = Field(
+        default="Fe", description="Element to build bulk validation structure from"
+    )
+    validation_crystal: str = Field(
+        default="bcc", description="Crystal type to build bulk validation structure from"
+    )
     validation_a: float = Field(default=2.86, description="Lattice parameter a")
-    fallback_energy_rmse: float = Field(default=0.001, description="Fallback energy RMSE for mock CI environments")
-    fallback_force_rmse: float = Field(default=0.01, description="Fallback force RMSE for mock CI environments")
-    fallback_stress_rmse: float = Field(default=0.05, description="Fallback stress RMSE for mock CI environments")
+    fallback_energy_rmse: float = Field(
+        default=0.001, description="Fallback energy RMSE for mock CI environments"
+    )
+    fallback_force_rmse: float = Field(
+        default=0.01, description="Fallback force RMSE for mock CI environments"
+    )
+    fallback_stress_rmse: float = Field(
+        default=0.05, description="Fallback stress RMSE for mock CI environments"
+    )
 
 
 class StructureGeneratorConfig(BaseModel):
@@ -83,15 +108,25 @@ class StructureGeneratorConfig(BaseModel):
 
 class PolicyConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    default_t_max_scale: float = Field(default=0.5, ge=0.0, description="Default max temp scale vs melting point")
-    cautious_t_max_scale: float = Field(default=0.3, ge=0.0, description="Cautious max temp scale vs melting point")
-    high_mc_t_max_scale: float = Field(default=0.8, ge=0.0, description="High-MC max temp scale vs melting point")
+    default_t_max_scale: float = Field(
+        default=0.5, ge=0.0, description="Default max temp scale vs melting point"
+    )
+    cautious_t_max_scale: float = Field(
+        default=0.3, ge=0.0, description="Cautious max temp scale vs melting point"
+    )
+    high_mc_t_max_scale: float = Field(
+        default=0.8, ge=0.0, description="High-MC max temp scale vs melting point"
+    )
     default_md_mc_ratio: float = Field(default=0.0, description="Default md_mc_ratio")
     default_n_defects: float = Field(default=0.0, description="Default n_defects")
     default_strain_range: float = Field(default=0.0, description="Default strain_range")
     high_mc_ratio: float = Field(default=100.0, description="MD/MC ratio for High-MC policy")
-    defect_driven_n_defects: float = Field(default=0.05, description="n_defects for Defect-Driven policy")
-    strain_heavy_range: float = Field(default=0.15, description="strain_range for Strain-Heavy policy")
+    defect_driven_n_defects: float = Field(
+        default=0.05, description="n_defects for Defect-Driven policy"
+    )
+    strain_heavy_range: float = Field(
+        default=0.15, description="strain_range for Strain-Heavy policy"
+    )
 
 
 class ProjectConfig(BaseSettings):

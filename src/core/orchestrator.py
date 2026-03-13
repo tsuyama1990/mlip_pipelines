@@ -49,8 +49,9 @@ class Orchestrator:
 
         current_pot = self.get_latest_potential()
         if current_pot is None:
-            logging.error("No valid generation potential found to start active learning loop.")
-            return "ERROR"
+            logging.info(
+                "No initial potential found. Starting cold-start exploration (Baseline only)."
+            )
 
         # Build directory mapping
         base_dir = self.config.project_root / "active_learning"
@@ -86,9 +87,7 @@ class Orchestrator:
             def candidate_generator() -> Iterator[list[Atoms]]:
                 for s0 in high_gamma_atoms:
                     candidates = self.structure_generator.generate_local_candidates(s0, n=20)
-                    yield self.trainer.select_local_active_set(
-                        candidates, anchor=s0, n=5
-                    )
+                    yield self.trainer.select_local_active_set(candidates, anchor=s0, n=5)
 
             # 3. LABELING (DFT Oracle) & 4. TRAINING
             has_new_data = False
