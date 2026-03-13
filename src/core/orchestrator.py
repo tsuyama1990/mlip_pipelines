@@ -165,6 +165,13 @@ class Orchestrator:
             msg = "Source potential file must have .yace extension"
             raise ValueError(msg)
 
+        with Path.open(src_pot) as f:
+            content = f.read(100)
+
+        if "elements" not in content and "version" not in content:
+            msg = f"Source potential file {src_pot} does not appear to be a valid YACE format prior to copy."
+            raise ValueError(msg)
+
         shutil.copy(src_pot, final_dest)
 
         resolved_tmp = tmp_work_dir.resolve(strict=True)
@@ -179,9 +186,26 @@ class Orchestrator:
             msg = "final_dest is outside the expected potentials directory"
             raise ValueError(msg)
 
+        # Implement directory content validation
+        expected_dirs = ["training"]
+        # Depending on strategy, either md_run or kmc_run should exist
+        if not (tmp_work_dir / "md_run").exists() and not (tmp_work_dir / "kmc_run").exists():
+            msg = "Missing required exploration directory (md_run or kmc_run)"
+            raise FileNotFoundError(msg)
+
+        for expected in expected_dirs:
+            if not (tmp_work_dir / expected).exists():
+                msg = f"Missing expected output directory: {expected}"
+                raise FileNotFoundError(msg)
+
         if work_dir.exists():
             shutil.rmtree(work_dir, ignore_errors=True)
-        shutil.move(str(tmp_work_dir), str(work_dir))
+
+        # Use atomic os.replace if possible, fallback to shutil.move
+        try:
+            tmp_work_dir.replace(work_dir)
+        except OSError:
+            shutil.move(str(tmp_work_dir), str(work_dir))
 
         self.md_engine.resume(
             potential=final_dest,
@@ -206,11 +230,15 @@ class Orchestrator:
 
         work_dir = base_dir / f"iter_{self.iteration:03d}"
 
+        import os
         import tempfile
 
         cycle_successful = False
         tmp_work_dir = Path(tempfile.mkdtemp(dir=str(base_dir)))
-        tmp_work_dir.chmod(0o700)
+
+        # Verify ownership before changing permissions
+        if tmp_work_dir.stat().st_uid == os.getuid():
+            tmp_work_dir.chmod(0o700)
 
         try:
             halt_info = self._run_exploration(current_pot, tmp_work_dir)

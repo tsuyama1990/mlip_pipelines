@@ -111,7 +111,7 @@ class MDInterface:
         )
         tmp_in_file.write(script)
 
-    def _execute_lammps(self, work_dir: Path, in_file_name: str) -> None:  # noqa: C901, PLR0912
+    def _execute_lammps(self, work_dir: Path, in_file_name: str) -> None:  # noqa: C901, PLR0912, PLR0915
         import re
         import shutil
         import sys
@@ -144,6 +144,10 @@ class MDInterface:
                 msg = f"LAMMPS binary is not an executable file: {resolved_bin}"
                 raise ValueError(msg)
 
+            if resolved_bin.name not in ["lmp", "lammps"]:
+                msg = f"Resolved binary name must be 'lmp' or 'lammps', got '{resolved_bin.name}'"
+                raise ValueError(msg)
+
             if not any(resolved_bin.is_relative_to(Path(td).resolve()) for td in trusted_dirs):
                 msg = f"LAMMPS binary must reside in a trusted directory: {lmp_binary}"
                 raise ValueError(msg)
@@ -161,6 +165,10 @@ class MDInterface:
                     msg = f"LAMMPS binary is not an executable file: {resolved_bin}"
                     raise ValueError(msg)
 
+                if resolved_bin.name not in ["lmp", "lammps"]:
+                    msg = f"Resolved binary name must be 'lmp' or 'lammps', got '{resolved_bin.name}'"
+                    raise ValueError(msg)
+
                 if not any(resolved_bin.is_relative_to(Path(td).resolve()) for td in trusted_dirs):
                     msg = (
                         f"Resolved LAMMPS binary must reside in a trusted directory: {resolved_bin}"
@@ -168,7 +176,8 @@ class MDInterface:
                     raise ValueError(msg)
                 lmp_bin = str(resolved_bin)
 
-        cmd = [lmp_bin, "-in", in_file_name]
+        import shlex
+        cmd = [lmp_bin, "-in", shlex.quote(in_file_name)]
 
         try:
             subprocess.run(  # noqa: S603
@@ -307,6 +316,10 @@ write_data {work_dir.resolve()}/data.lammps
                 msg = f"LAMMPS binary is not an executable file: {resolved_bin}"
                 raise ValueError(msg)
 
+            if resolved_bin.name not in ["lmp", "lammps"]:
+                msg = f"Resolved binary name must be 'lmp' or 'lammps', got '{resolved_bin.name}'"
+                raise ValueError(msg)
+
             if not any(resolved_bin.is_relative_to(Path(td).resolve()) for td in trusted_dirs):
                 msg = f"LAMMPS binary must reside in a trusted directory: {lmp_binary}"
                 raise ValueError(msg)
@@ -324,6 +337,10 @@ write_data {work_dir.resolve()}/data.lammps
                     msg = f"LAMMPS binary is not an executable file: {resolved_bin}"
                     raise ValueError(msg)
 
+                if resolved_bin.name not in ["lmp", "lammps"]:
+                    msg = f"Resolved binary name must be 'lmp' or 'lammps', got '{resolved_bin.name}'"
+                    raise ValueError(msg)
+
                 if not any(resolved_bin.is_relative_to(Path(td).resolve()) for td in trusted_dirs):
                     msg = (
                         f"Resolved LAMMPS binary must reside in a trusted directory: {resolved_bin}"
@@ -331,7 +348,8 @@ write_data {work_dir.resolve()}/data.lammps
                     raise ValueError(msg)
                 lmp_bin = str(resolved_bin)
 
-        cmd = [lmp_bin, "-in", in_file.name]
+        import shlex
+        cmd = [lmp_bin, "-in", shlex.quote(in_file.name)]
 
         try:
             subprocess.run(  # noqa: S603

@@ -69,11 +69,21 @@ class PacemakerWrapper:
             if hasattr(self.config, "project_root"):
                 trusted_dirs.append(str(Path(self.config.project_root) / "bin"))
 
+            import os
             if Path(binary_setting).is_absolute():
                 if ".." in binary_setting:
                     msg = f"Invalid absolute binary path: {binary_setting}"
                     raise ValueError(msg)
-                resolved_bin = Path(binary_setting).resolve()
+                resolved_bin = Path(os.path.realpath(binary_setting)).resolve(strict=True)
+
+                if not resolved_bin.is_file() or not os.access(resolved_bin, os.X_OK):
+                    msg = f"Binary is not an executable file: {resolved_bin}"
+                    raise ValueError(msg)
+
+                if resolved_bin.name != "pace_activeset":
+                    msg = f"Resolved binary name must be 'pace_activeset', got '{resolved_bin.name}'"
+                    raise ValueError(msg)
+
                 if not any(str(resolved_bin).startswith(td) for td in trusted_dirs):
                     msg = f"Binary must reside in a trusted directory: {binary_setting}"
                     raise ValueError(msg)
@@ -86,7 +96,16 @@ class PacemakerWrapper:
                 if resolved_which is None:
                     pace_activeset_bin = binary_setting
                 else:
-                    resolved_bin = Path(resolved_which).resolve()
+                    resolved_bin = Path(os.path.realpath(resolved_which)).resolve(strict=True)
+
+                    if not resolved_bin.is_file() or not os.access(resolved_bin, os.X_OK):
+                        msg = f"Binary is not an executable file: {resolved_bin}"
+                        raise ValueError(msg)
+
+                    if resolved_bin.name != "pace_activeset":
+                        msg = f"Resolved binary name must be 'pace_activeset', got '{resolved_bin.name}'"
+                        raise ValueError(msg)
+
                     if not any(str(resolved_bin).startswith(td) for td in trusted_dirs):
                         msg = f"Resolved binary must reside in a trusted directory: {resolved_bin}"
                         raise ValueError(msg)
@@ -172,7 +191,16 @@ class PacemakerWrapper:
             if ".." in train_binary_setting:
                 msg = f"Invalid absolute binary path: {train_binary_setting}"
                 raise ValueError(msg)
-            resolved_bin = Path(train_binary_setting).resolve()
+            resolved_bin = Path(os.path.realpath(train_binary_setting)).resolve(strict=True)
+
+            if not resolved_bin.is_file() or not os.access(resolved_bin, os.X_OK):
+                msg = f"Binary is not an executable file: {resolved_bin}"
+                raise ValueError(msg)
+
+            if resolved_bin.name != "pace_train":
+                msg = f"Resolved binary name must be 'pace_train', got '{resolved_bin.name}'"
+                raise ValueError(msg)
+
             if not any(str(resolved_bin).startswith(td) for td in trusted_dirs):
                 msg = f"Binary must reside in a trusted directory: {train_binary_setting}"
                 raise ValueError(msg)
@@ -185,7 +213,16 @@ class PacemakerWrapper:
             if resolved_which is None:
                 pace_train_bin = train_binary_setting
             else:
-                resolved_bin = Path(resolved_which).resolve()
+                resolved_bin = Path(os.path.realpath(resolved_which)).resolve(strict=True)
+
+                if not resolved_bin.is_file() or not os.access(resolved_bin, os.X_OK):
+                    msg = f"Binary is not an executable file: {resolved_bin}"
+                    raise ValueError(msg)
+
+                if resolved_bin.name != "pace_train":
+                    msg = f"Resolved binary name must be 'pace_train', got '{resolved_bin.name}'"
+                    raise ValueError(msg)
+
                 if not any(str(resolved_bin).startswith(td) for td in trusted_dirs):
                     msg = f"Resolved binary must reside in a trusted directory: {resolved_bin}"
                     raise ValueError(msg)

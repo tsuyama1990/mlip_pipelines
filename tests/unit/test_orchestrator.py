@@ -8,9 +8,14 @@ from src.domain_models.config import ProjectConfig
 from src.domain_models.dtos import ValidationReport
 
 
-def test_orchestrator_initialization(mock_project_config: ProjectConfig, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_orchestrator_initialization(
+    mock_project_config: ProjectConfig, monkeypatch: pytest.MonkeyPatch
+) -> None:
     import sys
-    monkeypatch.setitem(sys.modules, "pyacemaker.calculator", type("pyacemaker", (), {"pyacemaker": True}))
+
+    monkeypatch.setitem(
+        sys.modules, "pyacemaker.calculator", type("pyacemaker", (), {"pyacemaker": True})
+    )
     orch = Orchestrator(mock_project_config)
     assert orch.config.system.elements == ["Fe", "Pt"]
     assert orch.iteration == 0
@@ -18,12 +23,18 @@ def test_orchestrator_initialization(mock_project_config: ProjectConfig, monkeyp
 
 def test_run_cycle(monkeypatch: pytest.MonkeyPatch, mock_project_config: ProjectConfig) -> None:  # noqa: C901
     import sys
-    monkeypatch.setitem(sys.modules, "pyacemaker.calculator", type("pyacemaker", (), {"pyacemaker": True}))
+
+    monkeypatch.setitem(
+        sys.modules, "pyacemaker.calculator", type("pyacemaker", (), {"pyacemaker": True})
+    )
     orch = Orchestrator(mock_project_config)
 
     # Mock all internal models
     class MockMD:
         def run_exploration(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+            work_dir = kwargs.get("work_dir")
+            if work_dir:
+                work_dir.mkdir(parents=True, exist_ok=True)
             return {"halted": True, "dump_file": "dummy_dump"}
 
         def extract_high_gamma_structures(self, *args: Any, **kwargs: Any) -> list[Any]:
@@ -57,7 +68,7 @@ def test_run_cycle(monkeypatch: pytest.MonkeyPatch, mock_project_config: Project
         def train(self, dataset: Any, initial_potential: Any, output_dir: Path) -> Path:
             pot = output_dir / "output_potential.yace"
             pot.parent.mkdir(parents=True, exist_ok=True)
-            pot.write_text("dummy potential")
+            pot.write_text("elements version dummy potential")
             return pot
 
     class MockValidator:
@@ -111,7 +122,10 @@ def test_run_cycle_converged(
     monkeypatch: pytest.MonkeyPatch, mock_project_config: ProjectConfig
 ) -> None:
     import sys
-    monkeypatch.setitem(sys.modules, "pyacemaker.calculator", type("pyacemaker", (), {"pyacemaker": True}))
+
+    monkeypatch.setitem(
+        sys.modules, "pyacemaker.calculator", type("pyacemaker", (), {"pyacemaker": True})
+    )
     orch = Orchestrator(mock_project_config)
 
     class MockMD:
@@ -146,7 +160,10 @@ def test_get_latest_potential(
     monkeypatch: pytest.MonkeyPatch, mock_project_config: ProjectConfig, tmp_path: Path
 ) -> None:
     import sys
-    monkeypatch.setitem(sys.modules, "pyacemaker.calculator", type("pyacemaker", (), {"pyacemaker": True}))
+
+    monkeypatch.setitem(
+        sys.modules, "pyacemaker.calculator", type("pyacemaker", (), {"pyacemaker": True})
+    )
     orch = Orchestrator(mock_project_config)
     pot_dir = tmp_path / "potentials"
     pot_dir.mkdir(parents=True)
@@ -163,7 +180,10 @@ def test_get_latest_potential_no_dir(
     monkeypatch: pytest.MonkeyPatch, mock_project_config: ProjectConfig, tmp_path: Path
 ) -> None:
     import sys
-    monkeypatch.setitem(sys.modules, "pyacemaker.calculator", type("pyacemaker", (), {"pyacemaker": True}))
+
+    monkeypatch.setitem(
+        sys.modules, "pyacemaker.calculator", type("pyacemaker", (), {"pyacemaker": True})
+    )
     orch = Orchestrator(mock_project_config)
     orch.config.project_root = tmp_path
 
@@ -175,7 +195,10 @@ def test_get_latest_potential_no_files(
     monkeypatch: pytest.MonkeyPatch, mock_project_config: ProjectConfig, tmp_path: Path
 ) -> None:
     import sys
-    monkeypatch.setitem(sys.modules, "pyacemaker.calculator", type("pyacemaker", (), {"pyacemaker": True}))
+
+    monkeypatch.setitem(
+        sys.modules, "pyacemaker.calculator", type("pyacemaker", (), {"pyacemaker": True})
+    )
     orch = Orchestrator(mock_project_config)
     pot_dir = tmp_path / "potentials"
     pot_dir.mkdir(parents=True)
@@ -190,7 +213,10 @@ def test_get_latest_potential_invalid_file(
     monkeypatch: pytest.MonkeyPatch, mock_project_config: ProjectConfig, tmp_path: Path
 ) -> None:
     import sys
-    monkeypatch.setitem(sys.modules, "pyacemaker.calculator", type("pyacemaker", (), {"pyacemaker": True}))
+
+    monkeypatch.setitem(
+        sys.modules, "pyacemaker.calculator", type("pyacemaker", (), {"pyacemaker": True})
+    )
     orch = Orchestrator(mock_project_config)
     pot_dir = tmp_path / "potentials"
     pot_dir.mkdir(parents=True)

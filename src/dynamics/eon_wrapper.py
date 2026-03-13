@@ -157,6 +157,11 @@ if __name__ == "__main__":
                 if not eon_path.is_file() or not os.access(eon_path, os.X_OK):
                     msg = f"EON binary is not an executable file: {eon_path}"
                     raise ValueError(msg)
+
+                if eon_path.name != "eonclient":
+                    msg = f"Resolved EON binary name must be 'eonclient', got '{eon_path.name}'"
+                    raise ValueError(msg)
+
                 if not any(eon_path.is_relative_to(Path(td).resolve()) for td in trusted_dirs):
                     msg = f"Resolved EON binary must reside in a trusted directory: {eon_path}"
                     raise ValueError(msg)
