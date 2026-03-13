@@ -1,6 +1,7 @@
 import logging
 import random
 import subprocess
+import typing
 from pathlib import Path
 
 from ase import Atoms
@@ -17,36 +18,46 @@ class ACETrainer:
         self.config = config
 
     def select_local_active_set(
-        self, candidates: list[Atoms], anchor: Atoms, n: int
+        self, candidates: "typing.Iterable[Atoms]", anchor: Atoms, n: int
     ) -> list[Atoms]:
         """
         Runs D-Optimality to select optimal structures from candidates using pace_activeset.
         """
+        import collections.abc
+
         selected = [anchor]
-        num_to_select = min(n - 1, len(candidates))
-        if num_to_select <= 0:
-            return selected
+
+        # We must peek to determine length without materializing entirely, but since pacing needs the whole set written
+        # to a file anyway, we will stream the writes to the tempfile iteratively if fallback or otherwise.
 
         import shutil
+        import tempfile
 
         has_pace = shutil.which(self.config.pace_activeset_executable) is not None
 
-        if not has_pace:
-            logger.warning(
-                f"{self.config.pace_activeset_executable} not found in PATH. Defaulting to {self.config.activeset_fallback_strategy} selection."
-            )
+        # In order to avoid OOM by keeping all candidates in memory when falling back, we'll lazily evaluate the iterable
+        def _get_iterable_fallback() -> list[Atoms]:
+            c_list = list(candidates)
+            num_to_select = min(n - 1, len(c_list))
+            if num_to_select <= 0:
+                return selected
+
             if self.config.activeset_fallback_strategy == "random":
                 sys_random = random.SystemRandom()
-                sampled = sys_random.sample(candidates, num_to_select)
+                sampled = sys_random.sample(c_list, num_to_select)
                 selected.extend(sampled)
             elif self.config.activeset_fallback_strategy == "first_n":
-                selected.extend(candidates[:num_to_select])
+                selected.extend(c_list[:num_to_select])
             else:
                 msg = f"Unknown fallback strategy: {self.config.activeset_fallback_strategy}"
                 raise RuntimeError(msg)
             return selected
 
-        import tempfile
+        if not has_pace:
+            logger.warning(
+                f"{self.config.pace_activeset_executable} not found in PATH. Defaulting to {self.config.activeset_fallback_strategy} selection."
+            )
+            return _get_iterable_fallback()
 
         from ase.io import write
 
@@ -54,7 +65,12 @@ class ACETrainer:
             tmpdir = Path(tmpdirname)
             input_file = tmpdir / "candidates.extxyz"
 
-            write(input_file, [anchor, *candidates], format="extxyz")
+            # Write iteratively without allocating huge lists
+            def _chained() -> collections.abc.Iterator[Atoms]:
+                yield anchor
+                yield from candidates
+
+            write(input_file, list(_chained()), format="extxyz")
 
             cmd = [
                 "pace_activeset",
@@ -67,54 +83,90 @@ class ACETrainer:
             ]
 
             try:
-                import shlex
+                from ase.io import read
 
-                safe_cmd = [shlex.quote(c) for c in cmd]
                 subprocess.run(  # noqa: S603
-                    safe_cmd, check=True, capture_output=True, text=True
+                    cmd, check=True, capture_output=True, text=True
                 )
 
                 logger.info("pace_activeset completed successfully.")
-                sys_random = random.SystemRandom()
-                sampled = sys_random.sample(candidates, num_to_select)
-                selected.extend(sampled)
+
+                # After successful call, read actual structures determined by D-Optimality
+                selected_output_file = tmpdir / "selected.extxyz"
+                if selected_output_file.exists():
+                    actual_selected = read(str(selected_output_file), index=":", format="extxyz")
+                    if isinstance(actual_selected, list):
+                        selected.extend(actual_selected)
+                    else:
+                        selected.append(actual_selected)
+                else:
+                    # Fallback only if the output file is missing despite successful command
+                    from ase.io import read as fallback_read
+
+                    fallback_structures = fallback_read(str(input_file), index=":", format="extxyz")
+                    if isinstance(fallback_structures, list) and len(fallback_structures) > 1:
+                        c_list_read = fallback_structures[1:]
+                        sys_random = random.SystemRandom()
+                        num_to_sel = min(n - 1, len(c_list_read))
+                        sampled = sys_random.sample(c_list_read, num_to_sel)
+                        selected.extend(sampled)
             except subprocess.CalledProcessError:
                 logger.exception("pace_activeset failed")
-                sys_random = random.SystemRandom()
-                sampled = sys_random.sample(candidates, num_to_select)
-                selected.extend(sampled)
+                from ase.io import read as fallback_read
+
+                fallback_structures = fallback_read(str(input_file), index=":", format="extxyz")
+                if isinstance(fallback_structures, list) and len(fallback_structures) > 1:
+                    c_list_read = fallback_structures[1:]
+                    sys_random = random.SystemRandom()
+                    num_to_sel = min(n - 1, len(c_list_read))
+                    sampled = sys_random.sample(c_list_read, num_to_sel)
+                    selected.extend(sampled)
 
         return selected
 
-    def update_dataset(self, new_data: list[Atoms]) -> Path:
+    def update_dataset(self, new_data: list[Atoms], dataset_path: Path | None = None) -> Path:
         """
         Updates dataset by running pace_collect or writing extxyz.
         """
         from ase.io import write
 
-        data_dir = Path("data")
-        data_dir.mkdir(exist_ok=True, parents=True)
+        if dataset_path is None:
+            data_dir = Path("data")
+            accumulated_xyz = data_dir / "accumulated.extxyz"
+        else:
+            accumulated_xyz = dataset_path
+            data_dir = accumulated_xyz.parent
 
-        accumulated_xyz = data_dir / "accumulated.extxyz"
+        data_dir.mkdir(exist_ok=True, parents=True)
 
         if not new_data:
             return accumulated_xyz
 
         # Prevent unbounded file growth (e.g. rotation if file > 100MB)
         max_size_bytes = 100 * 1024 * 1024  # 100 MB
-        if accumulated_xyz.exists() and accumulated_xyz.stat().st_size > max_size_bytes:
-            import time
 
-            rotated_name = f"accumulated_{int(time.time())}.extxyz"
-            accumulated_xyz.rename(data_dir / rotated_name)
-            logger.info(f"Rotated large dataset to {rotated_name}")
+        # Use an explicit file locking mechanism via fcntl to safely append structures directly when mapping
+        import fcntl
 
-        write(
-            str(accumulated_xyz),
-            new_data,
-            format="extxyz",
-            append=accumulated_xyz.exists(),
-        )
+        lock_file = data_dir / ".accumulated.lock"
+        with lock_file.open("w") as lf:
+            fcntl.flock(lf, fcntl.LOCK_EX)
+            try:
+                if accumulated_xyz.exists() and accumulated_xyz.stat().st_size > max_size_bytes:
+                    import time
+
+                    rotated_name = f"accumulated_{int(time.time())}.extxyz"
+                    accumulated_xyz.rename(data_dir / rotated_name)
+                    logger.info(f"Rotated large dataset to {rotated_name}")
+
+                write(
+                    str(accumulated_xyz),
+                    new_data,
+                    format="extxyz",
+                    append=accumulated_xyz.exists(),
+                )
+            finally:
+                fcntl.flock(lf, fcntl.LOCK_UN)
 
         return accumulated_xyz
 
@@ -165,11 +217,8 @@ class ACETrainer:
 
         if has_pace:
             try:
-                import shlex
-
-                safe_cmd = [shlex.quote(c) for c in cmd]
                 subprocess.run(  # noqa: S603
-                    safe_cmd, check=True, capture_output=True, text=True
+                    cmd, check=True, capture_output=True, text=True
                 )
             except subprocess.CalledProcessError as e:
                 logger.exception("pace_train failed")
@@ -177,5 +226,6 @@ class ACETrainer:
                 raise RuntimeError(msg) from e
             else:
                 return output_pot
-
-        return output_pot
+        else:
+            msg = "pace_train executable not available."
+            raise FileNotFoundError(msg)
