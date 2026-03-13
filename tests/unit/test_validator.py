@@ -32,4 +32,6 @@ def test_validate(tmp_path: Path) -> None:
         report = validator.validate(dummy_pot)
         assert hasattr(report, "energy_rmse")
     except Exception as e:
-        pytest.skip(f"Failed to execute real validation due to missing model structures/formats: {e}")
+        pytest.skip(
+            f"Failed to execute real validation due to missing model structures/formats: {e}"
+        )

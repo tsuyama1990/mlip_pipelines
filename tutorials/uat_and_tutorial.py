@@ -84,7 +84,15 @@ def __(orchestrator, mo):
 
     # Run the cycle
     import shutil
-    if not shutil.which("lmp") or not shutil.which("pace_train"):
+
+    missing_tools = []
+    if not shutil.which(orchestrator.config.dynamics.lmp_binary):
+        missing_tools.append(orchestrator.config.dynamics.lmp_binary)
+    if not shutil.which(orchestrator.config.trainer.pace_train_binary):
+        missing_tools.append(orchestrator.config.trainer.pace_train_binary)
+
+    if missing_tools:
+        mo.md(f"**Warning:** Missing required execution tools: {', '.join(missing_tools)}. Execution will be simulated or skipped.")
         result_pot = None
         calculated_interface_energy = 0.0
         calculated_order_parameter = 0.0
