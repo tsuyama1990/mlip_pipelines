@@ -248,7 +248,9 @@ class Orchestrator:
 
             candidate_generator: Iterator[list[Atoms]] = self._select_candidates(halt_info)
 
-            new_pot_path: Path | str = self._run_dft_and_train(candidate_generator, tmp_work_dir, current_pot)
+            new_pot_path: Path | str = self._run_dft_and_train(
+                candidate_generator, tmp_work_dir, current_pot
+            )
             if isinstance(new_pot_path, str):
                 return new_pot_path
 

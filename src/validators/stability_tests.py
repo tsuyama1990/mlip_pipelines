@@ -46,7 +46,10 @@ def check_phonopy_stability(atoms: "Atoms", calc: "Calculator") -> bool:
 
     except ImportError:
         import logging
-        logging.warning("phonopy is not installed. Skipping phonon stability check. Assuming stable.")
+
+        logging.warning(
+            "phonopy is not installed. Skipping phonon stability check. Assuming stable."
+        )
         return True
 
 
@@ -64,7 +67,7 @@ def check_mechanical_stability(atoms: "Atoms", calc: "Calculator") -> bool:  # n
     V0 = atoms.get_volume()  # type: ignore[no-untyped-call]
 
     try:
-        E0 = atoms.get_potential_energy() # type: ignore[no-untyped-call]
+        E0 = atoms.get_potential_energy()  # type: ignore[no-untyped-call]
     except Exception as e:
         logging.exception("Failed to calculate baseline potential energy")
         msg = "Calculator failed to compute potential energy on the base structure"
@@ -88,6 +91,7 @@ def check_mechanical_stability(atoms: "Atoms", calc: "Calculator") -> bool:  # n
     # Fit E = E0 + 1/2 V0 * B * (3*s)^2 -> E = a + b * s + c * s^2
     # Where c = 1/2 V0 * 9 B
     import numpy.typing as npt
+
     coeffs_vol: npt.NDArray[np.float64] = np.polyfit(strains_vol, energies_vol, 2)  # type: ignore[no-untyped-call]
     B: float = float(2 * coeffs_vol[0] / (9 * V0))
 

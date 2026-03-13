@@ -30,7 +30,9 @@ class Validator:
             if not hasattr(pyacemaker, "__version__"):
                 logging.debug("pyacemaker module found.")
         except ImportError:
-            logging.warning("pyacemaker dependency missing. Validation will be mocked/skipped if accessed.")
+            logging.warning(
+                "pyacemaker dependency missing. Validation will be mocked/skipped if accessed."
+            )
 
         try:
             import phonopy  # noqa: F401
@@ -59,16 +61,20 @@ class Validator:
 
         try:
             from pyacemaker.calculator import pyacemaker
+
             calc = pyacemaker(str(resolved_path))
         except ImportError:
             import logging
-            logging.warning("pyacemaker missing. Skipping real metric computation, using fallback values.")
+
+            logging.warning(
+                "pyacemaker missing. Skipping real metric computation, using fallback values."
+            )
             return (
                 self.config.fallback_energy_rmse,
                 self.config.fallback_force_rmse,
                 self.config.fallback_stress_rmse,
                 True,
-                True
+                True,
             )
 
         atoms = bulk(
@@ -86,6 +92,7 @@ class Validator:
             test_path: Path = Path(self.config.test_dataset_path).resolve(strict=True)
             if test_path.exists():
                 from ase.io import read
+
                 test_atoms_list = read(str(test_path), index=":")
                 if not isinstance(test_atoms_list, list):
                     test_atoms_list = [test_atoms_list]
@@ -109,12 +116,12 @@ class Validator:
                     pred_e: float = float(test_atoms.get_potential_energy())  # type: ignore[no-untyped-call]
                     pred_f: np.ndarray = test_atoms.get_forces()  # type: ignore[no-untyped-call, type-arg]
 
-                    e_errors.append((pred_e - true_e)**2)
-                    f_errors.append(float(np.mean((pred_f - true_f)**2)))
+                    e_errors.append((pred_e - true_e) ** 2)
+                    f_errors.append(float(np.mean((pred_f - true_f) ** 2)))
 
                     if true_s is not None:
                         pred_s: np.ndarray = test_atoms.get_stress()  # type: ignore[no-untyped-call, type-arg]
-                        s_errors.append(float(np.mean((pred_s - true_s)**2)))
+                        s_errors.append(float(np.mean((pred_s - true_s) ** 2)))
 
                 if e_errors:
                     energy_rmse = float(np.sqrt(np.mean(e_errors)))

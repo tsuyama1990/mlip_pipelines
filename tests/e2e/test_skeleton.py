@@ -15,7 +15,10 @@ from src.domain_models.config import (
 
 def test_full_pipeline_skeleton(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import sys
-    monkeypatch.setitem(sys.modules, "pyacemaker.calculator", type("pyacemaker", (), {"pyacemaker": True}))
+
+    monkeypatch.setitem(
+        sys.modules, "pyacemaker.calculator", type("pyacemaker", (), {"pyacemaker": True})
+    )
     config = ProjectConfig(
         system=SystemConfig(elements=["Fe", "Pt"], baseline_potential="zbl"),
         dynamics=DynamicsConfig(uncertainty_threshold=5.0, md_steps=100),

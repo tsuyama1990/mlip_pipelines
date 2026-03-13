@@ -101,6 +101,7 @@ class MDInterface:
             trusted_dirs.append(str(Path(self.config.project_root) / "bin"))
 
         import os
+
         lmp_bin: str
         if Path(lmp_binary).is_absolute():
             if not re.match(r"^[-a-zA-Z0-9_./]+$", lmp_binary) or ".." in lmp_binary:
@@ -135,7 +136,9 @@ class MDInterface:
                     raise ValueError(msg)
 
                 if resolved_bin.name not in ["lmp", "lammps"]:
-                    msg = f"Resolved binary name must be 'lmp' or 'lammps', got '{resolved_bin.name}'"
+                    msg = (
+                        f"Resolved binary name must be 'lmp' or 'lammps', got '{resolved_bin.name}'"
+                    )
                     raise ValueError(msg)
 
                 if not any(resolved_bin.is_relative_to(Path(td).resolve()) for td in trusted_dirs):
@@ -146,6 +149,7 @@ class MDInterface:
                 lmp_bin = str(resolved_bin)
 
         import shlex
+
         cmd: list[str] = [lmp_bin, "-in", shlex.quote(in_file_name)]
 
         try:
@@ -275,6 +279,7 @@ write_data {work_dir.resolve()}/data.lammps
         lmp_binary = self.config.lmp_binary
 
         import os
+
         if Path(lmp_binary).is_absolute():
             if not re.match(r"^[-a-zA-Z0-9_./]+$", lmp_binary) or ".." in lmp_binary:
                 msg = f"Invalid LAMMPS absolute binary path: {lmp_binary}"
@@ -307,7 +312,9 @@ write_data {work_dir.resolve()}/data.lammps
                     raise ValueError(msg)
 
                 if resolved_bin.name not in ["lmp", "lammps"]:
-                    msg = f"Resolved binary name must be 'lmp' or 'lammps', got '{resolved_bin.name}'"
+                    msg = (
+                        f"Resolved binary name must be 'lmp' or 'lammps', got '{resolved_bin.name}'"
+                    )
                     raise ValueError(msg)
 
                 if not any(resolved_bin.is_relative_to(Path(td).resolve()) for td in trusted_dirs):
@@ -318,6 +325,7 @@ write_data {work_dir.resolve()}/data.lammps
                 lmp_bin = str(resolved_bin)
 
         import shlex
+
         cmd = [lmp_bin, "-in", shlex.quote(in_file.name)]
 
         try:

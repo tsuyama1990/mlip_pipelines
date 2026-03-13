@@ -27,6 +27,7 @@ def __(mo):
     mo.md("## Configuration")
     return ()
 
+
 @app.cell
 def __():
     import sys

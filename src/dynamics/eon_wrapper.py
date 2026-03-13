@@ -76,6 +76,7 @@ class EONWrapper:
                 eon_bin = eon_binary  # fallback, will trigger FileNotFoundError
             else:
                 import os
+
                 eon_path: Path = Path(os.path.realpath(resolved_which)).resolve(strict=True)
                 if not eon_path.is_file() or not os.access(eon_path, os.X_OK):
                     msg = f"EON binary is not an executable file: {eon_path}"
@@ -101,10 +102,15 @@ class EONWrapper:
             )
 
             if res.returncode == 100:
-                return {"halted": True, "dump_file": resolved_work_dir / "bad_structure.cfg", "is_kmc": True}
+                return {
+                    "halted": True,
+                    "dump_file": resolved_work_dir / "bad_structure.cfg",
+                    "is_kmc": True,
+                }
             if res.returncode != 0:
                 # Other error
                 import logging
+
                 logging.error(f"EON client failed with return code {res.returncode}")
                 msg = f"EON client failed with return code {res.returncode}"
                 raise RuntimeError(msg)
