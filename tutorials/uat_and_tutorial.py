@@ -23,28 +23,19 @@ def __(mo):
 
 
 @app.cell
-def __():
-    import os as _os
-    USE_MOCK = _os.environ.get("USE_MOCK", "1") == "1"  # Toggle for actual HPC execution vs CI/Test dummy
-    return (USE_MOCK,)
-
-
-@app.cell
-def __(USE_MOCK, mo):
+def __(mo):
     mo.md("## Configuration")
+    return ()
 
 
 @app.cell
-def __(USE_MOCK):
+def __():
     import sys
     from pathlib import Path
     from typing import Any
 
     # Path patching for headless test execution directly
     sys.path.insert(0, str(Path.cwd()))
-
-    if USE_MOCK:
-        sys.modules["pyacemaker.calculator"] = type("pyacemaker", (), {"pyacemaker": True})
 
     from src.domain_models.config import (
         DynamicsConfig,
@@ -68,14 +59,10 @@ def __(USE_MOCK):
 
 
 @app.cell
-def __(config, USE_MOCK, mo, Any):
+def __(config, mo, Any):
     from src.core.orchestrator import Orchestrator
 
     orchestrator = Orchestrator(config)
-
-    if USE_MOCK:
-        # Fallback handling for tutorial
-        pass
 
     mo.md("Orchestrator Initialized")
     return (orchestrator,)

@@ -7,7 +7,7 @@ from typing import Any
 from ase import Atoms
 
 from src.domain_models.config import ProjectConfig
-from src.domain_models.dtos import MaterialFeatures
+from src.domain_models.dtos import ExplorationStrategy, MaterialFeatures
 from src.dynamics.dynamics_engine import MDInterface
 from src.dynamics.eon_wrapper import EONWrapper
 from src.generators.adaptive_policy import AdaptiveExplorationPolicyEngine
@@ -68,32 +68,57 @@ class Orchestrator:
                 return None
             return latest_pot
 
-    def _run_exploration(
-        self, current_pot: Path | None, tmp_work_dir: Path
-    ) -> dict[str, Any] | str:
-        # Deduce features to get policy
+    def _decide_exploration_strategy(self) -> ExplorationStrategy:
         features = MaterialFeatures(elements=self.config.system.elements)
-        strategy = self.policy_engine.decide_policy(features)
 
+        try:
+            return self.policy_engine.decide_policy(features)
+        except (ValueError, TypeError, KeyError):
+            logging.warning(
+                "Policy engine parameter calculation failed. Falling back to default MD strategy."
+            )
+            return ExplorationStrategy(
+                md_mc_ratio=0.0,
+                t_max=300.0,
+                n_defects=0.0,
+                strain_range=0.0,
+                policy_name="Fallback Standard",
+            )
+        except RuntimeError as e:
+            msg = "Critical infrastructure failure in policy engine execution."
+            logging.exception(msg)
+            raise RuntimeError(msg) from e
+
+    def _execute_exploration(
+        self, strategy: ExplorationStrategy, current_pot: Path | None, tmp_work_dir: Path
+    ) -> dict[str, Any]:
         if strategy.md_mc_ratio > 0.0:
             logging.info(f"Running kMC (EON) exploration due to strategy {strategy.policy_name}")
-            halt_info = self.eon_engine.run_kmc(
+            return self.eon_engine.run_kmc(
                 potential=current_pot,
                 work_dir=tmp_work_dir / "kmc_run",
             )
-        else:
-            logging.info(f"Running MD exploration due to strategy {strategy.policy_name}")
-            halt_info = self.md_engine.run_exploration(
-                potential=current_pot,
-                work_dir=tmp_work_dir / "md_run",
-            )
 
+        logging.info(f"Running MD exploration due to strategy {strategy.policy_name}")
+        return self.md_engine.run_exploration(
+            potential=current_pot,
+            work_dir=tmp_work_dir / "md_run",
+        )
+
+    def _detect_halt(self, halt_info: dict[str, Any]) -> dict[str, Any] | str:
         if not halt_info.get("halted", False):
             logging.info("Exploration completed without high uncertainty. Converged.")
             return "CONVERGED"
 
         logging.warning("Halt triggered by uncertainty watchdog!")
         return halt_info
+
+    def _run_exploration(
+        self, current_pot: Path | None, tmp_work_dir: Path
+    ) -> dict[str, Any] | str:
+        strategy = self._decide_exploration_strategy()
+        halt_info = self._execute_exploration(strategy, current_pot, tmp_work_dir)
+        return self._detect_halt(halt_info)
 
     def _select_candidates(self, halt_info: dict[str, Any]) -> Iterator[list[Atoms]]:
         if halt_info.get("is_kmc"):
@@ -112,52 +137,70 @@ class Orchestrator:
             candidates = self.structure_generator.generate_local_candidates(s0, n=20)
             yield self.trainer.select_local_active_set(candidates, anchor=s0, n=5)
 
-    def _run_dft_and_train(
+    def _compute_dft_and_update_dataset(
         self,
         candidate_generator: Iterator[list[Atoms]],
         tmp_work_dir: Path,
-        current_pot: Path | None,
-    ) -> Path | str:
+        dataset_path: Path,
+    ) -> bool:
         has_new_data = False
-        data_dir = self.config.project_root / "data"
-        data_dir.mkdir(parents=True, exist_ok=True)
-        dataset_path = data_dir / "accumulated.extxyz"
-
         for i, batch in enumerate(candidate_generator):
             batch_calc_dir = tmp_work_dir / f"dft_calc_batch_{i}"
             new_data = self.oracle.compute_batch(batch, batch_calc_dir)
             if new_data:
                 self.trainer.update_dataset(new_data, dataset_path=dataset_path)
                 has_new_data = True
+        return has_new_data
 
-        if not has_new_data:
-            logging.error("No valid data obtained from DFT.")
-            return "ERROR"
-
+    def _train_model(
+        self, dataset_path: Path, current_pot: Path | None, tmp_work_dir: Path
+    ) -> Path:
         return self.trainer.train(
             dataset=dataset_path,
             initial_potential=current_pot,
             output_dir=tmp_work_dir / "training",
         )
 
-    def _validate_and_deploy(self, new_pot_path: Path, tmp_work_dir: Path, work_dir: Path) -> str:
-        validation_result = self.validator.validate(new_pot_path)
+    def _run_dft_and_train(
+        self,
+        candidate_generator: Iterator[list[Atoms]],
+        tmp_work_dir: Path,
+        current_pot: Path | None,
+    ) -> Path | str:
+        data_dir = self.config.project_root / "data"
+        data_dir.mkdir(parents=True, exist_ok=True)
+        dataset_path = data_dir / "accumulated.extxyz"
 
-        # decoupled reporter usage
+        has_new_data = self._compute_dft_and_update_dataset(
+            candidate_generator, tmp_work_dir, dataset_path
+        )
+
+        if not has_new_data:
+            logging.error("No valid data obtained from DFT.")
+            return "ERROR"
+
+        return self._train_model(dataset_path, current_pot, tmp_work_dir)
+
+    def _validate_potential(self, new_pot_path: Path) -> bool:
+        validation_result = self.validator.validate(new_pot_path)
         report_path = new_pot_path.parent / "validation_report.html"
         self.reporter.generate_html_report(validation_result, report_path)
-
         if not validation_result.passed:
             logging.error(f"Validation failed: {validation_result.reason}")
-            return "VALIDATION_FAILED"
+            return False
+        return True
 
-        self.iteration += 1
-        pot_dir = self.config.project_root / "potentials"
-        pot_dir.mkdir(parents=True, exist_ok=True)
-        final_dest = pot_dir / f"generation_{self.iteration:03d}.yace"
+    def _copy_potential(self, tmp_work_dir: Path, pot_dir: Path, iteration: int) -> Path:
+        import os
+        import shutil
+        import tempfile
 
+        final_dest = pot_dir / f"generation_{iteration:03d}.yace"
         src_pot = tmp_work_dir / "training" / "output_potential.yace"
-        if not src_pot.is_file() or not src_pot.resolve().is_relative_to(tmp_work_dir.resolve()):
+
+        if not src_pot.is_file() or not src_pot.resolve(strict=True).is_relative_to(
+            tmp_work_dir.resolve(strict=True)
+        ):
             msg = "Source potential file missing or invalid"
             raise FileNotFoundError(msg)
 
@@ -172,23 +215,35 @@ class Orchestrator:
             msg = f"Source potential file {src_pot} does not appear to be a valid YACE format prior to copy."
             raise ValueError(msg)
 
-        shutil.copy(src_pot, final_dest)
-
         resolved_tmp = tmp_work_dir.resolve(strict=True)
-        if not resolved_tmp.is_relative_to(
-            (self.config.project_root / "active_learning").resolve(strict=True)
-        ):
+        base_al_dir = (self.config.project_root / "active_learning").resolve(strict=True)
+        if not resolved_tmp.is_relative_to(base_al_dir):
             msg = "tmp_work_dir is outside the expected base directory"
             raise ValueError(msg)
 
-        resolved_dest = final_dest.resolve(strict=False)
-        if not resolved_dest.is_relative_to(pot_dir.resolve(strict=True)):
+        final_dest_resolved = final_dest.resolve(strict=False)
+        resolved_pot_dir = pot_dir.resolve(strict=True)
+        if not final_dest_resolved.is_relative_to(resolved_pot_dir):
             msg = "final_dest is outside the expected potentials directory"
             raise ValueError(msg)
 
-        # Implement directory content validation
+        fd, tmp_dest = tempfile.mkstemp(dir=str(final_dest_resolved.parent))
+        os.close(fd)
+
+        try:
+            shutil.copy2(str(src_pot.resolve(strict=True)), tmp_dest)
+            Path(tmp_dest).replace(final_dest_resolved)
+        except Exception:
+            Path(tmp_dest).unlink(missing_ok=True)
+            raise
+
+        return final_dest
+
+    def _manage_directories(self, tmp_work_dir: Path, work_dir: Path) -> None:
+        import shutil
+        import tempfile
+
         expected_dirs = ["training"]
-        # Depending on strategy, either md_run or kmc_run should exist
         if not (tmp_work_dir / "md_run").exists() and not (tmp_work_dir / "kmc_run").exists():
             msg = "Missing required exploration directory (md_run or kmc_run)"
             raise FileNotFoundError(msg)
@@ -199,19 +254,34 @@ class Orchestrator:
                 raise FileNotFoundError(msg)
 
         if work_dir.exists():
-            shutil.rmtree(work_dir, ignore_errors=True)
+            backup_dir = Path(tempfile.mkdtemp(dir=str(work_dir.parent)))
+            try:
+                work_dir.replace(backup_dir)
+            except Exception:
+                shutil.rmtree(str(backup_dir), ignore_errors=True)
+                raise
+            shutil.rmtree(str(backup_dir), ignore_errors=True)
 
-        # Use atomic os.replace if possible, fallback to shutil.move
-        try:
-            tmp_work_dir.replace(work_dir)
-        except OSError:
-            shutil.move(str(tmp_work_dir), str(work_dir))
+        tmp_work_dir.replace(work_dir.resolve(strict=False))
 
+    def _resume_md_engine(self, final_dest: Path, work_dir: Path) -> None:
         self.md_engine.resume(
             potential=final_dest,
             restart_dir=work_dir / "md_run",
             work_dir=work_dir / "resume_run",
         )
+
+    def _validate_and_deploy(self, new_pot_path: Path, tmp_work_dir: Path, work_dir: Path) -> str:
+        if not self._validate_potential(new_pot_path):
+            return "VALIDATION_FAILED"
+
+        self.iteration += 1
+        pot_dir = self.config.project_root / "potentials"
+        pot_dir.mkdir(parents=True, exist_ok=True)
+
+        final_dest = self._copy_potential(tmp_work_dir, pot_dir, self.iteration)
+        self._manage_directories(tmp_work_dir, work_dir)
+        self._resume_md_engine(final_dest, work_dir)
 
         return str(final_dest)
 
@@ -230,25 +300,33 @@ class Orchestrator:
 
         work_dir: Path = base_dir / f"iter_{self.iteration:03d}"
 
+        # Cleanly instantiate temp dir via robust context manager mapping explicitly for resource cleanup
+        import contextlib
         import os
         import tempfile
+        from collections.abc import Generator
 
-        cycle_successful: bool = False
-        tmp_work_dir: Path = Path(tempfile.mkdtemp(dir=str(base_dir)))
+        @contextlib.contextmanager
+        def isolated_work_dir(base: Path) -> Generator[Path, None, None]:
+            tmp_path = Path(tempfile.mkdtemp(dir=str(base)))
+            if tmp_path.stat().st_uid == os.getuid():
+                tmp_path.chmod(0o700)
+            try:
+                yield tmp_path
+            finally:
+                if tmp_path.exists():
+                    shutil.rmtree(tmp_path, ignore_errors=True)
 
-        # Verify ownership before changing permissions
-        if tmp_work_dir.stat().st_uid == os.getuid():
-            tmp_work_dir.chmod(0o700)
-
-        try:
+        with isolated_work_dir(base_dir) as tmp_work_dir:
             halt_info: dict[str, Any] | str = self._run_exploration(current_pot, tmp_work_dir)
             if isinstance(halt_info, str):
-                cycle_successful = True
                 return halt_info
 
             candidate_generator: Iterator[list[Atoms]] = self._select_candidates(halt_info)
 
-            new_pot_path: Path | str = self._run_dft_and_train(candidate_generator, tmp_work_dir, current_pot)
+            new_pot_path: Path | str = self._run_dft_and_train(
+                candidate_generator, tmp_work_dir, current_pot
+            )
             if isinstance(new_pot_path, str):
                 return new_pot_path
 
@@ -256,9 +334,4 @@ class Orchestrator:
             if final_dest == "VALIDATION_FAILED":
                 return "VALIDATION_FAILED"
 
-            cycle_successful = True
             return final_dest
-        finally:
-            if not cycle_successful and tmp_work_dir.exists():
-                logging.warning(f"Cleaning up partial state due to failure: {tmp_work_dir}")
-                shutil.rmtree(tmp_work_dir, ignore_errors=True)

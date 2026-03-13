@@ -63,7 +63,7 @@ def test_resume(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     work_dir = tmp_path / "resume_run"
 
     def mock_run(*args: Any, **kwargs: Any) -> None:
-        pass
+        return None
 
     monkeypatch.setattr(subprocess, "run", mock_run)
 
@@ -163,7 +163,7 @@ def test_run_exploration_cold_start(monkeypatch: pytest.MonkeyPatch, tmp_path: P
     engine = MDInterface(config, sys_config)
 
     def mock_run(*args: Any, **kwargs: Any) -> None:
-        pass
+        return None
 
     monkeypatch.setattr(subprocess, "run", mock_run)
     dump_file = tmp_path / "md_run" / "dump.lammps"

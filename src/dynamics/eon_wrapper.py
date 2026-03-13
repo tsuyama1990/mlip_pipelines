@@ -27,20 +27,42 @@ class EONWrapper:
         driver_path = pots_dir / "pace_driver.py"
 
         # the pace_driver should be executable by python
-        pot_str = f"'{potential.resolve()}'" if potential else "None"
+
+        # Security: strictly validate the potential string before formatting it into the python template
+
+        resolved_pot_str = ""
+        if potential:
+            import os
+
+            resolved_pot = Path(os.path.realpath(potential)).resolve(strict=True)
+            if hasattr(self.config, "project_root"):
+                root = Path(os.path.realpath(self.config.project_root)).resolve(strict=True)
+                if not resolved_pot.is_relative_to(root):
+                    msg = f"Potential path must be within the project root: {resolved_pot}"
+                    raise ValueError(msg)
+            resolved_pot_str = str(resolved_pot)
+
+        pot_str = repr(resolved_pot_str) if potential else "None"
+
+        # Ensure executable doesn't break python logic
+        import re
         import sys
 
         executable = sys.executable
+        if not re.match(r"^[/a-zA-Z0-9_.-]+$", executable):
+            msg = "Invalid python executable path"
+            raise ValueError(msg)
+
         driver_content = self.config.eon_driver_template.format(
             executable=executable,
-            threshold=self.config.uncertainty_threshold,
+            threshold=float(self.config.uncertainty_threshold),
             pot_str=pot_str,
         )
         with Path.open(driver_path, "w") as f:
             f.write(driver_content)
         driver_path.chmod(0o755)
 
-    def run_kmc(self, potential: Path | None, work_dir: Path) -> dict[str, Any]:  # noqa: C901
+    def run_kmc(self, potential: Path | None, work_dir: Path) -> dict[str, Any]:  # noqa: C901, PLR0912, PLR0915
         """Runs EON client in the specified working directory."""
         resolved_work_dir = work_dir.resolve(strict=False)
 
@@ -57,38 +79,55 @@ class EONWrapper:
 
         try:
             # We execute 'eonclient'. If it's missing, subprocess raises FileNotFoundError.
+            import re
             import shutil
             import sys
 
             eon_binary: str = self.config.eon_binary
-            trusted_dirs: list[str] = [
-                "/usr/bin",
-                "/usr/local/bin",
-                "/opt/homebrew/bin",
-                str(Path(sys.prefix) / "bin"),
-            ]
+
+            if not re.match(r"^[a-zA-Z0-9_-]+$", eon_binary):
+                msg = f"Invalid EON binary name: {eon_binary}"
+                raise ValueError(msg)
+
+            trusted_dirs: list[str] = self.config.trusted_directories.copy()
+            trusted_dirs.append(str(Path(sys.prefix) / "bin"))
             if hasattr(self.config, "project_root"):
                 trusted_dirs.append(str(Path(self.config.project_root) / "bin"))
 
             resolved_which: str | None = shutil.which(eon_binary)
-            eon_bin: str
             if resolved_which is None:
-                eon_bin = eon_binary  # fallback, will trigger FileNotFoundError
-            else:
-                import os
-                eon_path: Path = Path(os.path.realpath(resolved_which)).resolve(strict=True)
-                if not eon_path.is_file() or not os.access(eon_path, os.X_OK):
-                    msg = f"EON binary is not an executable file: {eon_path}"
-                    raise ValueError(msg)
+                msg = "EON client executable not found."
+                raise RuntimeError(msg)
 
-                if eon_path.name != "eonclient":
-                    msg = f"Resolved EON binary name must be 'eonclient', got '{eon_path.name}'"
-                    raise ValueError(msg)
+            import os
 
-                if not any(eon_path.is_relative_to(Path(td).resolve()) for td in trusted_dirs):
-                    msg = f"Resolved EON binary must reside in a trusted directory: {eon_path}"
-                    raise ValueError(msg)
-                eon_bin = str(eon_path)
+            eon_path: Path = Path(os.path.realpath(resolved_which)).resolve(strict=True)
+            if eon_path.is_symlink():
+                msg = "EON binary cannot be a symlink."
+                raise ValueError(msg)
+
+            if not eon_path.is_file() or not os.access(eon_path, os.X_OK):
+                msg = f"EON binary is not an executable file: {eon_path}"
+                raise ValueError(msg)
+
+            if eon_path.name != "eonclient":
+                msg = f"Resolved EON binary name must be 'eonclient', got '{eon_path.name}'"
+                raise ValueError(msg)
+
+            is_trusted = False
+            for td in trusted_dirs:
+                try:
+                    if eon_path.is_relative_to(Path(td).resolve(strict=True)):
+                        is_trusted = True
+                        break
+                except OSError:
+                    continue
+
+            if not is_trusted:
+                msg = f"Resolved EON binary must reside in a trusted directory: {eon_path}"
+                raise ValueError(msg)
+
+            eon_bin = str(eon_path.absolute())
 
             cmd: list[str] = [eon_bin]
 
@@ -96,26 +135,37 @@ class EONWrapper:
             import os
 
             env: dict[str, str] = os.environ.copy()
+            # Clear sensitive/potentially hazardous env vars
+            for k in ["LD_PRELOAD", "LD_LIBRARY_PATH", "PYTHONPATH"]:
+                env.pop(k, None)
+
+            # Safely invoke EON client using direct list execution through subprocess (shell=False)
             res: subprocess.CompletedProcess[bytes] = subprocess.run(  # noqa: S603
-                cmd, cwd=resolved_work_dir, capture_output=True, shell=False, env=env, check=False
+                cmd,
+                cwd=str(resolved_work_dir.absolute()),
+                capture_output=True,
+                shell=False,
+                env=env,
+                check=False,
             )
 
             if res.returncode == 100:
-                return {"halted": True, "dump_file": resolved_work_dir / "bad_structure.cfg", "is_kmc": True}
+                return {
+                    "halted": True,
+                    "dump_file": resolved_work_dir / "bad_structure.cfg",
+                    "is_kmc": True,
+                }
             if res.returncode != 0:
                 # Other error
-                pass
+                import logging
 
-        except FileNotFoundError:
-            # For testing/mocking environments where eonclient isn't installed
-            import os
+                logging.error(f"EON client failed with return code {res.returncode}")
+                msg = f"EON client failed with return code {res.returncode}"
+                raise RuntimeError(msg)
 
-            if os.environ.get("MOCK_EON_HALT") == "1":
-                from ase import Atoms
-                from ase.io import write
-
-                bad_file = resolved_work_dir / "bad_structure.cfg"
-                write(str(bad_file), Atoms("Fe", positions=[[0, 0, 0]]), format="extxyz")
-                return {"halted": True, "dump_file": bad_file, "is_kmc": True}
+        except FileNotFoundError as e:
+            # Re-raise the FileNotFoundError since mocks are not allowed
+            msg = "EON client executable not found."
+            raise RuntimeError(msg) from e
 
         return {"halted": False}

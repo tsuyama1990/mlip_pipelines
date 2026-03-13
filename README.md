@@ -24,12 +24,12 @@ This project uses `uv` for dependency management.
 uv sync
 ```
 
-## Quick Start / UAT Tutorial
+## Usage
 
 The project comes with a built-in User Acceptance Test (UAT) implemented as an interactive `marimo` notebook. This demonstrates the cycle of Halt & Heal and Interface computation for an FePt/MgO system.
 
 ```bash
-# To run the tutorial headlessly (testing logic)
+# To run the tutorial headlessly
 uv run python tutorials/uat_and_tutorial.py
 
 # To open the interactive notebook
@@ -40,7 +40,7 @@ uv run marimo edit tutorials/uat_and_tutorial.py
 
 - `src/core/orchestrator.py`: Orchestrates the Active Learning cycle.
 - `src/domain_models/`: Pure Pydantic data schemas defining configurations.
-- `src/dynamics/`: LAMMPS MD integration with uncertainty monitors.
+- `src/dynamics/`: LAMMPS MD and EON integration with uncertainty monitors.
 - `src/oracles/`: Quantum ESPRESSO integration with automatic parameter fallback.
 - `src/trainers/`: Pacemaker ACE configuration.
 - `src/validators/`: Phonon & mechanical stability assurance.

@@ -23,130 +23,160 @@ class MDInterface:
     def _write_cold_start_input(self, tmp_in_file: Any, dump_name: str, work_dir: Path) -> None:
         import re
 
-        if not re.match(r"^[-a-zA-Z0-9_.]+$", dump_name):
+        if not re.match(r"^[a-zA-Z0-9_]+\.lammps$", dump_name) and not re.match(
+            r"^[a-zA-Z0-9_]+$", dump_name
+        ):
             msg = "Dump file name contains invalid characters"
             raise ValueError(msg)
 
         box_x, box_y, box_z = self.config.box_size
 
+        # Security: validate all template variables against strict whitelists before formatting
+        lattice_type = self.config.lattice_type
+        if not re.match(r"^[a-zA-Z0-9]+$", lattice_type):
+            msg = "Invalid lattice_type"
+            raise ValueError(msg)
+
+        work_dir_str = str(work_dir.resolve(strict=True))
+        if not re.match(r"^[/a-zA-Z0-9_.-]+$", work_dir_str) or ".." in work_dir_str:
+            msg = "Invalid characters in work_dir"
+            raise ValueError(msg)
+
         template = self.config.lammps_cold_start_template
         script = template.format(
-            lattice_type=self.config.lattice_type,
-            lattice_size=self.config.lattice_size,
-            box_x=box_x,
-            box_y=box_y,
-            box_z=box_z,
+            lattice_type=lattice_type,
+            lattice_size=float(self.config.lattice_size),
+            box_x=int(box_x),
+            box_y=int(box_y),
+            box_z=int(box_z),
             zbl_mapping=self._get_zbl_mapping(),
             dump_name=dump_name,
-            md_steps=min(self.config.md_steps, 1000),
-            work_dir=str(work_dir.resolve()),
+            md_steps=int(min(self.config.md_steps, 1000)),
+            work_dir=work_dir_str,
         )
         tmp_in_file.write(script)
 
     def _write_potential_input(
         self, tmp_in_file: Any, potential: Path, dump_name: str, work_dir: Path
     ) -> None:
-        pot_path_str = str(potential.resolve())
+        resolved_pot = potential.resolve(strict=True)
+        pot_path_str = str(resolved_pot)
+
+        # Verify the potential path is within the project root to prevent path traversal
+        if hasattr(self.config, "project_root"):
+            import os
+
+            root = Path(os.path.realpath(self.config.project_root)).resolve(strict=True)
+            if not resolved_pot.is_relative_to(root):
+                msg = f"Potential path must be within the project root: {resolved_pot}"
+                raise ValueError(msg)
+
         if not pot_path_str.endswith(".yace"):
             msg = "Potential path must end with .yace"
             raise ValueError(msg)
 
         import re
 
-        if not re.match(r"^[-a-zA-Z0-9_.]+$", Path(pot_path_str).name):
+        if not re.match(r"^[a-zA-Z0-9_]+\.yace$", Path(pot_path_str).name):
             msg = "Potential path contains invalid characters for LAMMPS"
             raise ValueError(msg)
 
-        if not re.match(r"^[-a-zA-Z0-9_.]+$", dump_name):
+        if not re.match(r"^[a-zA-Z0-9_]+\.lammps$", dump_name) and not re.match(
+            r"^[a-zA-Z0-9_]+$", dump_name
+        ):
             msg = "Dump file name contains invalid characters"
             raise ValueError(msg)
 
         template = self.config.lammps_script_template
 
         box_x, box_y, box_z = self.config.box_size
+
+        lattice_type = self.config.lattice_type
+        if not re.match(r"^[a-zA-Z0-9]+$", lattice_type):
+            msg = "Invalid lattice_type"
+            raise ValueError(msg)
+
+        work_dir_str = str(work_dir.resolve(strict=True))
+        if not re.match(r"^[/a-zA-Z0-9_.-]+$", work_dir_str) or ".." in work_dir_str:
+            msg = "Invalid characters in work_dir"
+            raise ValueError(msg)
+
         script = template.format(
-            lattice_type=self.config.lattice_type,
-            lattice_size=self.config.lattice_size,
-            box_x=box_x,
-            box_y=box_y,
-            box_z=box_z,
+            lattice_type=lattice_type,
+            lattice_size=float(self.config.lattice_size),
+            box_x=int(box_x),
+            box_y=int(box_y),
+            box_z=int(box_z),
             pot_path=pot_path_str,
             zbl_mapping=self._get_zbl_mapping(),
-            threshold=self.config.uncertainty_threshold,
+            threshold=float(self.config.uncertainty_threshold),
             dump_name=dump_name,
-            md_steps=self.config.md_steps,
-            work_dir=str(work_dir.resolve()),
+            md_steps=int(self.config.md_steps),
+            work_dir=work_dir_str,
         )
         tmp_in_file.write(script)
 
-    def _execute_lammps(self, work_dir: Path, in_file_name: str) -> None:  # noqa: C901, PLR0912, PLR0915
+    def _execute_lammps(self, work_dir: Path) -> None:  # noqa: C901, PLR0912, PLR0915
+        import os
         import re
         import shutil
         import sys
 
-        # Sanitize in_file_name against injection
-        if not re.match(r"^[-a-zA-Z0-9_.]+$", in_file_name):
-            msg = "Invalid input file name"
+        # Secure input file definition by hardcoding it completely
+        in_file_name = "in.lammps"
+        resolved_in_file = Path(os.path.realpath(work_dir / in_file_name)).resolve(strict=False)
+        resolved_work_dir = work_dir.resolve(strict=True)
+
+        if not resolved_in_file.is_relative_to(resolved_work_dir):
+            msg = f"Invalid input file name causing path traversal: {in_file_name}"
             raise ValueError(msg)
 
         lmp_binary: str = self.config.lmp_binary
 
-        trusted_dirs: list[str] = [
-            "/usr/bin",
-            "/usr/local/bin",
-            "/opt/homebrew/bin",
-            str(Path(sys.prefix) / "bin"),
-        ]
+        if not re.match(r"^[a-zA-Z0-9_-]+$", lmp_binary):
+            msg = f"Invalid LAMMPS binary name: {lmp_binary}"
+            raise ValueError(msg)
+
+        resolved_which: str | None = shutil.which(lmp_binary)
+        if resolved_which is None:
+            msg = "LAMMPS executable not found."
+            raise RuntimeError(msg)
+
+        resolved_bin = Path(os.path.realpath(resolved_which)).resolve(strict=True)
+
+        if resolved_bin.is_symlink():
+            msg = "LAMMPS binary cannot be a symlink."
+            raise ValueError(msg)
+
+        if not resolved_bin.is_file() or not os.access(resolved_bin, os.X_OK):
+            msg = f"LAMMPS binary is not an executable file: {resolved_bin}"
+            raise ValueError(msg)
+
+        if resolved_bin.name not in ["lmp", "lammps"]:
+            msg = f"Resolved binary name must be 'lmp' or 'lammps', got '{resolved_bin.name}'"
+            raise ValueError(msg)
+
+        trusted_dirs: list[str] = self.config.trusted_directories.copy()
+        trusted_dirs.append(str(Path(sys.prefix) / "bin"))
         if hasattr(self.config, "project_root"):
             trusted_dirs.append(str(Path(self.config.project_root) / "bin"))
 
-        import os
-        lmp_bin: str
-        if Path(lmp_binary).is_absolute():
-            if not re.match(r"^[-a-zA-Z0-9_./]+$", lmp_binary) or ".." in lmp_binary:
-                msg = f"Invalid LAMMPS absolute binary path: {lmp_binary}"
-                raise ValueError(msg)
+        is_trusted = False
+        for td in trusted_dirs:
+            try:
+                if resolved_bin.is_relative_to(Path(td).resolve(strict=True)):
+                    is_trusted = True
+                    break
+            except OSError:
+                continue
 
-            # Ensure it resolves within a trusted directory
-            resolved_bin: Path = Path(os.path.realpath(lmp_binary)).resolve(strict=True)
-            if not resolved_bin.is_file() or not os.access(resolved_bin, os.X_OK):
-                msg = f"LAMMPS binary is not an executable file: {resolved_bin}"
-                raise ValueError(msg)
+        if not is_trusted:
+            msg = f"Resolved LAMMPS binary must reside in a trusted directory: {resolved_bin}"
+            raise ValueError(msg)
 
-            if resolved_bin.name not in ["lmp", "lammps"]:
-                msg = f"Resolved binary name must be 'lmp' or 'lammps', got '{resolved_bin.name}'"
-                raise ValueError(msg)
+        lmp_bin = str(resolved_bin.absolute())
 
-            if not any(resolved_bin.is_relative_to(Path(td).resolve()) for td in trusted_dirs):
-                msg = f"LAMMPS binary must reside in a trusted directory: {lmp_binary}"
-                raise ValueError(msg)
-            lmp_bin = str(resolved_bin)
-        else:
-            if not re.match(r"^[-a-zA-Z0-9_.]+$", lmp_binary):
-                msg = f"Invalid LAMMPS binary name: {lmp_binary}"
-                raise ValueError(msg)
-            resolved_which: str | None = shutil.which(lmp_binary)
-            if resolved_which is None:
-                lmp_bin = lmp_binary  # Will fail later with FileNotFoundError
-            else:
-                resolved_bin = Path(os.path.realpath(resolved_which)).resolve(strict=True)
-                if not resolved_bin.is_file() or not os.access(resolved_bin, os.X_OK):
-                    msg = f"LAMMPS binary is not an executable file: {resolved_bin}"
-                    raise ValueError(msg)
-
-                if resolved_bin.name not in ["lmp", "lammps"]:
-                    msg = f"Resolved binary name must be 'lmp' or 'lammps', got '{resolved_bin.name}'"
-                    raise ValueError(msg)
-
-                if not any(resolved_bin.is_relative_to(Path(td).resolve()) for td in trusted_dirs):
-                    msg = (
-                        f"Resolved LAMMPS binary must reside in a trusted directory: {resolved_bin}"
-                    )
-                    raise ValueError(msg)
-                lmp_bin = str(resolved_bin)
-
-        import shlex
-        cmd: list[str] = [lmp_bin, "-in", shlex.quote(in_file_name)]
+        cmd: list[str] = [lmp_bin, "-in", in_file_name]
 
         try:
             _res: subprocess.CompletedProcess[bytes] = subprocess.run(  # noqa: S603
@@ -157,7 +187,7 @@ class MDInterface:
                 shell=False,
             )
         except subprocess.CalledProcessError:
-            pass  # error soft doesn't trigger CalledProcessError usually
+            logging.info("LAMMPS run completed with a CalledProcessError (possibly soft halt).")
         except FileNotFoundError as e:
             msg = "LAMMPS executable not found."
             raise RuntimeError(msg) from e
@@ -188,7 +218,7 @@ class MDInterface:
             Path(tmp_path).unlink(missing_ok=True)
             raise
 
-        self._execute_lammps(work_dir, "in.lammps")
+        self._execute_lammps(work_dir)
         return self._check_halt(dump_file)
 
     def _check_halt(self, dump_file: Path) -> dict[str, Any]:
@@ -258,67 +288,61 @@ write_data {work_dir.resolve()}/data.lammps
         import shutil
         import sys
 
-        trusted_dirs = [
-            "/usr/bin",
-            "/usr/local/bin",
-            "/opt/homebrew/bin",
-            str(Path(sys.prefix) / "bin"),
-        ]
+        trusted_dirs = self.config.trusted_directories.copy()
+        trusted_dirs.append(str(Path(sys.prefix) / "bin"))
         if hasattr(self.config, "project_root"):
             trusted_dirs.append(str(Path(self.config.project_root) / "bin"))
 
-        # Sanitize in_file.name against injection
-        if not re.match(r"^[-a-zA-Z0-9_.]+$", in_file.name):
-            msg = "Invalid input file name"
+        # Sanitize in_file.name against injection using a strict alphanumeric + underscore + period pattern
+        if not re.match(r"^[a-zA-Z0-9_]+\.lammps$", in_file.name) and not re.match(
+            r"^[a-zA-Z0-9_]+$", in_file.name
+        ):
+            msg = f"Invalid input file name: {in_file.name}"
             raise ValueError(msg)
 
         lmp_binary = self.config.lmp_binary
 
         import os
-        if Path(lmp_binary).is_absolute():
-            if not re.match(r"^[-a-zA-Z0-9_./]+$", lmp_binary) or ".." in lmp_binary:
-                msg = f"Invalid LAMMPS absolute binary path: {lmp_binary}"
-                raise ValueError(msg)
 
-            resolved_bin = Path(os.path.realpath(lmp_binary)).resolve(strict=True)
-            if not resolved_bin.is_file() or not os.access(resolved_bin, os.X_OK):
-                msg = f"LAMMPS binary is not an executable file: {resolved_bin}"
-                raise ValueError(msg)
+        if not re.match(r"^[a-zA-Z0-9_-]+$", lmp_binary):
+            msg = f"Invalid LAMMPS binary name: {lmp_binary}"
+            raise ValueError(msg)
 
-            if resolved_bin.name not in ["lmp", "lammps"]:
-                msg = f"Resolved binary name must be 'lmp' or 'lammps', got '{resolved_bin.name}'"
-                raise ValueError(msg)
+        resolved_which = shutil.which(lmp_binary)
+        if resolved_which is None:
+            msg = "LAMMPS executable not found."
+            raise RuntimeError(msg)
 
-            if not any(resolved_bin.is_relative_to(Path(td).resolve()) for td in trusted_dirs):
-                msg = f"LAMMPS binary must reside in a trusted directory: {lmp_binary}"
-                raise ValueError(msg)
-            lmp_bin = str(resolved_bin)
-        else:
-            if not re.match(r"^[-a-zA-Z0-9_.]+$", lmp_binary):
-                msg = f"Invalid LAMMPS binary name: {lmp_binary}"
-                raise ValueError(msg)
-            resolved_which = shutil.which(lmp_binary)
-            if resolved_which is None:
-                lmp_bin = lmp_binary
-            else:
-                resolved_bin = Path(os.path.realpath(resolved_which)).resolve(strict=True)
-                if not resolved_bin.is_file() or not os.access(resolved_bin, os.X_OK):
-                    msg = f"LAMMPS binary is not an executable file: {resolved_bin}"
-                    raise ValueError(msg)
+        resolved_bin = Path(os.path.realpath(resolved_which)).resolve(strict=True)
 
-                if resolved_bin.name not in ["lmp", "lammps"]:
-                    msg = f"Resolved binary name must be 'lmp' or 'lammps', got '{resolved_bin.name}'"
-                    raise ValueError(msg)
+        if resolved_bin.is_symlink():
+            msg = "LAMMPS binary cannot be a symlink."
+            raise ValueError(msg)
 
-                if not any(resolved_bin.is_relative_to(Path(td).resolve()) for td in trusted_dirs):
-                    msg = (
-                        f"Resolved LAMMPS binary must reside in a trusted directory: {resolved_bin}"
-                    )
-                    raise ValueError(msg)
-                lmp_bin = str(resolved_bin)
+        if not resolved_bin.is_file() or not os.access(resolved_bin, os.X_OK):
+            msg = f"LAMMPS binary is not an executable file: {resolved_bin}"
+            raise ValueError(msg)
 
-        import shlex
-        cmd = [lmp_bin, "-in", shlex.quote(in_file.name)]
+        if resolved_bin.name not in ["lmp", "lammps"]:
+            msg = f"Resolved binary name must be 'lmp' or 'lammps', got '{resolved_bin.name}'"
+            raise ValueError(msg)
+
+        is_trusted = False
+        for td in trusted_dirs:
+            try:
+                if resolved_bin.is_relative_to(Path(td).resolve(strict=True)):
+                    is_trusted = True
+                    break
+            except OSError:
+                continue
+
+        if not is_trusted:
+            msg = f"Resolved LAMMPS binary must reside in a trusted directory: {resolved_bin}"
+            raise ValueError(msg)
+
+        lmp_bin = str(resolved_bin.absolute())
+
+        cmd = [lmp_bin, "-in", in_file.name]
 
         try:
             subprocess.run(  # noqa: S603
@@ -329,7 +353,7 @@ write_data {work_dir.resolve()}/data.lammps
                 shell=False,
             )
         except subprocess.CalledProcessError:
-            pass
+            logging.info("LAMMPS resume run completed with a CalledProcessError.")
         except FileNotFoundError as e:
             msg = "LAMMPS executable not found."
             raise RuntimeError(msg) from e
@@ -364,7 +388,7 @@ write_data {work_dir.resolve()}/data.lammps
                     high_gamma.append(atoms)
             else:
                 # Default to last frame if gamma is not mapped, e.g. for mock testing or cold start
-                pass
+                continue
 
         if not high_gamma:
             return [traj[-1]]

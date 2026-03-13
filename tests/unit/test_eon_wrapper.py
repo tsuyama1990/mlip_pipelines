@@ -49,36 +49,12 @@ def test_eon_wrapper_driver_creation(
     assert os.access(driver_file, os.X_OK)
 
 
-def test_eon_wrapper_run_kmc_halt_mock(
-    tmp_path: Path,
-    config: DynamicsConfig,
-    sys_config: SystemConfig,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # Use the mock hook built into EONWrapper for testing
-    monkeypatch.setenv("MOCK_EON_HALT", "1")
-    wrapper = EONWrapper(config, sys_config)
-
-    potential = tmp_path / "potential.yace"
-    potential.touch()
-
-    res = wrapper.run_kmc(potential, tmp_path)
-
-    assert res.get("halted") is True
-    assert res.get("is_kmc") is True
-    assert "dump_file" in res
-    assert Path(res["dump_file"]).exists()
-
-
 def test_eon_wrapper_run_kmc_no_halt(
     tmp_path: Path,
     config: DynamicsConfig,
     sys_config: SystemConfig,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Use the mock hook to not halt
-    monkeypatch.setenv("MOCK_EON_HALT", "0")
-
     # We mock shutil.which so it acts like eonclient is not found, letting the FileNotFoundError block handle it
     import shutil
 
@@ -88,5 +64,5 @@ def test_eon_wrapper_run_kmc_no_halt(
     monkeypatch.setattr(shutil, "which", mock_which)
 
     wrapper = EONWrapper(config, sys_config)
-    res = wrapper.run_kmc(None, tmp_path)
-    assert res.get("halted") is False
+    with pytest.raises(RuntimeError, match="EON client executable not found"):
+        wrapper.run_kmc(None, tmp_path)

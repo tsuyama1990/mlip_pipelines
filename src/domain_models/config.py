@@ -1,7 +1,7 @@
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -24,12 +24,16 @@ class DynamicsConfig(BaseModel):
     temperature: float = Field(default=300.0, ge=0.0, description="Temperature for MD exploration")
     pressure: float = Field(default=0.0, description="Pressure for NPT MD exploration")
     lmp_binary: str = Field(
-        default="lmp", description="Binary name or path for LAMMPS", pattern=r"^[a-zA-Z0-9_./-]+$"
+        default="lmp", description="Binary name or path for LAMMPS", pattern=r"^[a-zA-Z0-9_-]+$"
     )
     eon_binary: str = Field(
         default="eonclient",
         description="Binary name or path for EON client",
-        pattern=r"^[a-zA-Z0-9_./-]+$",
+        pattern=r"^[a-zA-Z0-9_-]+$",
+    )
+    trusted_directories: list[str] = Field(
+        default=["/usr/bin", "/usr/local/bin", "/opt/homebrew/bin"],
+        description="List of trusted directories for executables",
     )
     pace_train_args_template: list[str] = Field(
         default=[
@@ -171,11 +175,6 @@ def main():
 
     gamma = 0.0
 
-    import os
-    if os.environ.get('MOCK_EON_HALT') == '1':
-        write_bad_structure("bad_structure.cfg", atoms)
-        sys.exit(100)
-
     try:
         energy = atoms.get_potential_energy()
         forces = atoms.get_forces()
@@ -239,12 +238,16 @@ class TrainerConfig(BaseModel):
     pace_train_binary: str = Field(
         default="pace_train",
         description="Binary name or path for pace_train",
-        pattern=r"^[a-zA-Z0-9_./-]+$",
+        pattern=r"^[a-zA-Z0-9_-]+$",
     )
     pace_activeset_binary: str = Field(
         default="pace_activeset",
         description="Binary name or path for pace_activeset",
-        pattern=r"^[a-zA-Z0-9_./-]+$",
+        pattern=r"^[a-zA-Z0-9_-]+$",
+    )
+    trusted_directories: list[str] = Field(
+        default=["/usr/bin", "/usr/local/bin", "/opt/homebrew/bin"],
+        description="List of trusted directories for executables",
     )
     pace_train_args_template: list[str] = Field(
         default=[
@@ -337,9 +340,84 @@ class ProjectConfig(BaseSettings):
         env_prefix="MLIP_",
         env_nested_delimiter="__",
         extra="forbid",
+        env_file_encoding="utf-8",
     )
 
     project_root: Path = Field(..., description="Root directory of the project")
+
+    @model_validator(mode="before")
+    @classmethod
+    def validate_env_content(cls, values: dict[str, Any]) -> dict[str, Any]:  # noqa: C901, PLR0912
+        import re
+        from pathlib import Path
+
+        # Secure the env loading process to verify the file resolves inside the CWD/project root
+        env_file = Path(".env")
+        if env_file.exists():
+            # Basic validation of .env file size and canonical location to prevent loading external malicious envs
+            resolved_env = env_file.resolve(strict=True)
+            expected_base = Path.cwd().resolve(strict=True)
+
+            if not resolved_env.is_relative_to(expected_base):
+                msg = f".env file must reside within the allowed base directory: {expected_base}"
+                raise ValueError(msg)
+
+            if resolved_env.stat().st_size > 10 * 1024:
+                msg = ".env file exceeds maximum allowed size (10KB)."
+                raise ValueError(msg)
+
+            # Strict whitelist validation for .env file contents
+            import os
+
+            with Path.open(resolved_env, encoding="utf-8") as f:
+                for raw_line in f:
+                    clean_line = raw_line.strip()
+                    if not clean_line or clean_line.startswith("#"):
+                        continue
+
+                    if "=" not in clean_line:
+                        continue
+
+                    key, val = clean_line.split("=", 1)
+                    key = key.strip()
+                    val = val.strip().strip("'").strip('"')
+
+                    if not key.startswith("MLIP_"):
+                        msg = f"Unauthorized environment variable injected via .env: {key}. Only MLIP_ prefixes are allowed."
+                        raise ValueError(msg)
+
+                    if len(key) > 64:
+                        msg = "Environment variable key exceeds maximum length"
+                        raise ValueError(msg)
+
+                    if len(val) > 256:
+                        msg = "Environment variable value exceeds maximum length"
+                        raise ValueError(msg)
+
+                    if not re.match(r"^[A-Z0-9_]+$", key):
+                        msg = f"Invalid characters in .env variable key: {key}"
+                        raise ValueError(msg)
+
+                    if not re.match(r"^[a-zA-Z0-9_./-]+$", val):
+                        msg = f"Invalid characters in .env variable value: {val}"
+                        raise ValueError(msg)
+
+                    # Add path traversal validation for values that look like paths
+                    if "/" in val or "\\" in val or ".." in val:
+                        if ".." in val:
+                            msg = f"Path traversal characters (..) are not allowed in .env values: {key}"
+                            raise ValueError(msg)
+
+                        # If it's an absolute path, verify it's within expected bounds
+                        if Path(val).is_absolute():
+                            resolved_val = Path(os.path.realpath(val))
+                            if not resolved_val.is_relative_to(expected_base):
+                                msg = (
+                                    f"Absolute paths in .env must be within the project root: {val}"
+                                )
+                                raise ValueError(msg)
+
+        return values
 
     @field_validator("project_root", mode="before")
     @classmethod
@@ -360,18 +438,22 @@ class ProjectConfig(BaseSettings):
         import os
 
         # Canonicalize path and resolve symlinks
-        resolved_path = v.resolve(strict=False)
+        resolved_path = Path(os.path.realpath(v)).resolve(strict=True)
 
         if not resolved_path.is_absolute():
             msg = f"Project root directory '{v}' must be an absolute path."
             raise ValueError(msg)
 
-        if ".." in str(resolved_path):
-            msg = "Project root directory must not contain directory traversal characters."
-            raise ValueError(msg)
-
         if not resolved_path.exists() or not resolved_path.is_dir():
             msg = f"Project root directory '{v}' does not exist or is not a directory."
+            raise ValueError(msg)
+
+        # Content validation: verify it looks like a valid project root
+        if (
+            not (resolved_path / "pyproject.toml").exists()
+            and not (resolved_path / "README.md").exists()
+        ):
+            msg = f"Project root '{v}' does not contain expected core project files (pyproject.toml or README.md)."
             raise ValueError(msg)
 
         # Check permissions
