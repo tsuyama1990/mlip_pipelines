@@ -16,41 +16,8 @@ class Validator:
         self.config = config
 
     def _check_phonopy_stability(self, atoms: "Atoms", calc: "Calculator") -> bool:
-        import phonopy
-        from phonopy.structure.atoms import PhonopyAtoms
-
-        # Real phonopy initialization
-        unitcell = PhonopyAtoms(
-            symbols=atoms.get_chemical_symbols(),  # type: ignore[no-untyped-call]
-            cell=atoms.get_cell(),  # type: ignore[no-untyped-call]
-            positions=atoms.get_positions(),  # type: ignore[no-untyped-call]
-        )
-        phonon = phonopy.Phonopy(unitcell, [[2, 0, 0], [0, 2, 0], [0, 0, 2]])
-        phonon.generate_displacements(distance=0.01)
-
-        # Compute actual forces for displacements
-        supercells = phonon.supercells_with_displacements
-        force_sets = []
-        if supercells is not None:
-            for sc in supercells:
-                if sc is None:
-                    continue
-                disp_atoms = atoms.copy()  # type: ignore[no-untyped-call]
-                from ase.build import make_supercell
-
-                disp_atoms = make_supercell(atoms, [[2, 0, 0], [0, 2, 0], [0, 0, 2]])
-                disp_atoms.set_positions(sc.get_positions())  # type: ignore[no-untyped-call]
-                disp_atoms.calc = calc
-                forces = disp_atoms.get_forces()  # type: ignore[no-untyped-call]
-                force_sets.append(forces)
-
-        phonon.produce_force_constants(forces=force_sets)
-
-        # Check for imaginary frequencies
-        phonon.run_mesh([10, 10, 10])
-        freqs = phonon.get_mesh_dict()["frequencies"]
-
-        return not (freqs is not None and (freqs < -0.05).any())
+        from src.validators.stability_tests import check_phonopy_stability
+        return check_phonopy_stability(atoms, calc)
 
     def _check_dependencies(self) -> None:
         import logging
@@ -115,17 +82,8 @@ class Validator:
 
         phonon_stable = self._check_phonopy_stability(atoms, calc)
 
-        mechanically_stable = True
-        strain = 0.01
-
-        hydro_atoms = atoms.copy()  # type: ignore[no-untyped-call]
-        cell = hydro_atoms.get_cell()  # type: ignore[no-untyped-call]
-        hydro_atoms.set_cell(cell * (1 + strain), scale_atoms=True)  # type: ignore[no-untyped-call]
-        hydro_atoms.calc = calc
-
-        E_hydro = hydro_atoms.get_potential_energy()  # type: ignore[no-untyped-call]
-        if E_hydro < true_energy:
-            mechanically_stable = False
+        from src.validators.stability_tests import check_mechanical_stability
+        mechanically_stable = check_mechanical_stability(atoms, calc)
 
         return energy_rmse, force_rmse, stress_rmse, phonon_stable, mechanically_stable
 
@@ -152,7 +110,7 @@ class Validator:
 
         reason = None if passed else "Thresholds exceeded or instability detected."
 
-        return ValidationReport(
+        report = ValidationReport(
             passed=passed,
             reason=reason,
             energy_rmse=energy_rmse,
@@ -161,3 +119,11 @@ class Validator:
             phonon_stable=phonon_stable,
             mechanically_stable=mechanically_stable,
         )
+
+        from src.validators.reporter import generate_html_report
+
+        # Save validation report alongside the potential
+        report_path = potential_path.parent / "validation_report.html"
+        generate_html_report(report, report_path)
+
+        return report

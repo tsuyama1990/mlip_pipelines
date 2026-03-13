@@ -7,7 +7,9 @@ from typing import Any
 from ase import Atoms
 
 from src.domain_models.config import ProjectConfig
+from src.domain_models.dtos import MaterialFeatures
 from src.dynamics.dynamics_engine import MDInterface
+from src.dynamics.eon_wrapper import EONWrapper
 from src.generators.adaptive_policy import AdaptiveExplorationPolicyEngine
 from src.generators.structure_generator import StructureGenerator
 from src.oracles.dft_oracle import DFTManager
@@ -21,6 +23,7 @@ class Orchestrator:
     def __init__(self, config: ProjectConfig) -> None:
         self.config = config
         self.md_engine = MDInterface(config.dynamics, config.system)
+        self.eon_engine = EONWrapper(config.dynamics, config.system)
         self.oracle = DFTManager(config.oracle)
         self.trainer = PacemakerWrapper(config.trainer)
         self.validator = Validator(config.validator)
@@ -64,23 +67,41 @@ class Orchestrator:
             return latest_pot
 
     def _run_exploration(self, current_pot: Path | None, tmp_work_dir: Path) -> dict[str, Any] | str:
-        halt_info = self.md_engine.run_exploration(
-            potential=current_pot,
-            work_dir=tmp_work_dir / "md_run",
-        )
+        # Deduce features to get policy
+        features = MaterialFeatures(elements=self.config.system.elements)
+        strategy = self.policy_engine.decide_policy(features)
+
+        if strategy.md_mc_ratio > 0.0:
+            logging.info(f"Running kMC (EON) exploration due to strategy {strategy.policy_name}")
+            halt_info = self.eon_engine.run_kmc(
+                potential=current_pot,
+                work_dir=tmp_work_dir / "kmc_run",
+            )
+        else:
+            logging.info(f"Running MD exploration due to strategy {strategy.policy_name}")
+            halt_info = self.md_engine.run_exploration(
+                potential=current_pot,
+                work_dir=tmp_work_dir / "md_run",
+            )
 
         if not halt_info.get("halted", False):
-            logging.info("MD completed without high uncertainty. Converged.")
+            logging.info("Exploration completed without high uncertainty. Converged.")
             return "CONVERGED"
 
         logging.warning("Halt triggered by uncertainty watchdog!")
         return halt_info
 
     def _select_candidates(self, halt_info: dict[str, Any]) -> Iterator[list[Atoms]]:
-        high_gamma_atoms = self.md_engine.extract_high_gamma_structures(
-            dump_file=halt_info["dump_file"],
-            threshold=self.config.dynamics.uncertainty_threshold,
-        )
+        if halt_info.get("is_kmc"):
+            import ase.io
+            high_gamma_atoms = [ase.io.read(halt_info["dump_file"])]
+            if not isinstance(high_gamma_atoms[0], Atoms):
+                high_gamma_atoms = [high_gamma_atoms[0][0]]  # type: ignore[index]
+        else:
+            high_gamma_atoms = self.md_engine.extract_high_gamma_structures(
+                dump_file=halt_info["dump_file"],
+                threshold=self.config.dynamics.uncertainty_threshold,
+            )
 
         for s0 in high_gamma_atoms:
             candidates = self.structure_generator.generate_local_candidates(s0, n=20)

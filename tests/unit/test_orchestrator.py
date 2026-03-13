@@ -83,6 +83,19 @@ def test_run_cycle(monkeypatch: pytest.MonkeyPatch, mock_project_config: Project
 
     orch.structure_generator = MockGenerator()  # type: ignore[assignment]
 
+    class MockPolicyEngine:
+        def decide_policy(self, *args: Any, **kwargs: Any) -> Any:
+            from src.domain_models.dtos import ExplorationStrategy
+            return ExplorationStrategy(
+                md_mc_ratio=0.0,  # Run MD
+                t_max=300.0,
+                n_defects=0.0,
+                strain_range=0.0,
+                policy_name="Standard"
+            )
+
+    orch.policy_engine = MockPolicyEngine()  # type: ignore[assignment]
+
     res = orch.run_cycle()
     assert orch.iteration == 1
     assert res is not None
@@ -102,8 +115,20 @@ def test_run_cycle_converged(
         def get_latest_potential(self) -> str:
             return "dummy_pot.yace"
 
+    class MockPolicyEngine:
+        def decide_policy(self, *args: Any, **kwargs: Any) -> Any:
+            from src.domain_models.dtos import ExplorationStrategy
+            return ExplorationStrategy(
+                md_mc_ratio=0.0,  # Run MD
+                t_max=300.0,
+                n_defects=0.0,
+                strain_range=0.0,
+                policy_name="Standard"
+            )
+
     orch.md_engine = MockMD()  # type: ignore[assignment]
     orch.trainer = MockTrainer()  # type: ignore[assignment]
+    orch.policy_engine = MockPolicyEngine()  # type: ignore[assignment]
 
     res = orch.run_cycle()
     assert res == "CONVERGED"
