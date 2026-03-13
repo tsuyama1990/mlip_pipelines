@@ -115,18 +115,26 @@ class PacemakerWrapper:
                         raise ValueError(msg)
                     pace_activeset_bin = str(resolved_bin)
 
-            import shlex
-
             class PaceActivesetCommandBuilder:
                 def __init__(self, binary: str, template: list[str]) -> None:
                     self.cmd: list[str] = [binary]
                     self.template = template
 
                 def build(self, **kwargs: Any) -> list[str]:
+                    import re
+
+                    # Add strict whitelist validation for formatted outputs to prevent shell manipulation
                     for arg in self.template:
                         formatted_arg = arg.format(**kwargs)
                         if formatted_arg != arg:
-                            self.cmd.append(shlex.quote(formatted_arg))
+                            if not re.match(r"^[/a-zA-Z0-9_.-]+$", formatted_arg):
+                                msg = (
+                                    f"Command argument contains invalid characters: {formatted_arg}"
+                                )
+                                raise ValueError(msg)
+                            # When using shell=False, shlex.quote actually breaks execution if the
+                            # entire parameter isn't supposed to be wrapped. Subprocess list passes verbatim.
+                            self.cmd.append(formatted_arg)
                         else:
                             self.cmd.append(arg)
                     return self.cmd
@@ -139,9 +147,9 @@ class PacemakerWrapper:
             )
 
             try:
-                _res: subprocess.CompletedProcess[str] = subprocess.run(
+                _res: subprocess.CompletedProcess[str] = subprocess.run(  # noqa: S603
                     cmd, check=True, capture_output=True, text=True, shell=False
-                )  # noqa: S603
+                )
                 if out_file.exists():
                     # Parse selected
                     selected = read(str(out_file), index=":")
@@ -249,18 +257,21 @@ class PacemakerWrapper:
                     raise ValueError(msg)
                 pace_train_bin = str(resolved_bin)
 
-        import shlex
-
         class PaceTrainCommandBuilder:
             def __init__(self, binary: str, template: list[str]) -> None:
                 self.cmd: list[str] = [binary]
                 self.template = template
 
             def build(self, **kwargs: Any) -> list[str]:
+                import re
+
                 for arg in self.template:
                     formatted_arg = arg.format(**kwargs)
                     if formatted_arg != arg:
-                        self.cmd.append(shlex.quote(formatted_arg))
+                        if not re.match(r"^[/a-zA-Z0-9_.-]+$", formatted_arg):
+                            msg = f"Command argument contains invalid characters: {formatted_arg}"
+                            raise ValueError(msg)
+                        self.cmd.append(formatted_arg)
                     else:
                         self.cmd.append(arg)
                 return self.cmd
@@ -276,12 +287,18 @@ class PacemakerWrapper:
         )
 
         if initial_potential and initial_potential.exists():
-            cmd.extend(["--initial_potential", shlex.quote(str(initial_potential.resolve()))])
+            resolved_init_pot = str(initial_potential.resolve())
+            import re
+
+            if not re.match(r"^[/a-zA-Z0-9_.-]+$", resolved_init_pot):
+                msg = f"Initial potential path contains invalid characters: {resolved_init_pot}"
+                raise ValueError(msg)
+            cmd.extend(["--initial_potential", resolved_init_pot])
 
         try:
-            _res2: subprocess.CompletedProcess[str] = subprocess.run(
+            _res2: subprocess.CompletedProcess[str] = subprocess.run(  # noqa: S603
                 cmd, check=True, capture_output=True, text=True, shell=False
-            )  # noqa: S603
+            )
         except subprocess.CalledProcessError as e:
             msg = f"pace_train execution failed: {e.stderr}"
             raise RuntimeError(msg) from e
