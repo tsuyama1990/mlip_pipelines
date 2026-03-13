@@ -10,12 +10,14 @@ class ExplorationStrategy(BaseModel):
     n_defects: int
     strain_range: float
 
+
 class HaltEvent(BaseModel):
     model_config = ConfigDict(extra="forbid")
     timestep: int
     max_gamma: float
     triggering_atoms_indices: list[int]
-    halt_structure: Any # ase Atoms
+    halt_structure: Any  # ase Atoms
+
 
 class ValidationScore(BaseModel):
     model_config = ConfigDict(extra="forbid")

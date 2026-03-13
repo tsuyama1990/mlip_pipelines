@@ -11,13 +11,17 @@ class AbstractGenerator(ABC):
         """Generate initial structures based on exploration strategy."""
 
     @abstractmethod
-    def generate_local_candidates(self, halt_event: HaltEvent, strategy: ExplorationStrategy) -> list[Any]:
+    def generate_local_candidates(
+        self, halt_event: HaltEvent, strategy: ExplorationStrategy
+    ) -> list[Any]:
         """Generate local candidate structures around a halted state."""
+
 
 class AbstractOracle(ABC):
     @abstractmethod
     def compute(self, structures: list[Any]) -> list[Any]:
         """Compute exact properties (forces, energies) for the given structures."""
+
 
 class AbstractTrainer(ABC):
     @abstractmethod
@@ -28,10 +32,14 @@ class AbstractTrainer(ABC):
     def filter_active_set(self, candidates: list[Any], anchor: Any) -> list[Any]:
         """Filter structures using active set logic (e.g. D-Optimality)."""
 
+
 class AbstractDynamics(ABC):
     @abstractmethod
-    def run_exploration(self, potential_path: Path, strategy: ExplorationStrategy) -> HaltEvent | None:
+    def run_exploration(
+        self, potential_path: Path, strategy: ExplorationStrategy
+    ) -> HaltEvent | None:
         """Run dynamics and return a HaltEvent if interrupted, otherwise None."""
+
 
 class AbstractValidator(ABC):
     @abstractmethod

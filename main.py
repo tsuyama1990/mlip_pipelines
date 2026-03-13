@@ -10,9 +10,14 @@ from src.domain_models.config import PipelineConfig
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run the mlip-pipelines active learning orchestrator.")
-    parser.add_argument("--config", type=str, required=True, help="Path to the configuration YAML file.")
+    parser = argparse.ArgumentParser(
+        description="Run the mlip-pipelines active learning orchestrator."
+    )
+    parser.add_argument(
+        "--config", type=str, required=True, help="Path to the configuration YAML file."
+    )
     args = parser.parse_args()
 
     config_path = Path(args.config)
