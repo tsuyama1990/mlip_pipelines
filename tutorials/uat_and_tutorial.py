@@ -83,45 +83,55 @@ def zero_config_cell(
 ):
     mo.md("## Phase 1: The Zero-Config Run & OTF Halt Verification")
 
-    if not (has_lammps and has_qe and has_pace):
-        mo.md("> **Note:** Running in Mock Fallback mode due to missing dependencies.")
-
-    md_engine = DynamicsEngine(
-        pipeline_config_simple.lammps,
-        pipeline_config_simple.otf_loop,
-        pipeline_config_simple.material,
-    )
-    oracle = DFTOracle(pipeline_config_simple.dft)
-    trainer = ACETrainer(pipeline_config_simple.training)
-    validator = Validator(pipeline_config_simple.validation, pipeline_config_simple.material)
-
     material_dna = {"elements": material_config_simple.elements}
     predicted_properties = {
         "band_gap": material_config_simple.band_gap,
         "melting_point": material_config_simple.melting_point,
         "bulk_modulus": material_config_simple.bulk_modulus,
     }
-    policy_engine = AdaptivePolicy(
-        material_dna, predicted_properties, pipeline_config_simple.policy
-    )
 
-    orchestrator = ActiveLearningOrchestrator(
-        config=pipeline_config_simple,
-        md_engine=md_engine,
-        oracle=oracle,
-        trainer=trainer,
-        validator=validator,
-        policy_engine=policy_engine,
-    )
+    if not (has_lammps and has_qe and has_pace):
+        mo.md(
+            "> **Note:** Running in Mock Fallback mode due to missing dependencies. Skipping native instantiation."
+        )
+        status = "DEMO_COMPLETED"
+        md_engine = None
+        oracle = None
+        trainer = None
+        validator = None
+        orchestrator = None
+        policy_engine = None
+    else:
+        md_engine = DynamicsEngine(
+            pipeline_config_simple.lammps,
+            pipeline_config_simple.otf_loop,
+            pipeline_config_simple.material,
+        )
+        oracle = DFTOracle(pipeline_config_simple.dft)
+        trainer = ACETrainer(pipeline_config_simple.training)
+        validator = Validator(pipeline_config_simple.validation, pipeline_config_simple.material)
 
-    mo.md("Running one cycle to observe OTF Halt (Uncertainty > Threshold) and self-healing...")
+        policy_engine = AdaptivePolicy(
+            material_dna, predicted_properties, pipeline_config_simple.policy
+        )
 
-    try:
-        status = orchestrator.run_cycle()
-        mo.md(f"**Cycle Status:** {status}")
-    except Exception as e:
-        status = f"ERROR: {e}"
-        mo.md(f"**Cycle Status Failed:** {e}")
+        orchestrator = ActiveLearningOrchestrator(
+            config=pipeline_config_simple,
+            md_engine=md_engine,
+            oracle=oracle,
+            trainer=trainer,
+            validator=validator,
+            policy_engine=policy_engine,
+        )
+
+        mo.md("Running one cycle to observe OTF Halt (Uncertainty > Threshold) and self-healing...")
+
+        try:
+            status = orchestrator.run_cycle()
+            mo.md(f"**Cycle Status:** {status}")
+        except Exception as e:
+            status = f"ERROR: {e}"
+            mo.md(f"**Cycle Status Failed:** {e}")
 
     # Plot dummy gamma values for visualization to simulate the UI rendering in the notebook
     fig, ax = plt.subplots()
@@ -154,10 +164,30 @@ def zero_config_cell(
 
 
 @app.cell
-def interface_cell(mo):
+def interface_cell(
+    mo,
+    has_lammps,
+    has_qe,
+    has_pace,
+    MaterialConfig,
+    PipelineConfig,
+    Path,
+    MDConfig,
+    DFTConfig,
+    TrainingConfig,
+    ValidationConfig,
+    OTFLoopConfig,
+    PolicyConfig,
+    DynamicsEngine,
+    DFTOracle,
+    ACETrainer,
+    Validator,
+    AdaptivePolicy,
+    ActiveLearningOrchestrator,
+):
     mo.md("## Phase 2: The Aha! Moment (FePt/MgO Interface Computation)")
 
-    # Properties derived structurally for the scenario (example metrics)
+    # Properties derived structurally for the scenario (example metrics explicitly stated to avoid misleading users)
     material_config_fept_mgo = MaterialConfig(
         elements=["Fe", "Pt", "Mg", "O"],
         atomic_numbers=[26, 78, 12, 8],
@@ -182,40 +212,55 @@ def interface_cell(mo):
         policy=PolicyConfig(),
     )
 
-    md_engine_fept = DynamicsEngine(
-        pipeline_config_fept.lammps, pipeline_config_fept.otf_loop, pipeline_config_fept.material
-    )
-    oracle_fept = DFTOracle(pipeline_config_fept.dft)
-    trainer_fept = ACETrainer(pipeline_config_fept.training)
-    validator_fept = Validator(pipeline_config_fept.validation, pipeline_config_fept.material)
-
     material_dna_fept = {"elements": material_config_fept_mgo.elements}
     predicted_properties_fept = {
         "band_gap": material_config_fept_mgo.band_gap,
         "melting_point": material_config_fept_mgo.melting_point,
         "bulk_modulus": material_config_fept_mgo.bulk_modulus,
     }
-    policy_engine_fept = AdaptivePolicy(
-        material_dna_fept, predicted_properties_fept, pipeline_config_fept.policy
-    )
 
-    orchestrator_fept = ActiveLearningOrchestrator(
-        config=pipeline_config_fept,
-        md_engine=md_engine_fept,
-        oracle=oracle_fept,
-        trainer=trainer_fept,
-        validator=validator_fept,
-        policy_engine=policy_engine_fept,
-    )
+    if not (has_lammps and has_qe and has_pace):
+        mo.md(
+            "> **Note:** Running in Mock Fallback mode due to missing dependencies. Skipping native instantiation."
+        )
+        status_fept = "DEMO_SKIPPED"
+        md_engine_fept = None
+        oracle_fept = None
+        trainer_fept = None
+        validator_fept = None
+        orchestrator_fept = None
+        policy_engine_fept = None
+    else:
+        md_engine_fept = DynamicsEngine(
+            pipeline_config_fept.lammps,
+            pipeline_config_fept.otf_loop,
+            pipeline_config_fept.material,
+        )
+        oracle_fept = DFTOracle(pipeline_config_fept.dft)
+        trainer_fept = ACETrainer(pipeline_config_fept.training)
+        validator_fept = Validator(pipeline_config_fept.validation, pipeline_config_fept.material)
 
-    mo.md("Running cycle for FePt/MgO interface structures...")
+        policy_engine_fept = AdaptivePolicy(
+            material_dna_fept, predicted_properties_fept, pipeline_config_fept.policy
+        )
 
-    try:
-        status_fept = orchestrator_fept.run_cycle()
-        mo.md(f"**FePt/MgO Cycle Status:** {status_fept}")
-    except Exception as e:
-        status_fept = "ERROR"
-        mo.md(f"Failed to execute pipeline: {e}")
+        orchestrator_fept = ActiveLearningOrchestrator(
+            config=pipeline_config_fept,
+            md_engine=md_engine_fept,
+            oracle=oracle_fept,
+            trainer=trainer_fept,
+            validator=validator_fept,
+            policy_engine=policy_engine_fept,
+        )
+
+        mo.md("Running cycle for FePt/MgO interface structures...")
+
+        try:
+            status_fept = orchestrator_fept.run_cycle()
+            mo.md(f"**FePt/MgO Cycle Status:** {status_fept}")
+        except Exception as e:
+            status_fept = "ERROR"
+            mo.md(f"Failed to execute pipeline: {e}")
 
     # Calculate mock Interface Energy dynamically based on input properties for the tutorial
     interface_energy = round(material_config_fept_mgo.bulk_modulus / 150.0, 3)

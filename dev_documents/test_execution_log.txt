@@ -23,22 +23,22 @@ Name                                Stmts   Miss  Cover   Missing
 -----------------------------------------------------------------
 src/__init__.py                         0      0   100%
 src/core/__init__.py                    0      0   100%
-src/core/orchestrator.py               69      0   100%
+src/core/orchestrator.py               68      0   100%
 src/domain_models/__init__.py           0      0   100%
 src/domain_models/config.py           101      1    99%   121
 src/domain_models/dtos.py               8      0   100%
 src/dynamics/__init__.py                0      0   100%
-src/dynamics/dynamics_engine.py        82     10    88%   31-32, 56-67, 127-128, 156, 176, 179
+src/dynamics/dynamics_engine.py       102     17    83%   24-25, 56-67, 131-132, 163-165, 175, 191-195, 201, 203
 src/generators/__init__.py              0      0   100%
 src/generators/adaptive_policy.py      24      0   100%
 src/oracles/__init__.py                 0      0   100%
 src/oracles/dft_oracle.py              67      5    93%   49-50, 132-134
 src/trainers/__init__.py                0      0   100%
-src/trainers/ace_trainer.py           102     26    75%   28, 42-46, 81-85, 101, 106-110, 130-134, 160, 174-177, 181
+src/trainers/ace_trainer.py           105     26    75%   28, 42-46, 81-85, 105, 110-114, 134-138, 164, 178-181, 185
 src/validators/__init__.py              0      0   100%
 src/validators/validator.py            53     18    66%   50-83, 92
 -----------------------------------------------------------------
-TOTAL                                 506     60    88%
-============================== 36 passed in 2.63s ==============================
+TOTAL                                 528     67    87%
+============================== 36 passed in 2.68s ==============================
 /app/.venv/lib/python3.12/site-packages/coverage/inorout.py:561: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.4/messages.html#warning-module-not-imported
   self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")

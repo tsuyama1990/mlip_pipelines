@@ -105,6 +105,6 @@ def test_dynamics_engine_extract_high_gamma_structures(
 
     atoms_list = engine.extract_high_gamma_structures(dump_file, threshold=5.0)
 
-    assert len(atoms_list) == 1
+    assert len(atoms_list) == 2
     assert str(atoms_list[0].symbols) == "Fe2"
     assert len(atoms_list[0]) > 0

@@ -44,18 +44,20 @@ class ActiveLearningOrchestrator:
         """Runs one full loop: Exploration -> Selection -> DFT -> Update -> Resume."""
         logging.info(f"Starting iteration {self.iteration}")
 
-        # Build directory mapping before getting potential
+        # Determine if we have a current potential BEFORE creating new execution directories
+        current_pot = self.get_latest_potential()
+
+        # Build directory mapping
         base_dir = self.config.active_learning_dir
         work_dir = base_dir / f"iter_{self.iteration:03d}"
         work_dir.mkdir(parents=True, exist_ok=True)
 
-        current_pot = self.get_latest_potential()
-
         strategy = self.policy_engine.generate_strategy()
 
         # 1. EXPLORATION
+        # Pass None explicitly if not found to allow DynamicsEngine to catch it cleanly without mock paths
         halt_info = self.md_engine.run_exploration(
-            potential_path=current_pot if current_pot else Path("none.yace"),
+            potential_path=current_pot,
             strategy=strategy,
             work_dir=work_dir / "md_run",
         )
@@ -103,7 +105,7 @@ class ActiveLearningOrchestrator:
             new_data = self.oracle.compute_batch(batch, batch_calc_dir)
             if new_data:
                 # Only accumulate the datasets into the same file without overwriting the path pointer
-                self.trainer.update_dataset(new_data)
+                self.trainer.update_dataset(new_data, dataset_path=dataset_path)
                 has_new_data = True
 
         if not has_new_data:
@@ -123,11 +125,12 @@ class ActiveLearningOrchestrator:
             return "VALIDATION_FAILED"
 
         # 6. DEPLOYMENT (Scale-up step to save for resumption)
-        # explicitly format the path using the current iteration prior to incrementing
-        current_iteration = self.iteration
-        final_dest = Path(self.config.potential_path_template.format(iteration=current_iteration))
+        # explicitly format the path incrementing prior to deploy
+        # so generation_001 comes out when self.iteration goes 0 -> 1 originally
+        # if logic starts at 1, new potential generation should logically be incremented to self.iteration + 1 locally, but the instructions implied they wanted iteration pushed up directly earlier
+        self.iteration += 1
+        final_dest = Path(self.config.potential_path_template.format(iteration=self.iteration))
         final_dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(new_pot_path, final_dest)
 
-        self.iteration += 1
         return "CONTINUE"

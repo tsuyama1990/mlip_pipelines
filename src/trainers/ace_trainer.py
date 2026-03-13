@@ -86,16 +86,20 @@ class ACETrainer:
 
         return selected
 
-    def update_dataset(self, new_data: list[Atoms]) -> Path:
+    def update_dataset(self, new_data: list[Atoms], dataset_path: Path | None = None) -> Path:
         """
         Updates dataset by running pace_collect or writing extxyz.
         """
         from ase.io import write
 
-        data_dir = Path("data")
-        data_dir.mkdir(exist_ok=True, parents=True)
+        if dataset_path is None:
+            data_dir = Path("data")
+            accumulated_xyz = data_dir / "accumulated.extxyz"
+        else:
+            accumulated_xyz = dataset_path
+            data_dir = accumulated_xyz.parent
 
-        accumulated_xyz = data_dir / "accumulated.extxyz"
+        data_dir.mkdir(exist_ok=True, parents=True)
 
         if not new_data:
             return accumulated_xyz
