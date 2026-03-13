@@ -38,6 +38,7 @@ def __(USE_MOCK):
     import os
     import sys
     from pathlib import Path
+    from typing import Any
 
     # Path patching for headless test execution directly
     sys.path.insert(0, str(Path.cwd()))
@@ -64,7 +65,7 @@ def __(USE_MOCK):
 
 
 @app.cell
-def __(config, USE_MOCK, mo):
+def __(config, USE_MOCK, mo, Any):
     from src.core.orchestrator import Orchestrator
 
     orchestrator = Orchestrator(config)
@@ -72,45 +73,45 @@ def __(config, USE_MOCK, mo):
     if USE_MOCK:
         # Patching to allow local headless run
         class MockMD:
-            def __init__(self, *args, **kwargs):
+            def __init__(self, *args: Any, **kwargs: Any) -> None:
                 pass
 
-            def run_exploration(self, *args, **kwargs):
+            def run_exploration(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
                 return {"halted": True, "dump_file": config.project_root / "dummy_dump"}
 
-            def extract_high_gamma_structures(self, *args, **kwargs):
+            def extract_high_gamma_structures(self, *args: Any, **kwargs: Any) -> list[Any]:
                 from ase import Atoms
 
                 return [Atoms("Fe", positions=[(0, 0, 0)])]
 
         class MockOracle:
-            def __init__(self, *args, **kwargs):
+            def __init__(self, *args: Any, **kwargs: Any) -> None:
                 pass
 
-            def compute_batch(self, batch, *args, **kwargs):
+            def compute_batch(self, batch: Any, *args: Any, **kwargs: Any) -> Any:
                 return batch
 
         class MockTrainer:
-            def __init__(self, *args, **kwargs):
+            def __init__(self, *args: Any, **kwargs: Any) -> None:
                 pass
 
-            def select_local_active_set(self, candidates, anchor, n):
+            def select_local_active_set(self, candidates: list[Any], anchor: Any, n: int) -> list[Any]:
                 return candidates[:n]
 
-            def update_dataset(self, new_data, dataset_path):
+            def update_dataset(self, new_data: Any, dataset_path: Any) -> Any:
                 return dataset_path
 
-            def train(self, dataset, initial_potential, output_dir):
+            def train(self, dataset: Any, initial_potential: Any, output_dir: Path) -> Path:
                 pot = output_dir / "new_pot.yace"
                 pot.parent.mkdir(parents=True, exist_ok=True)
                 pot.write_text("dummy potential")
                 return pot
 
         class MockValidator:
-            def __init__(self, *args, **kwargs):
+            def __init__(self, *args: Any, **kwargs: Any) -> None:
                 pass
 
-            def validate(self, *args, **kwargs):
+            def validate(self, *args: Any, **kwargs: Any) -> Any:
                 from src.domain_models.dtos import ValidationReport
 
                 return ValidationReport(
@@ -122,17 +123,17 @@ def __(config, USE_MOCK, mo):
                     mechanically_stable=True,
                 )
 
-        orchestrator.md_engine = MockMD()
-        orchestrator.oracle = MockOracle()
-        orchestrator.trainer = MockTrainer()
-        orchestrator.validator = MockValidator()
+        orchestrator.md_engine = MockMD()  # type: ignore[assignment]
+        orchestrator.oracle = MockOracle()  # type: ignore[assignment]
+        orchestrator.trainer = MockTrainer()  # type: ignore[assignment]
+        orchestrator.validator = MockValidator()  # type: ignore[assignment]
 
         # Patch generator just to make it fast
         class MockGenerator:
-            def __init__(self, *args, **kwargs):
+            def __init__(self, *args: Any, **kwargs: Any) -> None:
                 pass
 
-            def generate_local_candidates(self, s0, n=20):
+            def generate_local_candidates(self, s0: Any, n: int = 20) -> list[Any]:
                 from ase import Atoms
 
                 return [Atoms("Fe", positions=[(0, 0, 0)])] * n

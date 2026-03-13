@@ -1,3 +1,6 @@
+from pathlib import Path
+from typing import Any
+
 from src.core.orchestrator import Orchestrator
 from src.domain_models.config import (
     DynamicsConfig,
@@ -9,7 +12,7 @@ from src.domain_models.config import (
 )
 
 
-def test_full_pipeline_skeleton(tmp_path):
+def test_full_pipeline_skeleton(tmp_path: Path) -> None:
     config = ProjectConfig(
         system=SystemConfig(elements=["Fe", "Pt"], baseline_potential="zbl"),
         dynamics=DynamicsConfig(uncertainty_threshold=5.0, md_steps=100),
@@ -25,46 +28,46 @@ def test_full_pipeline_skeleton(tmp_path):
     # Run cycle directly
     # To avoid hanging on real DFT or lammps in tests, we patch internal calls
     class MockMD:
-        def __init__(self, *args, **kwargs):
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
             pass
 
-        def run_exploration(self, *args, **kwargs):
+        def run_exploration(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
             return {"halted": True, "dump_file": tmp_path / "dummy_dump"}
 
-        def extract_high_gamma_structures(self, *args, **kwargs):
+        def extract_high_gamma_structures(self, *args: Any, **kwargs: Any) -> list[Any]:
             from ase import Atoms
 
             return [Atoms("Fe", positions=[(0, 0, 0)])]
 
     class MockOracle:
-        def __init__(self, *args, **kwargs):
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
             pass
 
-        def compute_batch(self, batch, *args, **kwargs):
+        def compute_batch(self, batch: Any, *args: Any, **kwargs: Any) -> Any:
             # return the same batch to pretend we labeled them
             return batch
 
     class MockTrainer:
-        def __init__(self, *args, **kwargs):
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
             pass
 
-        def select_local_active_set(self, candidates, anchor, n):
+        def select_local_active_set(self, candidates: list[Any], anchor: Any, n: int) -> list[Any]:
             return candidates[:n]
 
-        def update_dataset(self, new_data, dataset_path):
+        def update_dataset(self, new_data: Any, dataset_path: Any) -> Any:
             return dataset_path
 
-        def train(self, dataset, initial_potential, output_dir):
+        def train(self, dataset: Any, initial_potential: Any, output_dir: Path) -> Path:
             pot = output_dir / "new_pot.yace"
             pot.parent.mkdir(parents=True, exist_ok=True)
             pot.write_text("dummy potential")
             return pot
 
     class MockValidator:
-        def __init__(self, *args, **kwargs):
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
             pass
 
-        def validate(self, *args, **kwargs):
+        def validate(self, *args: Any, **kwargs: Any) -> Any:
             from src.domain_models.dtos import ValidationReport
 
             return ValidationReport(
@@ -76,10 +79,10 @@ def test_full_pipeline_skeleton(tmp_path):
                 mechanically_stable=True,
             )
 
-    orchestrator.md_engine = MockMD()
-    orchestrator.oracle = MockOracle()
-    orchestrator.trainer = MockTrainer()
-    orchestrator.validator = MockValidator()
+    orchestrator.md_engine = MockMD()  # type: ignore[assignment]
+    orchestrator.oracle = MockOracle()  # type: ignore[assignment]
+    orchestrator.trainer = MockTrainer()  # type: ignore[assignment]
+    orchestrator.validator = MockValidator()  # type: ignore[assignment]
 
     result = orchestrator.run_cycle()
     assert result is not None

@@ -94,13 +94,12 @@ run {self.config.md_steps}
             logging.warning("LAMMPS halted, possibly due to uncertainty watchdog.")
             # For the pipeline logic, we assume it halted.
             if not dump_file.exists():
-                dump_file.write_text("dummy")  # Fallback to continue logic if dump wasn't written
+                msg = "LAMMPS halted but no dump file was generated."
+                raise RuntimeError(msg)
             return {"halted": True, "dump_file": dump_file}
-        except FileNotFoundError:
-            # lmp not installed, fallback logic for CI
-            logging.warning("LAMMPS executable not found. Creating dummy dump.")
-            dump_file.write_text("dummy")
-            return {"halted": True, "dump_file": dump_file}
+        except FileNotFoundError as e:
+            msg = "LAMMPS executable not found."
+            raise RuntimeError(msg) from e
         else:
             return {"halted": False, "dump_file": None}
 
@@ -108,13 +107,17 @@ run {self.config.md_steps}
         """Extracts structures with high gamma from LAMMPS dump."""
         # Read the trajectory.
         # This requires the dump to be in a readable format, e.g., custom format with gamma.
-        try:
-            traj = read(str(dump_file), index=":", format="lammps-dump-text")  # type: ignore[no-untyped-call]
-            if not isinstance(traj, list):
-                traj = [traj]
-        except Exception:
-            # Dummy fallback if file is mock dummy
-            return [Atoms("Fe", positions=[(0, 0, 0)])]
+        if not dump_file.exists():
+            msg = f"Dump file not found: {dump_file}"
+            raise FileNotFoundError(msg)
+
+        traj = read(str(dump_file), index=":", format="lammps-dump-text")  # type: ignore[no-untyped-call]
+        if not isinstance(traj, list):
+            traj = [traj]
+
+        if not traj:
+            msg = f"No structures read from dump file: {dump_file}"
+            raise ValueError(msg)
 
         # In a real dump, we'd filter atoms where gamma > threshold.
         # Here we just return the last snapshot for now.

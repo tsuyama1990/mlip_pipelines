@@ -64,7 +64,22 @@ testpaths = ["tests"]
 
 [tool.mypy]
 strict = true
+warn_unused_ignores = false
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+    "ase.*",
+    "lammps.*",
+    "phonopy.*",
+    "pyacemaker.*",
+    "scipy.*",
+    "numpy.*",
+    "matplotlib.*"
+]
+ignore_missing_imports = true
+follow_imports = "skip"
+
 [[tool.mypy.overrides]]
 module = "tutorials.*"
 ignore_errors = true

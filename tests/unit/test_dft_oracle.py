@@ -1,16 +1,19 @@
+from pathlib import Path
+
+import pytest
 from ase import Atoms
 
 from src.domain_models.config import OracleConfig
 from src.oracles.dft_oracle import DFTManager
 
 
-def test_dft_manager_initialization():
+def test_dft_manager_initialization() -> None:
     config = OracleConfig()
     manager = DFTManager(config)
     assert manager.config.kspacing == 0.05
 
 
-def test_periodic_embedding():
+def test_periodic_embedding() -> None:
     config = OracleConfig()
     manager = DFTManager(config)
     atoms = Atoms("Fe", positions=[(0, 0, 0)])
@@ -18,7 +21,7 @@ def test_periodic_embedding():
     embedded = manager._apply_periodic_embedding(atoms)
 
     # Must be Orthorhombic cell for embedding
-    cell = embedded.get_cell()
+    cell = embedded.get_cell()  # type: ignore[no-untyped-call]
     assert cell[0][1] == 0.0
     assert cell[0][2] == 0.0
     assert cell[1][0] == 0.0
@@ -27,26 +30,28 @@ def test_periodic_embedding():
     assert cell[2][1] == 0.0
 
 
-def test_compute_batch(monkeypatch, tmp_path):
+def test_compute_batch(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     config = OracleConfig()
     manager = DFTManager(config)
 
-    from typing import Any, ClassVar
+    from typing import Any
 
     import numpy as np
     from ase import Atoms
     from ase.calculators.calculator import Calculator
 
-    class MockCalc(Calculator):
+    from typing import Any, ClassVar
+
+    class MockCalc(Calculator):  # type: ignore[misc]
         implemented_properties: ClassVar[list[str]] = ["energy", "forces", "stress"]
 
         def __init__(self, **kwargs: Any) -> None:
-            super().__init__(**kwargs)
+            super().__init__(**kwargs)  # type: ignore[no-untyped-call]
             self.parameters = {
                 "input_data": {"electrons": {"mixing_beta": 0.7, "diagonalization": "david"}}
             }
 
-        def calculate(self, atoms=None, properties=None, system_changes=None):
+        def calculate(self, atoms: Atoms | None = None, properties: list[str] | None = None, system_changes: Any = None) -> None:
             if properties is None:
                 properties = ["energy"]
             self.results = {
@@ -59,10 +64,14 @@ def test_compute_batch(monkeypatch, tmp_path):
     atoms2 = Atoms("Pt", positions=[(0, 0, 0)])
 
     # Monkeypatch the get_calculator logic to inject mock
-    manager._get_calculator = lambda atoms, work_dir: MockCalc()
+    def mock_get_calculator(atoms: Atoms, work_dir: Path) -> MockCalc:
+        return MockCalc()
+
+    monkeypatch.setattr(manager, "_get_calculator", mock_get_calculator)
 
     results = manager.compute_batch([atoms1, atoms2], tmp_path)
 
     assert len(results) == 2
+    assert results[0].calc is not None
     assert "energy" in results[0].calc.results
     assert results[0].calc.results["energy"] == -5.0

@@ -48,7 +48,7 @@ class Orchestrator:
                     return None
             return latest_pot
         except (ValueError, OSError) as e:
-            logging.error(f"Failed to load or validate latest potential: {e}")
+            logging.exception(f"Failed to load or validate latest potential: {e}")
             return None
 
     def run_cycle(self) -> str | None:

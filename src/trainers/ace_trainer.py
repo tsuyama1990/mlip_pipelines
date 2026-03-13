@@ -41,7 +41,7 @@ class PacemakerWrapper:
             all_atoms = [anchor, *candidates]
             in_file = td_path / "candidates.extxyz"
             out_file = td_path / "selected.extxyz"
-            write(str(in_file), all_atoms, format="extxyz")  # type: ignore[no-untyped-call]
+            write(str(in_file), all_atoms, format="extxyz")
 
             cmd = [
                 "pace_activeset",
@@ -57,26 +57,20 @@ class PacemakerWrapper:
                 subprocess.run(cmd, check=True, capture_output=True, text=True, shell=False)
                 if out_file.exists():
                     # Parse selected
-                    selected = read(str(out_file), index=":")  # type: ignore[no-untyped-call]
+                    selected = read(str(out_file), index=":")
                     if not isinstance(selected, list):
                         selected = [selected]
                     return selected
-            except (subprocess.CalledProcessError, FileNotFoundError):
-                # Fallback to pure selection if pace_activeset not available
-                # e.g., in CI without pacemaker installed.
-                pass
+            except subprocess.CalledProcessError as e:
+                msg = f"pace_activeset failed: {e.stderr}"
+                raise RuntimeError(msg) from e
+            except FileNotFoundError as e:
+                msg = "pace_activeset executable not found in PATH."
+                raise RuntimeError(msg) from e
 
-            # Pure Python D-optimality fallback for test execution.
-            # We select anchor + n-1 random candidates
-            import random
-
-            selected = [anchor]
-            remaining = candidates[:]
-            random.seed(42)
-            while len(selected) < n and len(remaining) > 0:
-                idx = random.randint(0, len(remaining) - 1)
-                selected.append(remaining.pop(idx))
-            return selected
+            # If the tool doesn't output the file as expected
+            msg = "pace_activeset did not generate the output file."
+            raise RuntimeError(msg)
 
     def train(self, dataset: Path, initial_potential: Path | None, output_dir: Path) -> Path:
         """Trains or fine-tunes the ACE model."""
