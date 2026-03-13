@@ -171,7 +171,6 @@ class DynamicsEngine:
                 "max_gamma": max_gamma,
                 "halt_step": int(steps * 0.8),
             }
-
         return {
             "halted": False,
             "dump_file": dump_path,

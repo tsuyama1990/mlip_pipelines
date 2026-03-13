@@ -38,5 +38,8 @@ def test_tutorial_execution() -> None:
     )
 
     # Ensure expected outputs are logged in stdout or stderr
-    # We expect "Running one cycle to observe OTF Halt" and "FePt/MgO Cycle Status" somewhere.
-    # We won't strictly match the whole output but at least check success.
+    assert (
+        "DEMO_COMPLETED" in result.stdout
+        or "DEMO_SKIPPED" in result.stdout
+        or "CONTINUE" in result.stdout
+    )

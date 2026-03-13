@@ -36,9 +36,13 @@ class ActiveLearningOrchestrator:
         pot_dir = pot_path_template.parent
         if not pot_dir.exists():
             return None
-        return max(
-            pot_dir.glob(pot_path_template.name.replace("{iteration:03d}", "*")), default=None
-        )
+
+        try:
+            return max(
+                pot_dir.glob(pot_path_template.name.replace("{iteration:03d}", "*")), default=None
+            )
+        except ValueError:
+            return None
 
     def run_cycle(self) -> str:
         """Runs one full loop: Exploration -> Selection -> DFT -> Update -> Resume."""
@@ -125,12 +129,11 @@ class ActiveLearningOrchestrator:
             return "VALIDATION_FAILED"
 
         # 6. DEPLOYMENT (Scale-up step to save for resumption)
-        # explicitly format the path incrementing prior to deploy
-        # so generation_001 comes out when self.iteration goes 0 -> 1 originally
-        # if logic starts at 1, new potential generation should logically be incremented to self.iteration + 1 locally, but the instructions implied they wanted iteration pushed up directly earlier
-        self.iteration += 1
-        final_dest = Path(self.config.potential_path_template.format(iteration=self.iteration))
+        # Use self.iteration + 1 for new generation per instructions
+        next_iteration = self.iteration + 1
+        final_dest = Path(self.config.potential_path_template.format(iteration=next_iteration))
         final_dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(new_pot_path, final_dest)
 
+        self.iteration = next_iteration
         return "CONTINUE"

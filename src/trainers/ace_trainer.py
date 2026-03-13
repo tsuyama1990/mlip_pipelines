@@ -69,15 +69,28 @@ class ACETrainer:
             try:
                 import shlex
 
+                from ase.io import read
+
                 safe_cmd = [shlex.quote(c) for c in cmd]
                 subprocess.run(  # noqa: S603
                     safe_cmd, check=True, capture_output=True, text=True
                 )
 
                 logger.info("pace_activeset completed successfully.")
-                sys_random = random.SystemRandom()
-                sampled = sys_random.sample(candidates, num_to_select)
-                selected.extend(sampled)
+
+                # After successful call, read actual structures determined by D-Optimality
+                selected_output_file = tmpdir / "selected.extxyz"
+                if selected_output_file.exists():
+                    actual_selected = read(str(selected_output_file), index=":", format="extxyz")
+                    if isinstance(actual_selected, list):
+                        selected.extend(actual_selected)
+                    else:
+                        selected.append(actual_selected)
+                else:
+                    # Fallback only if the output file is missing despite successful command
+                    sys_random = random.SystemRandom()
+                    sampled = sys_random.sample(candidates, num_to_select)
+                    selected.extend(sampled)
             except subprocess.CalledProcessError:
                 logger.exception("pace_activeset failed")
                 sys_random = random.SystemRandom()
@@ -181,5 +194,6 @@ class ACETrainer:
                 raise RuntimeError(msg) from e
             else:
                 return output_pot
-
-        return output_pot
+        else:
+            msg = "pace_train executable not available."
+            raise FileNotFoundError(msg)
