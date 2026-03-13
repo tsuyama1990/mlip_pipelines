@@ -24,12 +24,16 @@ class DynamicsConfig(BaseModel):
     temperature: float = Field(default=300.0, ge=0.0, description="Temperature for MD exploration")
     pressure: float = Field(default=0.0, description="Pressure for NPT MD exploration")
     lmp_binary: str = Field(
-        default="lmp", description="Binary name or path for LAMMPS", pattern=r"^[a-zA-Z0-9_./-]+$"
+        default="lmp", description="Binary name or path for LAMMPS", pattern=r"^[a-zA-Z0-9_-]+$"
     )
     eon_binary: str = Field(
         default="eonclient",
         description="Binary name or path for EON client",
-        pattern=r"^[a-zA-Z0-9_./-]+$",
+        pattern=r"^[a-zA-Z0-9_-]+$",
+    )
+    trusted_directories: list[str] = Field(
+        default=["/usr/bin", "/usr/local/bin", "/opt/homebrew/bin"],
+        description="List of trusted directories for executables",
     )
     pace_train_args_template: list[str] = Field(
         default=[
@@ -234,12 +238,16 @@ class TrainerConfig(BaseModel):
     pace_train_binary: str = Field(
         default="pace_train",
         description="Binary name or path for pace_train",
-        pattern=r"^[a-zA-Z0-9_./-]+$",
+        pattern=r"^[a-zA-Z0-9_-]+$",
     )
     pace_activeset_binary: str = Field(
         default="pace_activeset",
         description="Binary name or path for pace_activeset",
-        pattern=r"^[a-zA-Z0-9_./-]+$",
+        pattern=r"^[a-zA-Z0-9_-]+$",
+    )
+    trusted_directories: list[str] = Field(
+        default=["/usr/bin", "/usr/local/bin", "/opt/homebrew/bin"],
+        description="List of trusted directories for executables",
     )
     pace_train_args_template: list[str] = Field(
         default=[

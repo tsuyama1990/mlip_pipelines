@@ -27,20 +27,20 @@ class EONWrapper:
         driver_path = pots_dir / "pace_driver.py"
 
         # the pace_driver should be executable by python
-        pot_str = f"'{potential.resolve()}'" if potential else "None"
+        pot_str = repr(str(potential.resolve())) if potential else "None"
+        # Ensure executable doesn't break python logic
         import sys
-
         executable = sys.executable
         driver_content = self.config.eon_driver_template.format(
             executable=executable,
-            threshold=self.config.uncertainty_threshold,
+            threshold=float(self.config.uncertainty_threshold),
             pot_str=pot_str,
         )
         with Path.open(driver_path, "w") as f:
             f.write(driver_content)
         driver_path.chmod(0o755)
 
-    def run_kmc(self, potential: Path | None, work_dir: Path) -> dict[str, Any]:  # noqa: C901
+    def run_kmc(self, potential: Path | None, work_dir: Path) -> dict[str, Any]:  # noqa: C901, PLR0912, PLR0915
         """Runs EON client in the specified working directory."""
         resolved_work_dir = work_dir.resolve(strict=False)
 
@@ -57,16 +57,17 @@ class EONWrapper:
 
         try:
             # We execute 'eonclient'. If it's missing, subprocess raises FileNotFoundError.
+            import re
             import shutil
             import sys
-
             eon_binary: str = self.config.eon_binary
-            trusted_dirs: list[str] = [
-                "/usr/bin",
-                "/usr/local/bin",
-                "/opt/homebrew/bin",
-                str(Path(sys.prefix) / "bin"),
-            ]
+
+            if not re.match(r"^[a-zA-Z0-9_-]+$", eon_binary):
+                msg = f"Invalid EON binary name: {eon_binary}"
+                raise ValueError(msg)
+
+            trusted_dirs: list[str] = self.config.trusted_directories.copy()
+            trusted_dirs.append(str(Path(sys.prefix) / "bin"))
             if hasattr(self.config, "project_root"):
                 trusted_dirs.append(str(Path(self.config.project_root) / "bin"))
 
@@ -86,7 +87,16 @@ class EONWrapper:
                     msg = f"Resolved EON binary name must be 'eonclient', got '{eon_path.name}'"
                     raise ValueError(msg)
 
-                if not any(eon_path.is_relative_to(Path(td).resolve()) for td in trusted_dirs):
+                is_trusted = False
+                for td in trusted_dirs:
+                    try:
+                        if eon_path.is_relative_to(Path(td).resolve(strict=True)):
+                            is_trusted = True
+                            break
+                    except OSError:
+                        continue
+
+                if not is_trusted:
                     msg = f"Resolved EON binary must reside in a trusted directory: {eon_path}"
                     raise ValueError(msg)
                 eon_bin = str(eon_path)

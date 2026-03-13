@@ -73,7 +73,19 @@ class Orchestrator:
     ) -> dict[str, Any] | str:
         # Deduce features to get policy
         features = MaterialFeatures(elements=self.config.system.elements)
-        strategy = self.policy_engine.decide_policy(features)
+        from src.domain_models.dtos import ExplorationStrategy
+
+        try:
+            strategy = self.policy_engine.decide_policy(features)
+        except Exception:
+            logging.exception("Policy engine failed. Falling back to default MD strategy.")
+            strategy = ExplorationStrategy(
+                md_mc_ratio=0.0,
+                t_max=300.0,
+                n_defects=0.0,
+                strain_range=0.0,
+                policy_name="Fallback Standard"
+            )
 
         if strategy.md_mc_ratio > 0.0:
             logging.info(f"Running kMC (EON) exploration due to strategy {strategy.policy_name}")
@@ -157,7 +169,7 @@ class Orchestrator:
         final_dest = pot_dir / f"generation_{self.iteration:03d}.yace"
 
         src_pot = tmp_work_dir / "training" / "output_potential.yace"
-        if not src_pot.is_file() or not src_pot.resolve().is_relative_to(tmp_work_dir.resolve()):
+        if not src_pot.is_file() or not src_pot.resolve(strict=True).is_relative_to(tmp_work_dir.resolve(strict=True)):
             msg = "Source potential file missing or invalid"
             raise FileNotFoundError(msg)
 
@@ -172,19 +184,20 @@ class Orchestrator:
             msg = f"Source potential file {src_pot} does not appear to be a valid YACE format prior to copy."
             raise ValueError(msg)
 
-        shutil.copy(src_pot, final_dest)
-
         resolved_tmp = tmp_work_dir.resolve(strict=True)
-        if not resolved_tmp.is_relative_to(
-            (self.config.project_root / "active_learning").resolve(strict=True)
-        ):
+        base_al_dir = (self.config.project_root / "active_learning").resolve(strict=True)
+        if not resolved_tmp.is_relative_to(base_al_dir):
             msg = "tmp_work_dir is outside the expected base directory"
             raise ValueError(msg)
 
-        resolved_dest = final_dest.resolve(strict=False)
-        if not resolved_dest.is_relative_to(pot_dir.resolve(strict=True)):
+        # Pre-resolve the final_dest parent to ensure we're not traversing
+        final_dest_dir = final_dest.parent.resolve(strict=True)
+        resolved_pot_dir = pot_dir.resolve(strict=True)
+        if not final_dest_dir.is_relative_to(resolved_pot_dir):
             msg = "final_dest is outside the expected potentials directory"
             raise ValueError(msg)
+
+        shutil.copy(src_pot, final_dest)
 
         # Implement directory content validation
         expected_dirs = ["training"]
