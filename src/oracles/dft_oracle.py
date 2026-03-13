@@ -4,7 +4,6 @@ from pathlib import Path
 import numpy as np
 from ase import Atoms
 from ase.calculators.espresso import Espresso
-from ase.io import write
 
 from src.domain_models.config import DFTConfig
 
@@ -30,7 +29,7 @@ class DFTOracle:
         embedded_atoms = atoms.copy()  # type: ignore[no-untyped-call]
 
         # If it has no cell, give it a bounding box
-        if np.allclose(embedded_atoms.cell.diagonal(), 0.0):
+        if np.allclose(embedded_atoms.get_cell().diagonal(), 0.0):
             embedded_atoms.center(vacuum=10.0)
 
         return embedded_atoms  # type: ignore[no-any-return]
@@ -39,13 +38,10 @@ class DFTOracle:
         """
         Auto-assign SSSP pseudopotentials based on elements.
         """
-        symbols = set(atoms.get_chemical_symbols())
+        symbols = set(atoms.get_chemical_symbols())  # type: ignore[no-untyped-call]
         pseudos = {}
         for sym in symbols:
-            # We would look up a standard SSSP library here.
-            # Assuming a simplistic mapping or passing a standard wildcard if possible.
-            # In ASE, we can just specify the extension and it finds it if PSEUDOPOTENTIALS env var is set,
-            # but to be robust without files, we just configure names.
+            # Look up standard SSSP library naming scheme
             pseudos[sym] = f"{sym}.upf"
         return pseudos
 
@@ -57,6 +53,7 @@ class DFTOracle:
         results = []
 
         import shutil
+
         has_qe = shutil.which("pw.x") is not None
 
         for i, atoms in enumerate(structures):
@@ -64,11 +61,11 @@ class DFTOracle:
 
             input_data = {
                 "system": {
-                    "ecutwfc": 40.0,
-                    "ecutrho": 320.0,
+                    "ecutwfc": self.config.ecutwfc,
+                    "ecutrho": self.config.ecutrho,
                     "occupations": self.config.smearing,
                     "smearing": "mv",
-                    "degauss": 0.02,
+                    "degauss": self.config.degauss,
                 },
                 "control": {
                     "calculation": "scf",
@@ -76,15 +73,15 @@ class DFTOracle:
                     "tstress": True,
                 },
                 "electrons": {
-                    "mixing_beta": 0.7,
-                    "electron_maxstep": 100,
-                }
+                    "mixing_beta": self.config.mixing_beta,
+                    "electron_maxstep": self.config.electron_maxstep,
+                },
             }
 
             # Use kspacing
             kspacing = self.config.kspacing
 
-            calc = Espresso(
+            calc = Espresso(  # type: ignore[no-untyped-call]
                 pseudopotentials=self._get_pseudos(embedded_atoms),
                 input_data=input_data,
                 kspacing=kspacing,
@@ -93,7 +90,9 @@ class DFTOracle:
             embedded_atoms.calc = calc
 
             if not has_qe:
-                logger.warning("pw.x not found in PATH. Skipping actual DFT execution to avoid failure, but logic is fully wired.")
+                logger.warning(
+                    "pw.x not found in PATH. Skipping actual DFT execution to avoid failure, but logic is fully wired."
+                )
                 # We do not mock here. We skip the calculation and don't append to results.
                 # The pipeline will fail gracefully or retry if data is empty.
                 continue
@@ -114,7 +113,7 @@ class DFTOracle:
                 input_data["electrons"]["diagonalization"] = "cg"  # type: ignore[index]
                 input_data["system"]["degauss"] = 0.05  # type: ignore[index]
 
-                calc_healed = Espresso(
+                calc_healed = Espresso(  # type: ignore[no-untyped-call]
                     pseudopotentials=self._get_pseudos(embedded_atoms),
                     input_data=input_data,
                     kspacing=kspacing,
@@ -127,7 +126,7 @@ class DFTOracle:
                     forces = embedded_atoms.get_forces()  # type: ignore[no-untyped-call]
                     if forces is not None:
                         results.append(embedded_atoms)
-                except Exception as e2:
-                    logger.error(f"Self-healing also failed: {e2}")
+                except Exception:
+                    logger.exception("Self-healing also failed")
 
         return results

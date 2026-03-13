@@ -27,18 +27,18 @@ src/__init__.py                         0      0   100%
 src/core/__init__.py                    0      0   100%
 src/core/orchestrator.py               63      0   100%
 src/domain_models/__init__.py           0      0   100%
-src/domain_models/config.py            39      0   100%
+src/domain_models/config.py            58      0   100%
 src/domain_models/dtos.py               9      0   100%
 src/dynamics/__init__.py                0      0   100%
-src/dynamics/dynamics_engine.py        54      5    91%   77-78, 105, 127, 130
+src/dynamics/dynamics_engine.py        68      5    93%   96-97, 125, 145, 148
 src/generators/__init__.py              0      0   100%
 src/generators/adaptive_policy.py      20      0   100%
 src/oracles/__init__.py                 0      0   100%
-src/oracles/dft_oracle.py              56      2    96%   130-131
+src/oracles/dft_oracle.py              55      2    96%   129-130
 src/trainers/__init__.py                0      0   100%
-src/trainers/ace_trainer.py            71     13    82%   28, 80-84, 101, 121-131, 148-152
+src/trainers/ace_trainer.py            70     13    81%   28, 70-74, 90, 113, 135-138, 142
 src/validators/__init__.py              0      0   100%
-src/validators/validator.py            46     14    70%   44-63, 70
+src/validators/validator.py            56     21    62%   30-34, 54-87, 96
 -----------------------------------------------------------------
-TOTAL                                 358     34    91%
-============================== 35 passed in 3.63s ==============================
+TOTAL                                 399     41    90%
+============================== 35 passed in 2.99s ==============================

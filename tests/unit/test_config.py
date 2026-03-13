@@ -1,6 +1,7 @@
-import pytest
 from pathlib import Path
+
 from src.domain_models.config import PipelineConfig
+
 
 def test_pipeline_config_from_yaml(tmp_path: Path) -> None:
     yaml_content = """
@@ -27,6 +28,7 @@ otf_loop:
     assert config.training.max_epochs == 100
     assert config.validation.rmse_energy_threshold == 1.0
     assert config.otf_loop.uncertainty_threshold == 3.0
+
 
 def test_pipeline_config_from_empty_yaml(tmp_path: Path) -> None:
     config_file = tmp_path / "empty_config.yaml"

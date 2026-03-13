@@ -1,7 +1,8 @@
-import pytest
 from pathlib import Path
+from unittest.mock import MagicMock, patch
+
 from ase.build import bulk
-from unittest.mock import patch, MagicMock
+
 from src.domain_models.config import TrainingConfig
 from src.trainers.ace_trainer import ACETrainer
 
@@ -56,7 +57,7 @@ def test_ace_trainer_update_dataset(tmp_path: Path) -> None:
 
     data = [bulk("Fe", cubic=True)]
 
-    with patch("src.trainers.ace_trainer.Path") as mock_path_cls:
+    with patch("src.trainers.ace_trainer.Path"):
         # We need Path("data") to return a mock path that behaves like a path.
         # But patching Path directly is tricky because it returns tmp_path entirely,
         # so any Path("...") call gets tmp_path.
@@ -64,7 +65,9 @@ def test_ace_trainer_update_dataset(tmp_path: Path) -> None:
         pass
 
     import os
-    orig_cwd = os.getcwd()
+    from pathlib import Path as BasePath
+
+    orig_cwd = BasePath.cwd()
     os.chdir(tmp_path)
     try:
         dataset_path = trainer.update_dataset(data)

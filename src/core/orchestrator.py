@@ -16,21 +16,21 @@ class ActiveLearningOrchestrator:
 
     def __init__(self, config: PipelineConfig) -> None:
         self.config = config
-        self.md_engine = DynamicsEngine(self.config.lammps, self.config.otf_loop)
+        self.md_engine = DynamicsEngine(
+            self.config.lammps, self.config.otf_loop, self.config.material
+        )
         self.oracle = DFTOracle(self.config.dft)
         self.trainer = ACETrainer(self.config.training)
-        self.validator = Validator(self.config.validation)
+        self.validator = Validator(self.config.validation, self.config.material)
 
         # Basic metadata simulation for policy init
-        self.material_dna: dict[str, Any] = {"elements": ["Fe", "Pt"]}
+        self.material_dna: dict[str, Any] = {"elements": self.config.material.elements}
         self.predicted_properties: dict[str, Any] = {
-            "band_gap": 0.0,
-            "melting_point": 1500.0,
-            "bulk_modulus": 180.0,
+            "band_gap": self.config.material.band_gap,
+            "melting_point": self.config.material.melting_point,
+            "bulk_modulus": self.config.material.bulk_modulus,
         }
-        self.policy_engine = AdaptivePolicy(
-            self.material_dna, self.predicted_properties
-        )
+        self.policy_engine = AdaptivePolicy(self.material_dna, self.predicted_properties)
 
         self.iteration = 1
 
@@ -77,6 +77,7 @@ class ActiveLearningOrchestrator:
         selected_structures = []
         for s0 in high_gamma_atoms:
             from ase.build import bulk
+
             # create some mock candidates centered around s0
             candidates = [bulk("Fe", cubic=True)] * 10
 
@@ -84,9 +85,7 @@ class ActiveLearningOrchestrator:
             selected_structures.extend(selected)
 
         # 3. LABELING (DFT Oracle)
-        new_data = self.oracle.compute_batch(
-            selected_structures, work_dir / "dft_calc"
-        )
+        new_data = self.oracle.compute_batch(selected_structures, work_dir / "dft_calc")
         if not new_data:
             logging.error("No valid data obtained from DFT.")
             return "ERROR"

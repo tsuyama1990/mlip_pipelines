@@ -1,31 +1,35 @@
-import pytest
+import sys
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
 from src.domain_models.config import MDConfig, OTFLoopConfig
 from src.domain_models.dtos import ExplorationStrategy
 from src.dynamics.dynamics_engine import DynamicsEngine
 
-
-import sys
 
 @patch.dict(sys.modules, {"lammps": MagicMock()})
 def test_dynamics_engine_run_exploration_lammps(tmp_path: Path) -> None:
     # Set up lammps mock
     mock_lammps = sys.modules["lammps"]
     lmp_instance = MagicMock()
-    mock_lammps.lammps.return_value = lmp_instance  # type: ignore[attr-defined]
+    mock_lammps.lammps.return_value = lmp_instance
 
     # We want max_gamma to be extracted as 6.0
     lmp_instance.extract_variable.return_value = 6.0
 
     md_config = MDConfig(steps=1000)
     otf_config = OTFLoopConfig(uncertainty_threshold=5.0)
-    engine = DynamicsEngine(md_config, otf_config)
+    from src.domain_models.config import MaterialConfig
+
+    material = MaterialConfig()
+    engine = DynamicsEngine(md_config, otf_config, material)
     strategy = ExplorationStrategy()
 
     result = engine.run_exploration(Path("dummy.yace"), strategy, tmp_path)
 
-    assert result["halted"] is False  # Unless an exception is thrown inside command execution, it continues normally?
+    assert (
+        result["halted"] is False
+    )  # Unless an exception is thrown inside command execution, it continues normally?
     # Wait, the fallback returned halted=True based on secrets check, but the LAMMPS loop
     # only sets halted=True if an exception occurs during the command execution.
     # So if max_gamma = 6.0, the script continues normally until Lammps throws "error hard",
@@ -33,26 +37,29 @@ def test_dynamics_engine_run_exploration_lammps(tmp_path: Path) -> None:
     # Let's verify the logic:
 
     # If we throw an exception from lmp.command...
-    pass
 
 
 @patch.dict(sys.modules, {"lammps": MagicMock()})
 def test_dynamics_engine_run_exploration_lammps_halt(tmp_path: Path) -> None:
     mock_lammps = sys.modules["lammps"]
     lmp_instance = MagicMock()
-    mock_lammps.lammps.return_value = lmp_instance  # type: ignore[attr-defined]
+    mock_lammps.lammps.return_value = lmp_instance
 
     # Lammps throws exception on run when halt triggers error hard
     def mock_command(cmd: str) -> None:
         if "run" in cmd:
-            raise Exception("LAMMPS error hard triggered by watchdog")
+            msg = "LAMMPS error hard triggered by watchdog"
+            raise RuntimeError(msg)
 
     lmp_instance.command.side_effect = mock_command
     lmp_instance.extract_variable.return_value = 6.0
 
     md_config = MDConfig(steps=1000)
     otf_config = OTFLoopConfig(uncertainty_threshold=5.0)
-    engine = DynamicsEngine(md_config, otf_config)
+    from src.domain_models.config import MaterialConfig
+
+    material = MaterialConfig()
+    engine = DynamicsEngine(md_config, otf_config, material)
     strategy = ExplorationStrategy()
 
     result = engine.run_exploration(Path("dummy.yace"), strategy, tmp_path)
@@ -65,10 +72,14 @@ def test_dynamics_engine_run_exploration_lammps_halt(tmp_path: Path) -> None:
 def test_dynamics_engine_run_exploration_fallback(tmp_path: Path) -> None:
     # Ensure lammps import fails
     import sys
+
     with patch.dict(sys.modules, {"lammps": None}):
         md_config = MDConfig(steps=1000)
         otf_config = OTFLoopConfig(uncertainty_threshold=5.0)
-        engine = DynamicsEngine(md_config, otf_config)
+        from src.domain_models.config import MaterialConfig
+
+        material = MaterialConfig()
+        engine = DynamicsEngine(md_config, otf_config, material)
         strategy = ExplorationStrategy()
 
         with patch("secrets.SystemRandom.uniform", return_value=6.0):
@@ -84,7 +95,10 @@ def test_dynamics_engine_run_exploration_fallback(tmp_path: Path) -> None:
 def test_dynamics_engine_extract_high_gamma_structures(tmp_path: Path) -> None:
     md_config = MDConfig()
     otf_config = OTFLoopConfig()
-    engine = DynamicsEngine(md_config, otf_config)
+    from src.domain_models.config import MaterialConfig
+
+    material = MaterialConfig()
+    engine = DynamicsEngine(md_config, otf_config, material)
 
     dump_file = tmp_path / "dump.lammps"
     dump_file.write_text("dummy")

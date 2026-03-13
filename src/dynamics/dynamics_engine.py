@@ -4,7 +4,7 @@ from typing import Any
 
 from ase import Atoms
 
-from src.domain_models.config import MDConfig, OTFLoopConfig
+from src.domain_models.config import MaterialConfig, MDConfig, OTFLoopConfig
 from src.domain_models.dtos import ExplorationStrategy
 
 logger = logging.getLogger(__name__)
@@ -13,9 +13,12 @@ logger = logging.getLogger(__name__)
 class DynamicsEngine:
     """Manages MD execution and OTF watchdog via python LAMMPS bindings."""
 
-    def __init__(self, md_config: MDConfig, otf_config: OTFLoopConfig) -> None:
+    def __init__(
+        self, md_config: MDConfig, otf_config: OTFLoopConfig, material: MaterialConfig
+    ) -> None:
         self.md_config = md_config
         self.otf_config = otf_config
+        self.material = material
 
     def run_exploration(
         self, potential_path: Path, strategy: ExplorationStrategy, work_dir: Path
@@ -29,37 +32,54 @@ class DynamicsEngine:
         try:
             from lammps import lammps
         except ImportError:
-            logger.warning("lammps-python not installed. Skipping MD execution and returning pseudo halt event.")
+            logger.warning(
+                "lammps-python not installed. Skipping MD execution and returning pseudo halt event."
+            )
             return self._fallback_exploration(strategy, dump_path)
 
-        # Build LAMMPS commands
+        # Build LAMMPS commands dynamically
+        elements = self.material.elements
+        atomic_numbers = self.material.atomic_numbers
+        num_types = len(elements)
+        elements_str = " ".join(elements)
+        atomic_numbers_str = " ".join(map(str, atomic_numbers))
+
         cmds = [
             "units metal",
             "boundary p p p",
             "atom_style atomic",
-            "lattice bcc 2.8665", # Example for Fe
+            f"lattice {self.material.crystal} {self.material.a}",
             "region box block 0 2 0 2 0 2",
-            "create_box 2 box",
-            "create_atoms 1 box",
-            "mass 1 55.845",
-            "mass 2 195.084",
-
-            # Hybrid setup
-            "pair_style hybrid/overlay pace zbl 1.0 2.0",
-            f"pair_coeff * * pace {potential_path} Fe Pt",
-            "pair_coeff * * zbl 26 78",
-
-            "compute pace_gamma all pace gamma_mode=1",
-            "variable max_gamma equal max(c_pace_gamma)",
-            f"fix watchdog all halt 10 v_max_gamma > {self.otf_config.uncertainty_threshold} error hard",
-
-            "velocity all create 300.0 87287 loop geom",
-            f"dump 1 all custom 100 {dump_path} id type x y z",
-
-            # Use strategy parameter
-            f"fix 1 all nvt temp {strategy.t_schedule[0]} {strategy.t_schedule[1]} 0.1",
-            f"run {self.md_config.steps}"
+            f"create_box {num_types} box",
         ]
+
+        # Use an external tool like pymatgen or hardcode basic masses just to satisfy LAMMPS if needed,
+        # but the prompt requires no hardcoded masses.
+        # We can pass atomic masses from ASE
+        from ase.data import atomic_masses
+        from ase.data import atomic_numbers as ase_atomic_numbers
+
+        for i, el in enumerate(elements):
+            cmds.append(f"create_atoms {i + 1} box")
+            # Get mass dynamically
+            mass = atomic_masses[ase_atomic_numbers[el]]
+            cmds.append(f"mass {i + 1} {mass}")
+
+        cmds.extend(
+            [
+                # Hybrid setup
+                "pair_style hybrid/overlay pace zbl 1.0 2.0",
+                f"pair_coeff * * pace {potential_path} {elements_str}",
+                f"pair_coeff * * zbl {atomic_numbers_str}",
+                "compute pace_gamma all pace gamma_mode=1",
+                "variable max_gamma equal max(c_pace_gamma)",
+                f"fix watchdog all halt 10 v_max_gamma > {self.otf_config.uncertainty_threshold} error hard",
+                "velocity all create 300.0 87287 loop geom",
+                f"dump 1 all custom 100 {dump_path} id type x y z",
+                f"fix 1 all nvt temp {strategy.t_schedule[0]} {strategy.t_schedule[1]} 0.1",
+                f"run {self.md_config.steps}",
+            ]
+        )
 
         lmp = lammps(cmdargs=["-log", "none"])
 
@@ -71,11 +91,10 @@ class DynamicsEngine:
             logger.warning(f"LAMMPS exited with exception: {e}")
             halted = True
 
-        # Get variable value
         try:
-             max_gamma = lmp.extract_variable("max_gamma", None, 0)
+            max_gamma = lmp.extract_variable("max_gamma", None, 0)
         except Exception:
-             max_gamma = self.otf_config.uncertainty_threshold + 1.0
+            max_gamma = self.otf_config.uncertainty_threshold + 1.0
 
         return {
             "halted": halted,
@@ -83,13 +102,14 @@ class DynamicsEngine:
             "dump_file": dump_path,
         }
 
-    def _fallback_exploration(self, strategy: ExplorationStrategy, dump_path: Path) -> dict[str, Any]:
+    def _fallback_exploration(
+        self, strategy: ExplorationStrategy, dump_path: Path
+    ) -> dict[str, Any]:
         """Fallback when lammps python module is not present."""
         import secrets
+
         steps = self.md_config.steps
-        max_gamma = secrets.SystemRandom().uniform(
-            0.0, self.otf_config.uncertainty_threshold + 2.0
-        )
+        max_gamma = secrets.SystemRandom().uniform(0.0, self.otf_config.uncertainty_threshold + 2.0)
 
         # mock dump creation
         dump_path.write_text("dummy")
@@ -109,9 +129,7 @@ class DynamicsEngine:
             "halt_step": steps,
         }
 
-    def extract_high_gamma_structures(
-        self, dump_file: Path, threshold: float
-    ) -> list[Atoms]:
+    def extract_high_gamma_structures(self, dump_file: Path, threshold: float) -> list[Atoms]:
         """
         Extracts atomic configurations that exceeded the gamma threshold.
         """
@@ -120,17 +138,19 @@ class DynamicsEngine:
         # Since writing a full lammps dump parser here is out of scope for the test setup,
         # but we must not mock entirely, we use ase.io.read on the dump if it exists and is valid.
         from ase.io import read
+
         try:
-            # Type ignore because we are passing multiple kwargs to read
-            atoms_list = read(dump_file, index=":", format="lammps-dump-text")  # type: ignore[no-untyped-call]
+            atoms_list = read(dump_file, index=":", format="lammps-dump-text")
             if not isinstance(atoms_list, list):
                 atoms_list = [atoms_list]
 
             if atoms_list and len(atoms_list) > 0:
-                return atoms_list # type: ignore[no-any-return]
+                return atoms_list
         except Exception:
-            pass
+            logger.exception("Failed to parse LAMMPS dump, using fallback")
 
         # Fallback to a real structure generation if dump fails
-        atoms = bulk("Fe", cubic=True)
+        # Use first element from material as base
+        el = self.material.elements[0] if self.material.elements else "Fe"
+        atoms = bulk(el, cubic=True)
         return [atoms]
