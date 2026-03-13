@@ -21,8 +21,8 @@ class DFTOracle(AbstractOracle):
 
             # Since we can't easily attach a mock calculator without breaking rules, we'll
             # attach arrays directly to the atoms object so the trainer can extract them.
-            atoms_cp.arrays['forces'] = forces
-            atoms_cp.info['energy'] = energy
+            atoms_cp.arrays["forces"] = forces
+            atoms_cp.info["energy"] = energy
 
             computed_structures.append(atoms_cp)
         return computed_structures

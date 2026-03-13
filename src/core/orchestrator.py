@@ -49,7 +49,9 @@ class ActiveLearningOrchestrator:
             current_pot = Path(f"potentials/generation_{self.iteration:03d}.yace")
             if not current_pot.exists():
                 # For iteration 0, we might need initial training data.
-                logger.info("No current potential found. Proceeding to generate initial structures.")
+                logger.info(
+                    "No current potential found. Proceeding to generate initial structures."
+                )
                 initial_structures = self.generator.generate_initial_structures(strategy)
                 logger.info(f"Generated {len(initial_structures)} initial structures.")
 
