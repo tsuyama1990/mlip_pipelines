@@ -27,9 +27,18 @@ def test_system_config_invalid() -> None:
         SystemConfig(elements=["Fe"], extra_field="bad")  # type: ignore[call-arg]
 
 
-def test_dynamics_config_valid() -> None:
+def test_dynamics_config_valid(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import tempfile
+
+    monkeypatch.setattr("shutil.which", lambda x: "/usr/bin/lmp" if x == "lmp" else "/usr/bin/eonclient")
+    monkeypatch.setattr("os.access", lambda x, y: True)
+
+    tmp_dir = Path(tempfile.gettempdir()).resolve(strict=True)
+    proj_dir = tmp_dir / "myproj2"
+    proj_dir.mkdir(parents=True, exist_ok=True)
+
     config = DynamicsConfig(
-        uncertainty_threshold=10.0, project_root=str(Path.cwd()), trusted_directories=[]
+        uncertainty_threshold=10.0, project_root=str(proj_dir), trusted_directories=[]
     )
     assert config.uncertainty_threshold == 10.0
 
@@ -39,14 +48,21 @@ def test_oracle_config_invalid() -> None:
         OracleConfig(kspacing=-0.1)  # gt=0.0 constraint violated
 
 
-def test_project_config(tmp_path: Path) -> None:
-    # Should be valid with minimal required setup (since most have defaults)
-    (tmp_path / "README.md").touch()
+def test_project_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import tempfile
+
+    monkeypatch.setattr("shutil.which", lambda x: "/usr/bin/lmp" if x == "lmp" else "/usr/bin/eonclient")
+    monkeypatch.setattr("os.access", lambda x, y: True)
+
+    tmp_dir = Path(tempfile.gettempdir()).resolve(strict=True)
+    proj_dir = tmp_dir / "myproj3"
+    proj_dir.mkdir(parents=True, exist_ok=True)
+    (proj_dir / "README.md").touch()
 
     config = ProjectConfig(
-        project_root=tmp_path,
+        project_root=proj_dir,
         system=SystemConfig(elements=["Fe", "O"]),
-        dynamics=DynamicsConfig(project_root=str(Path.cwd()), trusted_directories=[]),
+        dynamics=DynamicsConfig(project_root=str(proj_dir), trusted_directories=[]),
         oracle=OracleConfig(),
         trainer=TrainerConfig(trusted_directories=[]),
         validator=ValidatorConfig(),
@@ -95,24 +111,24 @@ def test_validate_kspacing() -> None:
 
 
 def test_project_config_env_key() -> None:
-    from src.domain_models.config import ProjectConfig
+    from src.domain_models.config import _validate_env_key
 
     with pytest.raises(ValueError, match=".*Unauthorized environment variable injected via .env.*"):
-        ProjectConfig._validate_env_key("INVALID KEY")
+        _validate_env_key("INVALID KEY")
 
 
 def test_project_config_env_value() -> None:
-    from src.domain_models.config import ProjectConfig
+    from src.domain_models.config import _validate_env_value
 
     with pytest.raises(ValueError, match=".*Invalid characters or traversal sequences.*"):
-        ProjectConfig._validate_env_value("value; rm -rf")
+        _validate_env_value("value; rm -rf")
     with pytest.raises(ValueError, match=".*Invalid characters or traversal sequences.*"):
-        ProjectConfig._validate_env_value("../secret")
+        _validate_env_value("../secret")
 
 
 def test_project_config_env_file_security(tmp_path: Path) -> None:
 
-    from src.domain_models.config import ProjectConfig
+    from src.domain_models.config import _validate_env_file_security
 
     base = tmp_path / "base"
     base.mkdir()
@@ -120,14 +136,14 @@ def test_project_config_env_file_security(tmp_path: Path) -> None:
 
     # Test file doesn't exist
     with pytest.raises(FileNotFoundError):
-        ProjectConfig._validate_env_file_security(env, base)
+        _validate_env_file_security(env, base)
 
     # Test symlink
     target = base / "target.txt"
     target.write_text("test")
     env.symlink_to(target)
     with pytest.raises(ValueError, match=".*must not be a symlink.*"):
-        ProjectConfig._validate_env_file_security(env, base)
+        _validate_env_file_security(env, base)
 
     env.unlink()
 
@@ -136,7 +152,7 @@ def test_project_config_env_file_security(tmp_path: Path) -> None:
         f.write(b"0" * (11 * 1024))
 
     with pytest.raises(ValueError, match=".*exceeds maximum allowed size.*"):
-        ProjectConfig._validate_env_file_security(env, base)
+        _validate_env_file_security(env, base)
 
     env.unlink()
 
@@ -148,7 +164,7 @@ def test_project_config_env_file_security(tmp_path: Path) -> None:
 
     if bool(env.stat().st_mode & stat.S_IWOTH):
         with pytest.raises(ValueError, match=".*insecure permissions.*"):
-            ProjectConfig._validate_env_file_security(env, base)
+            _validate_env_file_security(env, base)
 
 
 def test_project_config_convert_str_to_path() -> None:
