@@ -17,49 +17,44 @@ class InterfaceTarget(BaseModel):
     face2: str = Field(default="Mg", description="Terminating face of second material")
 
 
-def _validate_single_trusted_dir(path: str) -> str | None:
-    if ".." in path:
-        msg = f"Path traversal characters not allowed in trusted_directory: {path}"
+def _secure_resolve_and_validate_dir(path_str: str, check_exists: bool = True) -> str | None:
+    path = Path(path_str)
+
+    if not path.is_absolute():
+        msg = f"Directory path must be absolute: {path_str}"
         raise ValueError(msg)
 
-    if not Path(path).is_absolute():
-        msg = f"trusted_directory must be absolute: {path}"
+    if check_exists:
+        try:
+            st_info = os.lstat(path)
+            if stat.S_ISLNK(st_info.st_mode):
+                msg = f"Directory {path_str} cannot be a symlink."
+                raise ValueError(msg)
+        except FileNotFoundError:
+            logging.warning(f"Directory skipped as it does not exist: {path_str}")
+            return None
+
+    resolved = path.resolve(strict=check_exists)
+
+    if check_exists and not resolved.is_dir():
+        msg = f"Path must be a directory: {path_str}"
         raise ValueError(msg)
 
-    try:
-        st_info = os.lstat(path)
-        if stat.S_ISLNK(st_info.st_mode):
-            msg = f"trusted_directory {path} cannot be a symlink."
-            raise ValueError(msg)
-    except FileNotFoundError:
-        logging.warning(f"Trusted directory skipped as it does not exist: {path}")
-        return None
-
-    resolved = Path(path).resolve(strict=True)
-
-    if not resolved.is_absolute():
-        msg = f"trusted_directory must be absolute: {path}"
-        raise ValueError(msg)
-    if not resolved.is_dir():
-        msg = f"trusted_directory must be a directory: {path}"
-        raise ValueError(msg)
-
-    from src.domain_models.config import SystemConfig
-
-    restricted_prefixes = SystemConfig.model_fields["restricted_directories"].default_factory()  # type: ignore
+    restricted_prefixes = ["/etc", "/bin", "/usr", "/sbin", "/var", "/lib", "/boot", "/root"]
     for restricted in restricted_prefixes:
         if str(resolved).startswith(restricted):
-            msg = f"trusted_directory cannot be a system directory: {restricted}"
+            msg = f"Directory cannot be a system directory: {restricted}"
             raise ValueError(msg)
 
-    st = resolved.stat()
-    if bool(st.st_mode & stat.S_IWOTH):
-        msg = f"trusted_directory {path} is world-writable, which is insecure."
-        raise ValueError(msg)
+    if check_exists:
+        st = resolved.stat()
+        if bool(st.st_mode & stat.S_IWOTH):
+            msg = f"Directory {path_str} is world-writable, which is insecure."
+            raise ValueError(msg)
 
-    if st.st_uid != os.getuid():
-        msg = f"trusted_directory {path} is not owned by the current user. This is insecure."
-        raise ValueError(msg)
+        if st.st_uid != os.getuid():
+            msg = f"Directory {path_str} is not owned by the current user. This is insecure."
+            raise ValueError(msg)
 
     return str(resolved)
 
@@ -151,83 +146,17 @@ class DynamicsConfig(BaseModel):
     @field_validator("project_root")
     @classmethod
     def validate_project_root_str(cls, v: str) -> str:
-        if not v:
-            msg = "project_root cannot be empty"
+        res = _secure_resolve_and_validate_dir(v, check_exists=True)
+        if res is None:
+            msg = f"project_root skipped or invalid: {v}"
             raise ValueError(msg)
-
-        if ".." in v:
-            msg = "Path traversal sequences (..) are not allowed in project_root"
-            raise ValueError(msg)
-
-        resolved = Path(v).resolve(strict=True)
-        if not resolved.is_absolute():
-            msg = "project_root must be absolute"
-            raise ValueError(msg)
-        if not resolved.exists() or not resolved.is_dir():
-            msg = "project_root must be an existing directory"
-            raise ValueError(msg)
-
-        # Security: forbid system directories
-        from src.domain_models.config import SystemConfig
-
-        restricted_prefixes = SystemConfig.model_fields["restricted_directories"].default_factory()  # type: ignore
-        for restricted in restricted_prefixes:
-            if str(resolved).startswith(restricted):
-                msg = f"project_root cannot be a system directory: {restricted}"
-                raise ValueError(msg)
-
-        return str(resolved)
-
-    @classmethod
-    def _validate_single_trusted_dir(cls, path: str) -> str | None:
-        if ".." in path:
-            msg = f"Path traversal characters not allowed in trusted_directory: {path}"
-            raise ValueError(msg)
-
-        if not Path(path).is_absolute():
-            msg = f"trusted_directory must be absolute: {path}"
-            raise ValueError(msg)
-
-        try:
-            st_info = os.lstat(path)
-            if stat.S_ISLNK(st_info.st_mode):
-                msg = f"trusted_directory {path} cannot be a symlink."
-                raise ValueError(msg)
-        except FileNotFoundError:
-            logging.warning(f"Trusted directory skipped as it does not exist: {path}")
-            return None
-
-        resolved = Path(path).resolve(strict=True)
-
-        if not resolved.is_absolute():
-            msg = f"trusted_directory must be absolute: {path}"
-            raise ValueError(msg)
-        if not resolved.is_dir():
-            msg = f"trusted_directory must be a directory: {path}"
-            raise ValueError(msg)
-
-        restricted_prefixes = ["/etc", "/bin", "/usr", "/sbin", "/var", "/lib", "/boot", "/root"]
-        for restricted in restricted_prefixes:
-            if str(resolved).startswith(restricted):
-                msg = f"trusted_directory cannot be a system directory: {restricted}"
-                raise ValueError(msg)
-
-        st = resolved.stat()
-        if bool(st.st_mode & stat.S_IWOTH):
-            msg = f"trusted_directory {path} is world-writable, which is insecure."
-            raise ValueError(msg)
-
-        if st.st_uid != os.getuid():
-            msg = f"trusted_directory {path} is not owned by the current user. This is insecure."
-            raise ValueError(msg)
-
-        return str(resolved)
+        return res
 
     @classmethod
     def validate_trusted_directories(cls, v: list[str]) -> list[str]:
         validated = []
         for path in v:
-            res = _validate_single_trusted_dir(path)
+            res = _secure_resolve_and_validate_dir(path, check_exists=True)
             if res:
                 validated.append(res)
         return validated
@@ -345,7 +274,7 @@ class TrainerConfig(BaseModel):
     def validate_trusted_directories(cls, v: list[str]) -> list[str]:
         validated = []
         for path in v:
-            res = _validate_single_trusted_dir(path)
+            res = _secure_resolve_and_validate_dir(path, check_exists=True)
             if res:
                 validated.append(res)
         return validated
@@ -392,13 +321,6 @@ class StructureGeneratorConfig(BaseModel):
 
 class PolicyConfig(BaseModel):
 
-    @field_validator("fallback_metal_band_gap", "fallback_insulator_band_gap")
-    @classmethod
-    def validate_band_gap(cls, v: float) -> float:
-        if v < 0.0:
-            msg = "Band gap must be non-negative"
-            raise ValueError(msg)
-        return v
 
     @field_validator("fallback_metal_melting_point", "fallback_insulator_melting_point")
     @classmethod
@@ -528,18 +450,26 @@ class ProjectConfig(BaseSettings):
     @model_validator(mode="before")
     @classmethod
     def validate_env_content(cls, values: dict[str, Any]) -> dict[str, Any]:
-        from src.dynamics.security_utils import (
-            _validate_env_key,
-            _validate_env_value,
-            validate_env_file_security,
-        )
-
         expected_base = Path.cwd().resolve(strict=True)
-        # Using the base directory strictly, not allowing arbitrary values for .env paths
         env_file = expected_base / ".env"
 
         if env_file.exists():
-            resolved_env = validate_env_file_security(env_file, expected_base)
+            if not env_file.is_file():
+                msg = ".env must be a regular file."
+                raise ValueError(msg)
+
+            if env_file.is_symlink():
+                msg = ".env file must not be a symlink."
+                raise ValueError(msg)
+
+            resolved_env = env_file.resolve(strict=True)
+
+            # Additional content safety checks
+            with Path.open(resolved_env, encoding="utf-8") as f:
+                content = f.read()
+                if "import " in content or "eval(" in content or "exec(" in content:
+                    msg = "Suspicious content detected in .env file."
+                    raise ValueError(msg)
 
             with Path.open(resolved_env, encoding="utf-8") as f:
                 for raw_line in f:
@@ -551,8 +481,8 @@ class ProjectConfig(BaseSettings):
                     key = key.strip()
                     val = val.strip().strip("'").strip('"')
 
-                    _validate_env_key(key)
-                    _validate_env_value(val)
+                    cls._validate_env_key(key)
+                    cls._validate_env_value(val)
 
         return values
 

@@ -58,22 +58,22 @@ def test_project_config(tmp_path: Path) -> None:
 def test_validate_single_trusted_dir_valid(tmp_path: Path) -> None:
     d = tmp_path / "valid_dir"
     d.mkdir()
-    from src.domain_models.config import _validate_single_trusted_dir
+    from src.domain_models.config import _secure_resolve_and_validate_dir as _validate_single_trusted_dir
 
-    assert _validate_single_trusted_dir(str(d)) == str(d.resolve())
+    assert _validate_single_trusted_dir(str(d), check_exists=True) == str(d.resolve())
 
 
 def test_validate_single_trusted_dir_not_exist(tmp_path: Path) -> None:
     d = tmp_path / "not_exist"
-    from src.domain_models.config import _validate_single_trusted_dir
+    from src.domain_models.config import _secure_resolve_and_validate_dir as _validate_single_trusted_dir
 
-    assert _validate_single_trusted_dir(str(d)) is None
+    assert _validate_single_trusted_dir(str(d), check_exists=True) is None
 
 
 def test_validate_single_trusted_dir_not_dir(tmp_path: Path) -> None:
     f = tmp_path / "file.txt"
     f.write_text("dummy")
-    from src.domain_models.config import _validate_single_trusted_dir
+    from src.domain_models.config import _secure_resolve_and_validate_dir as _validate_single_trusted_dir
 
     with pytest.raises(ValueError, match="(?i).*must be a directory.*"):
         _validate_single_trusted_dir(str(f))
