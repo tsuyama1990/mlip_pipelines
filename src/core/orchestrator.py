@@ -184,7 +184,9 @@ class Orchestrator:
             yield from []
             return
 
-        if not dump_path.resolve(strict=True).is_relative_to(self.config.project_root.resolve(strict=True)):
+        if not dump_path.resolve(strict=True).is_relative_to(
+            self.config.project_root.resolve(strict=True)
+        ):
             msg = "Invalid dump file path outside of project root"
             raise ValueError(msg)
 
@@ -376,7 +378,7 @@ class Orchestrator:
             fd, tmp_name = tempfile.mkstemp(dir=str(work_dir.parent))
             os.close(fd)
             backup_dir = Path(tmp_name)
-            backup_dir.unlink() # Remove the file so we can move a directory there
+            backup_dir.unlink()  # Remove the file so we can move a directory there
             try:
                 # Use shutil.move to handle cross-device links and fallback logic gracefully
                 shutil.move(str(work_dir), str(backup_dir))

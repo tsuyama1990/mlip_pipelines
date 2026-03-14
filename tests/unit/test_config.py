@@ -139,6 +139,7 @@ def test_project_config_env_file_security(tmp_path: Path) -> None:
     env.chmod(0o777)
     # The system might override 777 depending on umask, so ensure group write is on
     import stat
+
     if bool(env.stat().st_mode & stat.S_IWOTH):
         with pytest.raises(ValueError, match=".*insecure permissions.*"):
             ProjectConfig._validate_env_file_security(env, base)

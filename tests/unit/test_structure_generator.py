@@ -1,4 +1,5 @@
 from ase import Atoms
+from ase.build import bulk
 
 from src.domain_models.config import InterfaceTarget, StructureGeneratorConfig
 from src.generators.structure_generator import StructureGenerator
@@ -17,7 +18,6 @@ def test_generate_interface() -> None:
     assert "Fe" in symbols or "Pt" in symbols
     assert "Mg" in symbols or "O" in symbols
 
-import pytest
 
 def test_generate_local_candidates_oom_protection():
     """Test OOM protection blocks large structures."""
@@ -26,8 +26,11 @@ def test_generate_local_candidates_oom_protection():
 
     # Too large
     huge_atoms = Atoms("Fe" * 10001)
+    import pytest
+
     with pytest.raises(ValueError, match="too large for rattling"):
         generator.generate_local_candidates(huge_atoms)
+
 
 def test_generate_local_candidates_scaling():
     """Test candidate count scaling for moderately large structures."""
@@ -41,6 +44,7 @@ def test_generate_local_candidates_scaling():
 
     candidates = generator.generate_local_candidates(mod_atoms, n=50)
     assert len(candidates) == 5
+
 
 def test_generate_local_candidates_normal():
     """Test normal candidate generation."""
@@ -57,14 +61,18 @@ def test_generate_local_candidates_normal():
     for cand in candidates:
         assert cand.positions[0][0] != 0.0 or cand.positions[0][1] != 0.0
 
+
 def test_generate_interface_invalid():
     """Test interface generation with invalid elements."""
     config = StructureGeneratorConfig()
     generator = StructureGenerator(config)
 
     target = InterfaceTarget(element1="Unobtainium", element2="Fe")
+    import pytest
+
     with pytest.raises(ValueError, match="Invalid or unsupported element target"):
         generator.generate_interface(target)
+
 
 def test_generate_interface_valid():
     """Test interface generation with valid elements."""

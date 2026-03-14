@@ -5,12 +5,17 @@ import pytest
 from src.core.orchestrator import Orchestrator
 from src.domain_models.config import (
     DynamicsConfig,
+    InterfaceTarget,
     OracleConfig,
+    PolicyConfig,
     ProjectConfig,
+    StructureGeneratorConfig,
     SystemConfig,
     TrainerConfig,
     ValidatorConfig,
 )
+from src.generators.adaptive_policy import AdaptiveExplorationPolicyEngine, FeatureExtractor
+from src.generators.structure_generator import StructureGenerator
 
 
 def test_full_pipeline_skeleton(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -77,17 +82,13 @@ def test_full_pipeline_skeleton(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     assert result_path is not None
     assert orchestrator.iteration == 1
 
-from src.domain_models.config import InterfaceTarget, PolicyConfig, StructureGeneratorConfig
-from src.generators.adaptive_policy import AdaptiveExplorationPolicyEngine, FeatureExtractor
-from src.generators.structure_generator import StructureGenerator
 
 def test_exploration_generation_flow():
     """E2E Test integrating FeatureExtractor, Policy Engine, and Structure Generator."""
 
     # 1. Setup minimal configuration
     system_config = SystemConfig(
-        elements=["Fe", "Pt"],
-        interface_target=InterfaceTarget(element1="FePt", element2="MgO")
+        elements=["Fe", "Pt"], interface_target=InterfaceTarget(element1="FePt", element2="MgO")
     )
     policy_config = PolicyConfig()
     struct_config = StructureGeneratorConfig()

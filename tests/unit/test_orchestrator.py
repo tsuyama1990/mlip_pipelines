@@ -149,10 +149,12 @@ def test_run_cycle(monkeypatch: pytest.MonkeyPatch, mock_project_config: Project
     # But since instructions asked for a pure mock without inheriting real logic...
     # the easiest way to avoid isinstance recursion is to save the original isinstance
     import builtins
+
     original_isinstance = builtins.isinstance
 
     def mock_isinstance(obj, cls):
         from src.dynamics.dynamics_engine import MDInterface
+
         if cls == MDInterface and type(obj).__name__ == "MockMD":
             return True
         return original_isinstance(obj, cls)

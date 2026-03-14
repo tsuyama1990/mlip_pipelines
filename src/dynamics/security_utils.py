@@ -92,6 +92,7 @@ def validate_filename(filename: str, extra_allowed_chars: str = "") -> None:
 VALID_ENV_KEY_REGEX = r"^[A-Z0-9_]+$"
 VALID_EXECUTABLE_REGEX = r"^[/a-zA-Z0-9_.-]+$"
 
+
 def _validate_env_key(key: str) -> None:
     if not key.startswith("MLIP_"):
         msg = f"Unauthorized environment variable injected via .env: {key}. Only MLIP_ prefixes are allowed."
@@ -115,6 +116,7 @@ def _validate_env_value(val: str) -> None:
 
 def validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
     import stat
+
     if env_file.is_symlink():
         msg = ".env file must not be a symlink."
         raise ValueError(msg)

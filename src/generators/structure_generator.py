@@ -55,7 +55,9 @@ class StructureGenerator(AbstractGenerator):
             # Basic FePt structure builder
             def _build_fept() -> Atoms:
                 # To ensure Fe and Pt are present in a basic bulk representation
-                mat = bulk("Fe", crystalstructure="fcc", a=3.8, cubic=True)  # type: ignore[no-untyped-call]
+                mat = bulk(
+                    "Fe", crystalstructure="fcc", a=self.config.fept_lattice_constant, cubic=True
+                )  # type: ignore[no-untyped-call]
                 # Replace half the atoms with Pt to make it FePt L1_0 like
                 for i in range(len(mat)):
                     if i % 2 == 0:
@@ -65,7 +67,10 @@ class StructureGenerator(AbstractGenerator):
             # Basic MgO structure builder
             def _build_mgo() -> Atoms:
                 return bulk(
-                    "MgO", crystalstructure="rocksalt", a=4.21, basis=[[0, 0, 0], [0.5, 0.5, 0.5]]
+                    "MgO",
+                    crystalstructure="rocksalt",
+                    a=self.config.mgo_lattice_constant,
+                    basis=[[0, 0, 0], [0.5, 0.5, 0.5]],
                 )  # type: ignore[no-untyped-call]
 
             builders = {"FePt": _build_fept, "MgO": _build_mgo}
@@ -84,4 +89,4 @@ class StructureGenerator(AbstractGenerator):
             msg = f"Interface generation failed: {e}"
             raise RuntimeError(msg) from e
         else:
-            return stack(mat1, mat2, axis=2, maxstrain=10.0)  # type: ignore[no-untyped-call]
+            return stack(mat1, mat2, axis=2, maxstrain=self.config.interface_max_strain)  # type: ignore[no-untyped-call]
