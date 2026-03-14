@@ -96,6 +96,14 @@ class DynamicsConfig(BaseModel):
         if not resolved.exists() or not resolved.is_dir():
             msg = "project_root must be an existing directory"
             raise ValueError(msg)
+
+        # Security: forbid system directories
+        restricted_prefixes = ["/etc", "/bin", "/usr", "/sbin", "/var", "/lib", "/boot", "/root"]
+        for restricted in restricted_prefixes:
+            if str(resolved).startswith(restricted):
+                msg = f"project_root cannot be a system directory: {restricted}"
+                raise ValueError(msg)
+
         return str(resolved)
 
     @field_validator("trusted_directories")
@@ -108,6 +116,11 @@ class DynamicsConfig(BaseModel):
         validated = []
         for path in v:
             try:
+                p = Path(path)
+                if p.is_symlink():
+                    msg = f"trusted_directory {path} cannot be a symlink."
+                    raise ValueError(msg)
+
                 resolved = Path(os.path.realpath(path)).resolve(strict=True)
             except FileNotFoundError:
                 logging.warning(f"Trusted directory skipped as it does not exist: {path}")
@@ -119,11 +132,21 @@ class DynamicsConfig(BaseModel):
                 msg = f"trusted_directory must exist and be a directory: {path}"
                 raise ValueError(msg)
 
-            # Security: verify directory is not world-writable
+            # Security: forbid system directories
+            restricted_prefixes = ["/etc", "/bin", "/usr", "/sbin", "/var", "/lib", "/boot", "/root"]
+            for restricted in restricted_prefixes:
+                if str(resolved).startswith(restricted):
+                    msg = f"trusted_directory cannot be a system directory: {restricted}"
+                    raise ValueError(msg)
+
+            # Security: verify directory is not world-writable and is owned by the current user
             st = resolved.stat()
             if bool(st.st_mode & stat.S_IWOTH):
                 msg = f"trusted_directory {path} is world-writable, which is insecure."
                 raise ValueError(msg)
+
+            if st.st_uid != os.getuid():
+                logging.warning(f"trusted_directory {path} is not owned by current user. This is potentially insecure.")
 
             validated.append(str(resolved))
         return validated
@@ -232,6 +255,11 @@ class TrainerConfig(BaseModel):
         validated = []
         for path in v:
             try:
+                p = Path(path)
+                if p.is_symlink():
+                    msg = f"trusted_directory {path} cannot be a symlink."
+                    raise ValueError(msg)
+
                 resolved = Path(os.path.realpath(path)).resolve(strict=True)
             except FileNotFoundError:
                 logging.warning(f"Trusted directory skipped as it does not exist: {path}")
@@ -244,11 +272,21 @@ class TrainerConfig(BaseModel):
                 msg = f"trusted_directory must be a directory: {path}"
                 raise ValueError(msg)
 
-            # Security: verify directory is not world-writable
+            # Security: forbid system directories
+            restricted_prefixes = ["/etc", "/bin", "/usr", "/sbin", "/var", "/lib", "/boot", "/root"]
+            for restricted in restricted_prefixes:
+                if str(resolved).startswith(restricted):
+                    msg = f"trusted_directory cannot be a system directory: {restricted}"
+                    raise ValueError(msg)
+
+            # Security: verify directory is not world-writable and is owned by current user
             st = resolved.stat()
             if bool(st.st_mode & stat.S_IWOTH):
                 msg = f"trusted_directory {path} is world-writable, which is insecure."
                 raise ValueError(msg)
+
+            if st.st_uid != os.getuid():
+                logging.warning(f"trusted_directory {path} is not owned by current user. This is potentially insecure.")
 
             validated.append(str(resolved))
         return validated
@@ -321,7 +359,7 @@ class ProjectConfig(BaseSettings):
 
     @model_validator(mode="before")
     @classmethod
-    def validate_env_content(cls, values: dict[str, Any]) -> dict[str, Any]:  # noqa: C901, PLR0912
+    def validate_env_content(cls, values: dict[str, Any]) -> dict[str, Any]:  # noqa: C901, PLR0912, PLR0915
         import re
         from pathlib import Path
 
@@ -331,6 +369,10 @@ class ProjectConfig(BaseSettings):
         env_file = expected_base / ".env"
 
         if env_file.exists():
+            if env_file.is_symlink():
+                msg = ".env file must not be a symlink."
+                raise ValueError(msg)
+
             # Basic validation of .env file size and canonical location to prevent loading external malicious envs
             resolved_env = env_file.resolve(strict=True)
 
@@ -340,12 +382,23 @@ class ProjectConfig(BaseSettings):
                 )
                 raise ValueError(msg)
 
-            if resolved_env.stat().st_size > 10 * 1024:
+            import os
+            import stat
+            st = os.lstat(resolved_env)
+
+            if st.st_size > 10 * 1024:
                 msg = ".env file exceeds maximum allowed size (10KB)."
                 raise ValueError(msg)
 
+            if st.st_uid != os.getuid():
+                msg = ".env file is not owned by the current user."
+                raise ValueError(msg)
+
+            if bool(st.st_mode & stat.S_IRWXO) or bool(st.st_mode & stat.S_IRWXG):
+                msg = ".env file has insecure permissions. It must not be group or world readable/writable."
+                raise ValueError(msg)
+
             # Strict whitelist validation for .env file contents
-            import os
 
             with Path.open(resolved_env, encoding="utf-8") as f:
                 for raw_line in f:
@@ -432,6 +485,13 @@ class ProjectConfig(BaseSettings):
         if not resolved_path.exists() or not resolved_path.is_dir():
             msg = f"Project root directory '{v}' does not exist or is not a directory."
             raise ValueError(msg)
+
+        # Security: forbid system directories
+        restricted_prefixes = ["/etc", "/bin", "/usr", "/sbin", "/var", "/lib", "/boot", "/root"]
+        for restricted in restricted_prefixes:
+            if str(resolved_path).startswith(restricted):
+                msg = f"project_root cannot be a system directory: {restricted}"
+                raise ValueError(msg)
 
         # Content validation: verify it looks like a valid project root
         if (

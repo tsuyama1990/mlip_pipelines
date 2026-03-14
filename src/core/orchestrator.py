@@ -133,6 +133,11 @@ class Orchestrator:
         except OracleConvergenceError:
             logging.exception("Oracle convergence failed during initial setup/exploration.")
             raise
+        except Exception:
+            logging.exception("An unexpected critical failure occurred during exploration.")
+            # Return ERROR state to allow the orchestrator to fail gracefully and cleanup
+            # instead of crashing the main process.
+            return "ERROR"
 
     def _select_candidates(self, halt_info: dict[str, Any]) -> Iterator[list[Atoms]]:
         dump_file = halt_info.get("dump_file")
@@ -248,17 +253,35 @@ class Orchestrator:
             msg = "Source potential file must have a valid .yace filename format"
             raise ValueError(msg)
 
-        # Comprehensive integrity validation for YACE files before copy
-        with Path.open(src_pot) as f:
-            # Read enough of the header to ensure it's not a dummy or corrupted file
-            content = f.read(1024)
+        # File size constraint (max 100MB)
+        if src_pot.stat().st_size > 100 * 1024 * 1024:
+            msg = "Source potential file exceeds maximum allowed size (100MB)"
+            raise ValueError(msg)
 
+        # Comprehensive integrity validation for YACE files before copy
+        import hashlib
+
+        sha256_hash = hashlib.sha256()
+
+        with Path.open(src_pot, "rb") as f:
+            # Read enough of the header to ensure it's not a dummy or corrupted file
+            content_bytes = f.read(1024)
+            sha256_hash.update(content_bytes)
+
+            # Continue reading the rest to compute full hash
+            for byte_block in iter(lambda: f.read(4096), b""):
+                sha256_hash.update(byte_block)
+
+        content_str = content_bytes.decode("utf-8", errors="ignore")
         required_headers = ["elements", "version", "b_functions"]
-        missing_headers = [h for h in required_headers if h not in content]
+        missing_headers = [h for h in required_headers if h not in content_str]
 
         if missing_headers:
             msg = f"Source potential file {src_pot} is missing required YACE headers: {missing_headers}"
             raise ValueError(msg)
+
+        computed_hash = sha256_hash.hexdigest()
+        logging.info(f"Verified YACE file integrity. SHA256: {computed_hash}")
 
         resolved_tmp = tmp_work_dir.resolve(strict=True)
         base_al_dir = (self.config.project_root / "active_learning").resolve(strict=True)

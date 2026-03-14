@@ -40,6 +40,15 @@ class StructureGenerator(AbstractGenerator):
     def generate_interface(self, target: InterfaceTarget) -> Atoms:
         """Generates an interface structure based on an InterfaceTarget config."""
         from ase.build import bulk, stack
+        from ase.data import chemical_symbols
+
+        # Security: validate elements before passing to ASE
+        valid_targets = ["FePt", "MgO"]
+
+        for elem in [target.element1, target.element2]:
+            if elem not in valid_targets and elem not in chemical_symbols:
+                msg = f"Invalid or unsupported element target for interface generation: {elem}"
+                raise ValueError(msg)
 
         logging.info(
             f"Generating interface between {target.element1} (face {target.face1}) "
