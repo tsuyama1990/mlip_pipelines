@@ -46,7 +46,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*.py" = ["S101", "S603"]
+"tests/**/*.py" = ["S101"]  # Allow assert in tests
 "src/core/orchestrator.py" = ["C901", "TRY301"]
 "src/trainers/ace_trainer.py" = ["C901", "PLR0915"]
 "src/dynamics/dynamics_engine.py" = ["S311", "TRY301"]
@@ -64,7 +64,6 @@ testpaths = ["tests"]
 
 [tool.mypy]
 strict = true
-warn_unused_ignores = false
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
