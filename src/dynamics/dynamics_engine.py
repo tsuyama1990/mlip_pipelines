@@ -120,7 +120,6 @@ class MDInterface(AbstractDynamics):
             msg = f"Invalid input file name causing path traversal: {in_file_name}"
             raise ValueError(msg)
 
-
         project_root = self.config.project_root
         try:
             lmp_bin = validate_executable_path(
@@ -237,7 +236,6 @@ write_restart {work_dir.resolve()}/restart.lammps
 write_data {work_dir.resolve()}/data.lammps
 """)
 
-
         trusted_dirs = self.config.trusted_directories.copy()
         trusted_dirs.append(str(Path(sys.prefix) / "bin"))
         if self.config.project_root is not None:
@@ -245,7 +243,6 @@ write_data {work_dir.resolve()}/data.lammps
             trusted_dirs.append(str(Path(project_root_str) / "bin"))
 
         validate_filename(in_file.name)
-
 
         project_root = self.config.project_root
         try:
