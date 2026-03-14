@@ -94,7 +94,7 @@ def test_main_invalid_threshold(monkeypatch: pytest.MonkeyPatch, capsys: pytest.
     monkeypatch.setattr(sys, "argv", ["eon_driver.py", "--threshold", "invalid"])
     with pytest.raises(SystemExit) as e:
         eon_driver.main()
-    assert e.value.code == 2
+    assert e.value.code == 100
 
 
 def test_main_invalid_potential(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture):
