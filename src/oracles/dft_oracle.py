@@ -19,6 +19,10 @@ class DFTManager(AbstractOracle):
 
     def _apply_periodic_embedding(self, atoms: Atoms) -> Atoms:
         """Applies Periodic Embedding to create Orthorhombic Box."""
+        if not isinstance(atoms, Atoms):
+            msg = "Expected ASE Atoms object"
+            raise TypeError(msg)
+
         if len(atoms) == 0:
             msg = "Cannot embed an empty structure."
             raise ValueError(msg)
@@ -39,17 +43,8 @@ class DFTManager(AbstractOracle):
             msg = f"Atomic structure is too large (exceeds {self.config.max_atoms} atoms). Potential memory exhaustion."
             raise ValueError(msg)
 
-        for symbol in atoms.get_chemical_symbols():
-            if symbol not in atomic_numbers:
-                msg = f"Invalid chemical symbol detected in structure: {symbol}"
-                raise ValueError(msg)
-
-        # Check for overlapping atoms ({f"distance < {self.config.min_atom_distance} A"})
-        distances = embedded.get_all_distances()
-        np.fill_diagonal(distances, np.inf)
-        if np.any(distances < self.config.min_atom_distance):
-            msg = f"Structure contains overlapping atoms (distance < {self.config.min_atom_distance} A)."
-            raise ValueError(msg)
+        self._validate_symbols(atoms)
+        self._validate_distances(embedded)
 
         min_pos = pos.min(axis=0)
         max_pos = pos.max(axis=0)
@@ -73,25 +68,40 @@ class DFTManager(AbstractOracle):
         embedded.set_pbc(True)  # type: ignore[no-untyped-call]
         return embedded
 
-    def _validate_pseudopotentials(self, symbols: set[str]) -> dict[str, str]:
-        pseudos = {}
+    def _validate_symbols(self, atoms: Atoms) -> None:
+        for symbol in atoms.get_chemical_symbols():
+            if symbol not in atomic_numbers:
+                msg = f"Invalid chemical symbol detected in structure: {symbol}"
+                raise ValueError(msg)
+
+    def _validate_distances(self, embedded: Atoms) -> None:
+        distances = embedded.get_all_distances()
+        np.fill_diagonal(distances, np.inf)
+        if np.any(distances < self.config.min_atom_distance):
+            msg = f"Structure contains overlapping atoms (distance < {self.config.min_atom_distance} A)."
+            raise ValueError(msg)
+
+    def _get_pseudo_dir_path(self) -> Path:
         try:
             raw_pseudo_dir = Path(self.config.pseudo_dir)
             if not raw_pseudo_dir.is_absolute():
-                msg = (
-                    f"Pseudopotential directory must be an absolute path: {self.config.pseudo_dir}"
-                )
+                msg = f"Pseudopotential directory must be an absolute path: {self.config.pseudo_dir}"
                 raise ValueError(msg)
             pseudo_dir_path = raw_pseudo_dir.resolve(strict=True)
-            if not pseudo_dir_path.is_dir():
-                msg = (
-                    f"Pseudopotential directory is not a valid directory: {self.config.pseudo_dir}"
-                )
-                raise ValueError(msg)
         except FileNotFoundError as e:
             msg = f"Pseudopotential directory not found: {self.config.pseudo_dir}"
             raise FileNotFoundError(msg) from e
+        else:
+            if not pseudo_dir_path.is_dir():
+                msg = f"Pseudopotential directory is not a valid directory: {self.config.pseudo_dir}"
+                raise ValueError(msg)
+            return pseudo_dir_path
 
+    def _validate_pseudopotentials(self, symbols: set[str]) -> dict[str, str]:
+        pseudos = {}
+        pseudo_dir_path = self._get_pseudo_dir_path()
+
+        import os
         for el in symbols:
             if not re.match(r"^[A-Z][a-z]?$", el):
                 msg = "Invalid element name"
@@ -99,26 +109,43 @@ class DFTManager(AbstractOracle):
             if el not in atomic_numbers:
                 msg = f"Invalid chemical symbol detected: {el}"
                 raise ValueError(msg)
+
             upf_name = f"{el}.upf"
             upf_path = pseudo_dir_path / upf_name
+
+            norm_path = os.path.normpath(str(upf_path))
+            if not norm_path.startswith(str(pseudo_dir_path)):
+                msg = f"Strict path traversal detected for pseudopotential: {upf_name}"
+                raise ValueError(msg)
+
             if not upf_path.exists():
                 msg = f"Pseudopotential file not found: {upf_name} in {pseudo_dir_path}"
                 raise FileNotFoundError(msg)
             resolved_upf_path = upf_path.resolve(strict=True)
             if not resolved_upf_path.is_relative_to(pseudo_dir_path.resolve(strict=True)):
-                msg = f"Strict path traversal detected for pseudopotential: {upf_name}"
+                msg = f"Strict path traversal detected after resolution for pseudopotential: {upf_name}"
                 raise ValueError(msg)
-            # Validate pseudo file header minimally
+
+            # Validate UPF format properly
             with Path.open(resolved_upf_path, "r", errors="ignore") as f:
-                header = f.read(1024)
-            if "<UPF" not in header and "PP_INFO" not in header:
-                msg = f"Invalid UPF format for pseudopotential: {upf_name}"
+                content = f.read()
+            if "<UPF" not in content and "PP_INFO" not in content:
+                msg = f"Invalid UPF format for pseudopotential: {upf_name}. Missing required opening tags."
                 raise ValueError(msg)
+            if "</UPF>" not in content and "PP_INFO" not in content:
+                msg = f"Invalid UPF format for pseudopotential: {upf_name}. Missing required closing tags."
+                raise ValueError(msg)
+
             pseudos[el] = upf_name
         return pseudos
 
     def _calculate_kpoints(self, atoms: Atoms) -> list[int]:
         cell = atoms.get_cell()  # type: ignore[no-untyped-call]
+
+        if np.isnan(cell).any() or np.isinf(cell).any():
+            msg = "Cell dimensions contain NaN or Inf values."
+            raise ValueError(msg)
+
         b = np.linalg.norm(cell, axis=0)
 
         if any(x <= 1e-5 or np.isnan(x) or np.isinf(x) for x in b):
@@ -134,7 +161,13 @@ class DFTManager(AbstractOracle):
     def _get_calculator(self, atoms: Atoms, work_dir: Path) -> Espresso:
         """Creates the ESPRESSO calculator with self-healing parameters."""
         symbols: set[str] = set(atoms.get_chemical_symbols())  # type: ignore[no-untyped-call]
-        pseudos = self._validate_pseudopotentials(symbols)
+
+        try:
+            pseudos = self._validate_pseudopotentials(symbols)
+        except Exception as e:
+            msg = f"Failed to validate pseudopotentials for symbols {symbols}. Ensure valid UPF files exist in {self.config.pseudo_dir}. Error: {e}"
+            raise ValueError(msg) from e
+
         kpts = self._calculate_kpoints(atoms)
 
         degauss = self.config.smearing_width if self.config.smearing_width > 0.0 else 0.02

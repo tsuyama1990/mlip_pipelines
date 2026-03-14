@@ -136,7 +136,7 @@ def test_validate_pseudopotentials_valid(dft_oracle, tmp_path, monkeypatch):
     pseudo_dir = tmp_path / "pseudos"
     pseudo_dir.mkdir()
     upf_file = pseudo_dir / "Fe.upf"
-    upf_file.write_text("<UPF valid format>")
+    upf_file.write_text("<UPF valid format></UPF>")
     monkeypatch.setattr(dft_oracle.config, "pseudo_dir", str(pseudo_dir))
     pseudos = dft_oracle._validate_pseudopotentials({"Fe"})
     assert pseudos == {"Fe": "Fe.upf"}
@@ -160,7 +160,7 @@ def test_get_calculator(dft_oracle, tmp_path, monkeypatch):
     pseudo_dir = tmp_path / "pseudos"
     pseudo_dir.mkdir()
     upf_file = pseudo_dir / "Fe.upf"
-    upf_file.write_text("<UPF valid format>")
+    upf_file.write_text("<UPF valid format></UPF>")
     monkeypatch.setattr(dft_oracle.config, "pseudo_dir", str(pseudo_dir))
 
     atoms = Atoms("Fe", positions=[(0, 0, 0)], cell=[20, 20, 20])
@@ -174,7 +174,7 @@ def test_compute_batch_self_healing_success(dft_oracle, tmp_path, monkeypatch):
     pseudo_dir = tmp_path / "pseudos"
     pseudo_dir.mkdir()
     upf_file = pseudo_dir / "Fe.upf"
-    upf_file.write_text("<UPF valid format>")
+    upf_file.write_text("<UPF valid format></UPF>")
     monkeypatch.setattr(dft_oracle.config, "pseudo_dir", str(pseudo_dir))
 
     atoms = Atoms("Fe", positions=[(0, 0, 0)], cell=[20, 20, 20])
@@ -213,7 +213,7 @@ def test_compute_batch_self_healing_retry_2_success(dft_oracle, tmp_path, monkey
     pseudo_dir = tmp_path / "pseudos"
     pseudo_dir.mkdir()
     upf_file = pseudo_dir / "Fe.upf"
-    upf_file.write_text("<UPF valid format>")
+    upf_file.write_text("<UPF valid format></UPF>")
     monkeypatch.setattr(dft_oracle.config, "pseudo_dir", str(pseudo_dir))
 
     atoms = Atoms("Fe", positions=[(0, 0, 0)], cell=[20, 20, 20])
@@ -254,7 +254,7 @@ def test_compute_batch_total_failure(dft_oracle, tmp_path, monkeypatch):
     pseudo_dir = tmp_path / "pseudos"
     pseudo_dir.mkdir()
     upf_file = pseudo_dir / "Fe.upf"
-    upf_file.write_text("<UPF valid format>")
+    upf_file.write_text("<UPF valid format></UPF>")
     monkeypatch.setattr(dft_oracle.config, "pseudo_dir", str(pseudo_dir))
 
     atoms = Atoms("Fe", positions=[(0, 0, 0)], cell=[20, 20, 20])
