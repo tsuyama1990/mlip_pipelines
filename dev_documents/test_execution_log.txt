@@ -32,7 +32,7 @@ Name                                    Stmts   Miss  Cover   Missing
 src/__init__.py                             0      0   100%
 src/core/__init__.py                       22      0   100%
 src/core/exceptions.py                      2      0   100%
-src/core/orchestrator.py                  341    102    70%   54-55, 60, 92-93, 96-97, 102-104, 116-130, 136-137, 163-174, 179-181, 185-187, 192-193, 196-198, 210, 255-256, 265-266, 275-276, 279-280, 284-285, 288-289, 317, 330-331, 339-340, 346-347, 351-352, 360-362, 373, 380-394, 415-416, 428-430, 439-466, 481, 511, 514
+src/core/orchestrator.py                  348    109    69%   54-55, 60, 92-93, 96-97, 102-104, 116-141, 147-148, 174-190, 195-197, 201-203, 208-209, 212-214, 226, 271-272, 281-282, 291-292, 295-296, 300-301, 304-305, 333, 346-347, 355-356, 362-363, 367-368, 376-378, 389, 396-410, 431-432, 444-446, 455-482, 497, 527, 530
 src/domain_models/__init__.py               3      0   100%
 src/domain_models/config.py               324     98    70%   24-25, 31-32, 46-47, 53-54, 57-58, 104-105, 152-153, 158-163, 209-210, 259-262, 278-280, 327-330, 335-338, 405-410, 415-416, 430-431, 440-441, 447, 456-499, 508-509, 511-512, 527-528, 534-535, 538-539, 547-548, 555-556, 560-561
 src/domain_models/dtos.py                  39      4    90%   41-44
@@ -43,7 +43,7 @@ src/dynamics/eon_wrapper.py               134     22    84%   61-62, 73-74, 77-7
 src/dynamics/security_utils.py            110     60    45%   17-18, 26-32, 47-48, 67-68, 78, 97-105, 109-114, 118-144, 151-168
 src/generators/__init__.py                  0      0   100%
 src/generators/adaptive_policy.py          67      5    93%   16, 44-45, 123-124
-src/generators/defect_builder.py           72     14    81%   14, 22-23, 26, 43-44, 47, 66-67, 76-77, 81, 105-106
+src/generators/defect_builder.py           72     15    79%   14, 22-23, 26, 43-44, 47, 66-67, 76-77, 81, 103, 105-106
 src/generators/structure_generator.py      53      5    91%   83, 89-92
 src/oracles/__init__.py                     0      0   100%
 src/oracles/dft_oracle.py                 146     20    86%   20-21, 29-30, 34-35, 38-39, 45-46, 52-53, 60-61, 65-66, 97-98, 114-115
@@ -54,7 +54,7 @@ src/validators/reporter.py                  7      0   100%
 src/validators/stability_tests.py         119      5    96%   51, 59-60, 63-66
 src/validators/validator.py                93     11    88%   20-22, 33-35, 39-41, 85, 99-100
 ---------------------------------------------------------------------
-TOTAL                                    2044    490    76%
-======================== 146 passed, 3 skipped in 4.64s ========================
+TOTAL                                    2051    498    76%
+======================== 146 passed, 3 skipped in 4.02s ========================
 /app/.venv/lib/python3.12/site-packages/coverage/inorout.py:561: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.4/messages.html#warning-module-not-imported
   self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")

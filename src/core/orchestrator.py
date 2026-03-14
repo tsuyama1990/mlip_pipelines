@@ -113,6 +113,17 @@ class Orchestrator:
 
         try:
             return self.policy_engine.decide_policy(features)
+        except ImportError:
+            logging.warning(
+                "Policy engine required missing MLIP dependencies. Falling back to default MD strategy."
+            )
+            return ExplorationStrategy(
+                md_mc_ratio=0.0,
+                t_max=300.0,
+                n_defects=0.0,
+                strain_range=0.0,
+                policy_name="Fallback Standard",
+            )
         except (ValueError, TypeError, KeyError):
             logging.warning(
                 "Policy engine parameter calculation failed. Falling back to default MD strategy."
@@ -166,11 +177,16 @@ class Orchestrator:
         except OracleConvergenceError:
             logging.exception("Oracle convergence failed during initial setup/exploration.")
             raise
+        except (OSError, TimeoutError, MemoryError) as e:
+            # Handles specific infrastructure and system-level failures explicitly
+            logging.exception("System or infrastructure error during exploration")
+            msg = f"Infrastructure system failure: {e}"
+            raise RuntimeError(msg) from e
         except Exception as e:
             # Added a comprehensive exception block for any unforeseen errors to allow graceful logging
             # before propagating upward. Also rolls back any incomplete dynamics states if applicable.
-            logging.exception("Unexpected critical infrastructure failure during exploration.")
-            msg = f"Infrastructure failure in _run_exploration: {e}"
+            logging.exception("Unexpected critical software failure during exploration.")
+            msg = f"Software failure in _run_exploration: {e}"
             raise RuntimeError(msg) from e
 
     def _select_candidates(self, halt_info: dict[str, Any]) -> Iterator[list[Atoms]]:
