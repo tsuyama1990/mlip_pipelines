@@ -28,7 +28,7 @@ def test_system_config_invalid() -> None:
 
 
 def test_dynamics_config_valid() -> None:
-    config = DynamicsConfig(uncertainty_threshold=10.0)
+    config = DynamicsConfig(uncertainty_threshold=10.0, project_root=str(Path.cwd()), safe_env_keys=["PATH"])
     assert config.uncertainty_threshold == 10.0
 
 
@@ -44,7 +44,7 @@ def test_project_config(tmp_path: Path) -> None:
     config = ProjectConfig(
         project_root=tmp_path,
         system=SystemConfig(elements=["Fe", "O"]),
-        dynamics=DynamicsConfig(),
+        dynamics=DynamicsConfig(project_root=str(Path.cwd()), safe_env_keys=["PATH"]),
         oracle=OracleConfig(),
         trainer=TrainerConfig(),
         validator=ValidatorConfig(),

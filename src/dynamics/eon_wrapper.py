@@ -52,7 +52,7 @@ class EONWrapper(AbstractDynamics):
             # Ensure the potential string itself doesn't contain injected template syntax
             resolved_pot_str = str(resolved_pot)
             # Stricter checks for potential path characters
-            if not re.match(r"^[/a-zA-Z0-9_.-]+$", resolved_pot_str) or "\x00" in resolved_pot_str:
+            if not re.match(r"^[/a-zA-Z0-9_.-]+$", resolved_pot_str) or "\x00" in resolved_pot_str or ".." in resolved_pot_str:
                 msg = "Potential path contains invalid characters"
                 raise ValueError(msg)
 
@@ -66,12 +66,12 @@ class EONWrapper(AbstractDynamics):
         if not exec_path.is_file():
             msg = "Invalid python executable path"
             raise ValueError(msg)
-        if not re.match(r"^[/a-zA-Z0-9_.-]+$", executable):
+        if not re.match(r"^[/a-zA-Z0-9_.-]+$", executable) or ".." in executable:
             msg = "Invalid python executable path"
             raise ValueError(msg)
 
         driver_content = self.config.eon_driver_template.format(
-            executable=executable,
+            executable=shlex.quote(executable),
             threshold=float(self.config.uncertainty_threshold),
             pot_str=pot_str,
         )

@@ -28,7 +28,8 @@ class MDInterface(AbstractDynamics):
         return " ".join(str(atomic_numbers.get(el, 1)) for el in self.system_config.elements)
 
     def _write_cold_start_input(self, tmp_in_file: Any, dump_name: str, work_dir: Path) -> None:
-        if not re.match(r"^[a-zA-Z0-9_.-]+$", dump_name) or ".." in dump_name:
+        base_dump_name = Path(dump_name).name
+        if not re.match(r"^[a-zA-Z0-9_.-]+$", base_dump_name) or base_dump_name != dump_name:
             msg = "Dump file name contains invalid characters"
             raise ValueError(msg)
 
@@ -52,12 +53,12 @@ class MDInterface(AbstractDynamics):
 
         template = self.config.lammps_cold_start_template
         script = template.format(
-            lattice_type=lattice_type,
+            lattice_type=shlex.quote(lattice_type),
             lattice_size=float(self.config.lattice_size),
             box_x=int(box_x),
             box_y=int(box_y),
             box_z=int(box_z),
-            zbl_mapping=zbl_mapping,
+            zbl_mapping=shlex.quote(zbl_mapping),
             dump_name=shlex.quote(dump_name),
             md_steps=int(min(self.config.md_steps, 1000)),
             work_dir=shlex.quote(work_dir_str),
@@ -82,7 +83,8 @@ class MDInterface(AbstractDynamics):
 
         pot_path_str = str(resolved_pot)
 
-        if not re.match(r"^[a-zA-Z0-9_.-]+$", dump_name) or ".." in dump_name:
+        base_dump_name = Path(dump_name).name
+        if not re.match(r"^[a-zA-Z0-9_.-]+$", base_dump_name) or base_dump_name != dump_name:
             msg = "Dump file name contains invalid characters"
             raise ValueError(msg)
 
@@ -106,13 +108,13 @@ class MDInterface(AbstractDynamics):
             raise ValueError(msg)
 
         script = template.format(
-            lattice_type=lattice_type,
+            lattice_type=shlex.quote(lattice_type),
             lattice_size=float(self.config.lattice_size),
             box_x=int(box_x),
             box_y=int(box_y),
             box_z=int(box_z),
             pot_path=shlex.quote(pot_path_str),
-            zbl_mapping=zbl_mapping,
+            zbl_mapping=shlex.quote(zbl_mapping),
             threshold=float(self.config.uncertainty_threshold),
             dump_name=shlex.quote(dump_name),
             md_steps=int(self.config.md_steps),

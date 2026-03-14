@@ -15,6 +15,10 @@ def validate_executable_path(
     Returns the resolved absolute path as a string if safe, raises ValueError otherwise.
     """
 
+    if not re.match(r"^[/a-zA-Z0-9_.-]+$", executable_name) or ".." in executable_name:
+        msg = "Invalid characters in executable name"
+        raise ValueError(msg)
+
     resolved_which = shutil.which(executable_name)
     if resolved_which is None:
         msg = f"Executable not found: {executable_name}"
@@ -22,6 +26,7 @@ def validate_executable_path(
 
     resolved_bin = Path(os.path.realpath(resolved_which)).resolve(strict=True)
 
+    # Do not allow resolving via symlinks that point outside trusted domains; explicitly fail if the base was a symlink.
     if Path(resolved_which).is_symlink():
         msg = "Binary cannot be a symlink."
         raise ValueError(msg)
@@ -38,7 +43,8 @@ def validate_executable_path(
     is_trusted = False
     for td in all_trusted:
         try:
-            if resolved_bin.is_relative_to(Path(td).resolve(strict=True)):
+            td_resolved = Path(os.path.realpath(td)).resolve(strict=True)
+            if resolved_bin.is_relative_to(td_resolved):
                 is_trusted = True
                 break
         except OSError:

@@ -113,19 +113,20 @@ write_data {work_dir}/data.lammps
         default="dimer", description="EON Process Search configuration parameter"
     )
     project_root: str = Field(
-        default="",
-        description="Project root directory for resolving binary paths. Required to be set via initialization.",
+        ...,
+        description="Project root directory for resolving binary paths. Required.",
     )
     safe_env_keys: list[str] = Field(
-        default=["PATH"],
-        description="Whitelist of safe environment variables to pass to subprocesses",
+        ...,
+        description="Whitelist of safe environment variables to pass to subprocesses. Required.",
     )
 
     @field_validator("project_root")
     @classmethod
     def validate_project_root_str(cls, v: str) -> str:
         if not v:
-            return v
+            msg = "project_root cannot be empty"
+            raise ValueError(msg)
         import os
 
         resolved = Path(os.path.realpath(v)).resolve(strict=True)
