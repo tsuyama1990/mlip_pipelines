@@ -1,5 +1,6 @@
-import marimo
 from typing import Any
+
+import marimo
 
 __generated_with = "0.20.4"
 app = marimo.App()
@@ -8,15 +9,12 @@ app = marimo.App()
 @app.cell
 def __() -> tuple[Any, ...]:
     import logging
+    import os
     import sys
     from pathlib import Path
 
-    import sys
     import matplotlib.pyplot as plt
-
-    import os
     import numpy as np
-
     from ase import Atoms
     from ase.build import bulk
 

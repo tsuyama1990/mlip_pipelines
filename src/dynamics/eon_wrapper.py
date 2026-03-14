@@ -82,8 +82,8 @@ class EONWrapper(AbstractDynamics):
         """Runs MD or KMC exploration until a halt condition or completion."""
         return self.run_kmc(potential, work_dir)
 
-    def run_kmc(self, potential: Path | None, work_dir: Path) -> dict[str, Any]:
-        """Runs EON client in the specified working directory."""
+    def _validate_work_dir(self, work_dir: Path) -> Path:
+        """Validates and resolves the working directory."""
         work_dir.mkdir(parents=True, exist_ok=True)
         resolved_work_dir = work_dir.resolve(strict=True)
 
@@ -93,45 +93,55 @@ class EONWrapper(AbstractDynamics):
             if not resolved_work_dir.is_relative_to(proj_root):
                 msg = f"Working directory {resolved_work_dir} is outside the allowed project root."
                 raise ValueError(msg)
+        return resolved_work_dir
+
+    def _get_validated_eon_bin(self) -> Path:
+        """Resolves and validates the EON binary path."""
+        project_root = self.config.project_root
+        try:
+            eon_bin = validate_executable_path(
+                self.config.eon_binary,
+                self.config.trusted_directories,
+                project_root=str(project_root) if project_root else None,
+            )
+        except RuntimeError as e:
+            msg = "EON client executable not found."
+            raise RuntimeError(msg) from e
+
+        # Strictly validate the resolved EON binary path before execution
+        eon_bin_path = Path(os.path.realpath(eon_bin)).resolve(strict=True)
+        if not eon_bin_path.is_file():
+            msg = "EON binary is not a valid file."
+            raise ValueError(msg)
+        if not os.access(eon_bin_path, os.X_OK):
+            msg = "EON binary is not executable."
+            raise ValueError(msg)
+
+        # Verify the binary is within trusted directories
+        is_trusted = False
+        for td in self.config.trusted_directories:
+            td_path = Path(os.path.realpath(td)).resolve(strict=False)
+            if eon_bin_path.is_relative_to(td_path):
+                is_trusted = True
+                break
+
+        if not is_trusted:
+            msg = "EON binary is not within trusted directories."
+            raise ValueError(msg)
+
+        return eon_bin_path
+
+    def run_kmc(self, potential: Path | None, work_dir: Path) -> dict[str, Any]:
+        """Runs EON client in the specified working directory."""
+        resolved_work_dir = self._validate_work_dir(work_dir)
+
         self._write_config_ini(resolved_work_dir)
         self._write_pace_driver(resolved_work_dir, potential)
 
         try:
             # We execute 'eonclient'. If it's missing, subprocess raises FileNotFoundError.
-
-            project_root = self.config.project_root
-            try:
-                eon_bin = validate_executable_path(
-                    self.config.eon_binary,
-                    self.config.trusted_directories,
-                    project_root=str(project_root) if project_root else None,
-                )
-            except RuntimeError as e:
-                msg = "EON client executable not found."
-                raise RuntimeError(msg) from e
-
-            cmd: list[str] = [eon_bin]
-
-            # Strictly validate the resolved EON binary path before execution
-            eon_bin_path = Path(os.path.realpath(eon_bin)).resolve(strict=True)
-            if not eon_bin_path.is_file():
-                msg = "EON binary is not a valid file."
-                raise ValueError(msg)
-            if not os.access(eon_bin_path, os.X_OK):
-                msg = "EON binary is not executable."
-                raise ValueError(msg)
-
-            # Verify the binary is within trusted directories
-            is_trusted = False
-            for td in self.config.trusted_directories:
-                td_path = Path(os.path.realpath(td)).resolve(strict=False)
-                if eon_bin_path.is_relative_to(td_path):
-                    is_trusted = True
-                    break
-
-            if not is_trusted:
-                msg = "EON binary is not within trusted directories."
-                raise ValueError(msg)
+            eon_bin_path = self._get_validated_eon_bin()
+            cmd: list[str] = [str(eon_bin_path)]
 
             # We use check=False to capture return code 100 gracefully
             # Create a minimal safe environment whitelist to prevent sensitive credential leaks
