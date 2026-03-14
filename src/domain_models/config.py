@@ -145,7 +145,8 @@ class DynamicsConfig(BaseModel):
                 raise ValueError(msg)
 
             if st.st_uid != os.getuid():
-                logging.warning(f"trusted_directory {path} is not owned by current user. This is potentially insecure.")
+                msg = f"trusted_directory {path} is not owned by the current user. This is insecure."
+                raise ValueError(msg)
 
             validated.append(str(resolved))
         return validated
@@ -285,7 +286,8 @@ class TrainerConfig(BaseModel):
                 raise ValueError(msg)
 
             if st.st_uid != os.getuid():
-                logging.warning(f"trusted_directory {path} is not owned by current user. This is potentially insecure.")
+                msg = f"trusted_directory {path} is not owned by the current user. This is insecure."
+                raise ValueError(msg)
 
             validated.append(str(resolved))
         return validated
@@ -356,96 +358,83 @@ class ProjectConfig(BaseSettings):
     project_root: Path = Field(..., description="Root directory of the project")
     use_mock: bool = Field(default=False, description="Enable mock mode for CI testing")
 
+    @classmethod
+    def _validate_env_key(cls, key: str) -> None:
+        import re
+        if not key.startswith("MLIP_"):
+            msg = f"Unauthorized environment variable injected via .env: {key}. Only MLIP_ prefixes are allowed."
+            raise ValueError(msg)
+        if len(key) > 64:
+            msg = "Environment variable key exceeds maximum length"
+            raise ValueError(msg)
+        if not re.match(r"^[A-Z0-9_]+$", key):
+            msg = f"Invalid characters in .env variable key: {key}"
+            raise ValueError(msg)
+
+    @classmethod
+    def _validate_env_value(cls, val: str) -> None:
+        import re
+        if len(val) > 256:
+            msg = "Environment variable value exceeds maximum length"
+            raise ValueError(msg)
+        if not re.match(r"^[a-zA-Z0-9_-]+$", val):
+            msg = f"Invalid characters in .env variable value: {val}. Path separators are forbidden."
+            raise ValueError(msg)
+
+    @classmethod
+    def _validate_env_file_security(cls, env_file: Path, expected_base: Path) -> Path:
+        import os
+        import stat
+
+        if env_file.is_symlink():
+            msg = ".env file must not be a symlink."
+            raise ValueError(msg)
+
+        resolved_env = env_file.resolve(strict=True)
+
+        if resolved_env.parent != expected_base:
+            msg = f".env file must reside directly in the allowed base directory: {expected_base}"
+            raise ValueError(msg)
+
+        st = os.lstat(resolved_env)
+
+        if st.st_size > 10 * 1024:
+            msg = ".env file exceeds maximum allowed size (10KB)."
+            raise ValueError(msg)
+
+        if st.st_uid != os.getuid():
+            msg = ".env file is not owned by the current user."
+            raise ValueError(msg)
+
+        if bool(st.st_mode & stat.S_IRWXO) or bool(st.st_mode & stat.S_IRWXG):
+            msg = ".env file has insecure permissions. It must not be group or world readable/writable."
+            raise ValueError(msg)
+
+        return resolved_env
+
     @model_validator(mode="before")
     @classmethod
-    def validate_env_content(cls, values: dict[str, Any]) -> dict[str, Any]:  # noqa: C901, PLR0912, PLR0915
-        import re
+    def validate_env_content(cls, values: dict[str, Any]) -> dict[str, Any]:
         from pathlib import Path
 
-        # Secure the env loading process to verify the file resolves inside the CWD/project root
-        # Force .env file to be specifically in CWD
         expected_base = Path.cwd().resolve(strict=True)
         env_file = expected_base / ".env"
 
         if env_file.exists():
-            if env_file.is_symlink():
-                msg = ".env file must not be a symlink."
-                raise ValueError(msg)
-
-            # Basic validation of .env file size and canonical location to prevent loading external malicious envs
-            resolved_env = env_file.resolve(strict=True)
-
-            if resolved_env.parent != expected_base:
-                msg = (
-                    f".env file must reside directly in the allowed base directory: {expected_base}"
-                )
-                raise ValueError(msg)
-
-            import os
-            import stat
-            st = os.lstat(resolved_env)
-
-            if st.st_size > 10 * 1024:
-                msg = ".env file exceeds maximum allowed size (10KB)."
-                raise ValueError(msg)
-
-            if st.st_uid != os.getuid():
-                msg = ".env file is not owned by the current user."
-                raise ValueError(msg)
-
-            if bool(st.st_mode & stat.S_IRWXO) or bool(st.st_mode & stat.S_IRWXG):
-                msg = ".env file has insecure permissions. It must not be group or world readable/writable."
-                raise ValueError(msg)
-
-            # Strict whitelist validation for .env file contents
+            resolved_env = cls._validate_env_file_security(env_file, expected_base)
 
             with Path.open(resolved_env, encoding="utf-8") as f:
                 for raw_line in f:
                     clean_line = raw_line.strip()
-                    if not clean_line or clean_line.startswith("#"):
-                        continue
-
-                    if "=" not in clean_line:
+                    if not clean_line or clean_line.startswith("#") or "=" not in clean_line:
                         continue
 
                     key, val = clean_line.split("=", 1)
                     key = key.strip()
                     val = val.strip().strip("'").strip('"')
 
-                    if not key.startswith("MLIP_"):
-                        msg = f"Unauthorized environment variable injected via .env: {key}. Only MLIP_ prefixes are allowed."
-                        raise ValueError(msg)
-
-                    if len(key) > 64:
-                        msg = "Environment variable key exceeds maximum length"
-                        raise ValueError(msg)
-
-                    if len(val) > 256:
-                        msg = "Environment variable value exceeds maximum length"
-                        raise ValueError(msg)
-
-                    if not re.match(r"^[A-Z0-9_]+$", key):
-                        msg = f"Invalid characters in .env variable key: {key}"
-                        raise ValueError(msg)
-
-                    if not re.match(r"^[a-zA-Z0-9_./-]+$", val):
-                        msg = f"Invalid characters in .env variable value: {val}"
-                        raise ValueError(msg)
-
-                    # Add path traversal validation for values that look like paths
-                    if "/" in val or "\\" in val or ".." in val:
-                        if ".." in val:
-                            msg = f"Path traversal characters (..) are not allowed in .env values: {key}"
-                            raise ValueError(msg)
-
-                        # If it's an absolute path, verify it's within expected bounds
-                        if Path(val).is_absolute():
-                            resolved_val = Path(val).resolve(strict=True)
-                            if not resolved_val.is_relative_to(expected_base):
-                                msg = (
-                                    f"Absolute paths in .env must be within the project root: {val}"
-                                )
-                                raise ValueError(msg)
+                    cls._validate_env_key(key)
+                    cls._validate_env_value(val)
 
         return values
 

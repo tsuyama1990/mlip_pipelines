@@ -133,10 +133,6 @@ class Orchestrator:
         except OracleConvergenceError:
             logging.exception("Oracle convergence failed during initial setup/exploration.")
             raise
-        except Exception as e:
-            logging.exception("An unexpected critical failure occurred during exploration.")
-            msg = "Critical infrastructure failure during exploration."
-            raise RuntimeError(msg) from e
 
     def _select_candidates(self, halt_info: dict[str, Any]) -> Iterator[list[Atoms]]:
         dump_file = halt_info.get("dump_file")
@@ -151,34 +147,28 @@ class Orchestrator:
             yield from []
             return
 
-        try:
-            if halt_info.get("is_kmc"):
-                import ase.io
+        if halt_info.get("is_kmc"):
+            import ase.io
 
-                high_gamma_atoms = [ase.io.read(dump_path)]
-                if not isinstance(high_gamma_atoms[0], Atoms):
-                    high_gamma_atoms = [high_gamma_atoms[0][0]]
+            high_gamma_atoms = [ase.io.read(dump_path)]
+            if not isinstance(high_gamma_atoms[0], Atoms):
+                high_gamma_atoms = [high_gamma_atoms[0][0]]
+        else:
+            # Cast down to MDInterface because extract_high_gamma_structures is MD-specific
+            from src.dynamics.dynamics_engine import MDInterface
+
+            md_engine = self.md_engine
+            if isinstance(md_engine, MDInterface):
+                high_gamma_atoms = md_engine.extract_high_gamma_structures(
+                    dump_file=dump_path,
+                    threshold=self.config.dynamics.uncertainty_threshold,
+                )
             else:
-                # Cast down to MDInterface because extract_high_gamma_structures is MD-specific
-                from src.dynamics.dynamics_engine import MDInterface
+                high_gamma_atoms = []
 
-                md_engine = self.md_engine
-                if isinstance(md_engine, MDInterface):
-                    high_gamma_atoms = md_engine.extract_high_gamma_structures(
-                        dump_file=dump_path,
-                        threshold=self.config.dynamics.uncertainty_threshold,
-                    )
-                else:
-                    high_gamma_atoms = []
-
-            for s0 in high_gamma_atoms:
-                candidates = self.structure_generator.generate_local_candidates(s0, n=20)
-                yield self.trainer.select_local_active_set(candidates, anchor=s0, n=5)
-
-        except Exception as e:
-            logging.exception(f"Failed to extract candidates from dump file {dump_path}")
-            msg = f"Candidate selection failed: {e}"
-            raise RuntimeError(msg) from e
+        for s0 in high_gamma_atoms:
+            candidates = self.structure_generator.generate_local_candidates(s0, n=20)
+            yield self.trainer.select_local_active_set(candidates, anchor=s0, n=5)
 
     def _compute_dft_and_update_dataset(
         self,
@@ -233,7 +223,7 @@ class Orchestrator:
             return False
         return True
 
-    def _copy_potential(self, tmp_work_dir: Path, pot_dir: Path, iteration: int) -> Path:
+    def _copy_potential(self, tmp_work_dir: Path, pot_dir: Path, iteration: int) -> Path:  # noqa: PLR0915
         final_dest = pot_dir / f"generation_{iteration:03d}.yace"
         src_pot = tmp_work_dir / "training" / "output_potential.yace"
 
@@ -241,34 +231,40 @@ class Orchestrator:
             msg = "Source potential file missing or invalid"
             raise FileNotFoundError(msg)
 
-        if not src_pot.resolve(strict=True).is_relative_to(tmp_work_dir.resolve(strict=True)):
-            msg = "Path traversal detected"
-            raise ValueError(msg)
-
-        if not re.match(r"^[a-zA-Z0-9_-]+\.yace$", src_pot.name):
-            msg = "Source potential file must have a valid .yace filename format"
-            raise ValueError(msg)
-
-        # File size constraint (max 100MB)
+        # Immediate file size constraint (max 100MB) to prevent OOM before any heavy reads
         if src_pot.stat().st_size > 100 * 1024 * 1024:
             msg = "Source potential file exceeds maximum allowed size (100MB)"
             raise ValueError(msg)
 
-        # Comprehensive integrity validation for YACE files before copy
+        if not src_pot.resolve(strict=True).is_relative_to(tmp_work_dir.resolve(strict=True)):
+            msg = "Path traversal detected"
+            raise ValueError(msg)
+
+        # Ensure purely safe alphanumeric filename without any special characters
+        if not re.match(r"^[a-zA-Z0-9_-]+\.yace$", src_pot.name):
+            msg = "Source potential file must have a valid .yace filename format"
+            raise ValueError(msg)
+
+        if ".." in src_pot.name or "/" in src_pot.name or "\\" in src_pot.name:
+            msg = "Path separators not allowed in filename"
+            raise ValueError(msg)
+
+        # Comprehensive integrity validation for YACE files using strict streaming
         import hashlib
 
         sha256_hash = hashlib.sha256()
+        header_bytes = b""
 
         with Path.open(src_pot, "rb") as f:
-            # Read enough of the header to ensure it's not a dummy or corrupted file
-            content_bytes = f.read(1024)
-            sha256_hash.update(content_bytes)
+            # Read exactly 1024 bytes for header validation safely
+            header_bytes = f.read(1024)
+            sha256_hash.update(header_bytes)
 
-            # Continue reading the rest to compute full hash
-            for byte_block in iter(lambda: f.read(4096), b""):
-                sha256_hash.update(byte_block)
+            # Continue reading the rest to compute full hash incrementally
+            while chunk := f.read(8192):
+                sha256_hash.update(chunk)
 
-        content_str = content_bytes.decode("utf-8", errors="ignore")
+        content_str = header_bytes.decode("utf-8", errors="ignore")
         required_headers = ["elements", "version", "b_functions"]
         missing_headers = [h for h in required_headers if h not in content_str]
 
@@ -353,33 +349,51 @@ class Orchestrator:
                 work_dir=work_dir / "resume_run",
             )
 
-    def _validate_and_deploy(self, new_pot_path: Path, tmp_work_dir: Path, work_dir: Path) -> str:
+    def _finalize_validation(self, new_pot_path: Path) -> bool:
         if not new_pot_path.exists() or not new_pot_path.is_file():
             msg = f"New potential path is invalid or missing: {new_pot_path}"
             raise FileNotFoundError(msg)
+        return self._validate_potential(new_pot_path)
 
-        if not self._validate_potential(new_pot_path):
-            return "VALIDATION_FAILED"
-
+    def _deploy_potential(self, tmp_work_dir: Path) -> Path:
         self.iteration += 1
         pot_dir = self.config.project_root / "potentials"
         pot_dir.mkdir(parents=True, exist_ok=True)
+        return self._copy_potential(tmp_work_dir, pot_dir, self.iteration)
 
-        # Atomic operations are handled inside _copy_potential via tempfile + replace
-        final_dest = self._copy_potential(tmp_work_dir, pot_dir, self.iteration)
-
+    def _finalize_directories(self, tmp_work_dir: Path, work_dir: Path) -> None:
         try:
-            # _manage_directories also uses atomic replacement for the work_dir
             self._manage_directories(tmp_work_dir, work_dir)
         except Exception:
-            # If the directory swap fails, we still deployed the potential, but the AL state
-            # might be slightly inconsistent. Log and raise.
             logging.exception("Failed to manage AL directories atomically")
             raise
 
-        self._resume_md_engine(final_dest, work_dir)
+    def _pre_generate_interface_target(self) -> str | None:
+        if not self.config.system.interface_target or self.iteration != 0:
+            return None
 
-        return str(final_dest)
+        logging.info("Interface configuration detected. Pre-generating interface target.")
+        try:
+            from src.generators.structure_generator import StructureGenerator
+
+            if isinstance(self.structure_generator, StructureGenerator):
+                initial_struct = self.structure_generator.generate_interface(
+                    self.config.system.interface_target
+                )
+                from ase.io import write
+
+                work_dir_setup = self.config.project_root / "active_learning" / f"iter_{self.iteration:03d}" / "md_run"
+                work_dir_setup.mkdir(parents=True, exist_ok=True)
+                target_file = work_dir_setup / "initial_structure.extxyz"
+                write(str(target_file), initial_struct, format="extxyz")
+                logging.info(f"Generated interface structure with {len(initial_struct)} atoms and saved to {target_file}")
+            else:
+                logging.warning("Structure generator does not support generate_interface")
+        except Exception:
+            logging.exception("Failed to generate interface structure")
+            return "ERROR"
+        else:
+            return None
 
     def run_cycle(self) -> str | None:
         """Runs one full loop: Exploration -> Selection -> DFT -> Update -> Resume."""
@@ -392,30 +406,9 @@ class Orchestrator:
             )
 
         # Before entering standard loop, check if we need to generate a target interface
-        if self.config.system.interface_target and self.iteration == 0:
-            logging.info("Interface configuration detected. Pre-generating interface target.")
-            try:
-                # Type safe access by ensuring generator is not abstract proxy before calling
-                from src.generators.structure_generator import StructureGenerator
-
-                if isinstance(self.structure_generator, StructureGenerator):
-                    initial_struct = self.structure_generator.generate_interface(
-                        self.config.system.interface_target
-                    )
-                    # We inject this structure into the start of the MD cycle via working directory
-                    # This guarantees the MD simulator reads our generated structure configuration instead of randomly exploring
-                    from ase.io import write
-
-                    work_dir_setup = self.config.project_root / "active_learning" / f"iter_{self.iteration:03d}" / "md_run"
-                    work_dir_setup.mkdir(parents=True, exist_ok=True)
-                    target_file = work_dir_setup / "initial_structure.extxyz"
-                    write(str(target_file), initial_struct, format="extxyz")
-                    logging.info(f"Generated interface structure with {len(initial_struct)} atoms and saved to {target_file}")
-                else:
-                    logging.warning("Structure generator does not support generate_interface")
-            except Exception:
-                logging.exception("Failed to generate interface structure")
-                return "ERROR"
+        err = self._pre_generate_interface_target()
+        if err == "ERROR":
+            return "ERROR"
 
         base_dir: Path = self.config.project_root / "active_learning"
         base_dir.mkdir(parents=True, exist_ok=True)
@@ -450,8 +443,11 @@ class Orchestrator:
             if isinstance(new_pot_path, str):
                 return new_pot_path
 
-            final_dest: str = self._validate_and_deploy(new_pot_path, tmp_work_dir, work_dir)
-            if final_dest == "VALIDATION_FAILED":
+            if not self._finalize_validation(new_pot_path):
                 return "VALIDATION_FAILED"
+
+            final_dest: str = str(self._deploy_potential(tmp_work_dir))
+            self._finalize_directories(tmp_work_dir, work_dir)
+            self._resume_md_engine(Path(final_dest), work_dir)
 
             return final_dest
