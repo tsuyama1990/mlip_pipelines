@@ -17,49 +17,45 @@ class InterfaceTarget(BaseModel):
     face2: str = Field(default="Mg", description="Terminating face of second material")
 
 
-def _validate_single_trusted_dir(path: str) -> str | None:
-    if ".." in path:
-        msg = f"Path traversal characters not allowed in trusted_directory: {path}"
+def _secure_resolve_and_validate_dir(path_str: str, check_exists: bool = True) -> str | None:
+    path = Path(path_str)
+
+    if not path.is_absolute():
+        msg = f"Directory path must be absolute: {path_str}"
         raise ValueError(msg)
 
-    if not Path(path).is_absolute():
-        msg = f"trusted_directory must be absolute: {path}"
+    if check_exists:
+        try:
+            st_info = os.lstat(path)
+            if stat.S_ISLNK(st_info.st_mode):
+                msg = f"Directory {path_str} cannot be a symlink."
+                raise ValueError(msg)
+        except FileNotFoundError:
+            logging.warning(f"Directory skipped as it does not exist: {path_str}")
+            return None
+
+    resolved = path.resolve(strict=check_exists)
+
+    if check_exists and not resolved.is_dir():
+        msg = f"Path must be a directory: {path_str}"
         raise ValueError(msg)
 
-    try:
-        st_info = os.lstat(path)
-        if stat.S_ISLNK(st_info.st_mode):
-            msg = f"trusted_directory {path} cannot be a symlink."
-            raise ValueError(msg)
-    except FileNotFoundError:
-        logging.warning(f"Trusted directory skipped as it does not exist: {path}")
-        return None
-
-    resolved = Path(path).resolve(strict=True)
-
-    if not resolved.is_absolute():
-        msg = f"trusted_directory must be absolute: {path}"
-        raise ValueError(msg)
-    if not resolved.is_dir():
-        msg = f"trusted_directory must be a directory: {path}"
-        raise ValueError(msg)
-
-    from src.domain_models.config import SystemConfig
-
-    restricted_prefixes = SystemConfig.model_fields["restricted_directories"].default_factory()  # type: ignore
+    restricted_prefixes = ["/etc", "/bin", "/usr", "/sbin", "/var", "/lib", "/boot", "/root"]
     for restricted in restricted_prefixes:
         if str(resolved).startswith(restricted):
-            msg = f"trusted_directory cannot be a system directory: {restricted}"
+            msg = f"Directory cannot be a system directory: {restricted}"
             raise ValueError(msg)
 
-    st = resolved.stat()
-    if bool(st.st_mode & stat.S_IWOTH):
-        msg = f"trusted_directory {path} is world-writable, which is insecure."
-        raise ValueError(msg)
+    if check_exists:
+        st = resolved.stat()
+        # Strict ownership verification is required first
+        if st.st_uid != os.getuid():
+            msg = f"Directory {path_str} is not owned by the current user (uid={os.getuid()}). This is insecure."
+            raise ValueError(msg)
 
-    if st.st_uid != os.getuid():
-        msg = f"trusted_directory {path} is not owned by the current user. This is insecure."
-        raise ValueError(msg)
+        if bool(st.st_mode & stat.S_IWOTH):
+            msg = f"Directory {path_str} is world-writable, which is insecure."
+            raise ValueError(msg)
 
     return str(resolved)
 
@@ -151,83 +147,17 @@ class DynamicsConfig(BaseModel):
     @field_validator("project_root")
     @classmethod
     def validate_project_root_str(cls, v: str) -> str:
-        if not v:
-            msg = "project_root cannot be empty"
+        res = _secure_resolve_and_validate_dir(v, check_exists=True)
+        if res is None:
+            msg = f"project_root skipped or invalid: {v}"
             raise ValueError(msg)
-
-        if ".." in v:
-            msg = "Path traversal sequences (..) are not allowed in project_root"
-            raise ValueError(msg)
-
-        resolved = Path(v).resolve(strict=True)
-        if not resolved.is_absolute():
-            msg = "project_root must be absolute"
-            raise ValueError(msg)
-        if not resolved.exists() or not resolved.is_dir():
-            msg = "project_root must be an existing directory"
-            raise ValueError(msg)
-
-        # Security: forbid system directories
-        from src.domain_models.config import SystemConfig
-
-        restricted_prefixes = SystemConfig.model_fields["restricted_directories"].default_factory()  # type: ignore
-        for restricted in restricted_prefixes:
-            if str(resolved).startswith(restricted):
-                msg = f"project_root cannot be a system directory: {restricted}"
-                raise ValueError(msg)
-
-        return str(resolved)
-
-    @classmethod
-    def _validate_single_trusted_dir(cls, path: str) -> str | None:
-        if ".." in path:
-            msg = f"Path traversal characters not allowed in trusted_directory: {path}"
-            raise ValueError(msg)
-
-        if not Path(path).is_absolute():
-            msg = f"trusted_directory must be absolute: {path}"
-            raise ValueError(msg)
-
-        try:
-            st_info = os.lstat(path)
-            if stat.S_ISLNK(st_info.st_mode):
-                msg = f"trusted_directory {path} cannot be a symlink."
-                raise ValueError(msg)
-        except FileNotFoundError:
-            logging.warning(f"Trusted directory skipped as it does not exist: {path}")
-            return None
-
-        resolved = Path(path).resolve(strict=True)
-
-        if not resolved.is_absolute():
-            msg = f"trusted_directory must be absolute: {path}"
-            raise ValueError(msg)
-        if not resolved.is_dir():
-            msg = f"trusted_directory must be a directory: {path}"
-            raise ValueError(msg)
-
-        restricted_prefixes = ["/etc", "/bin", "/usr", "/sbin", "/var", "/lib", "/boot", "/root"]
-        for restricted in restricted_prefixes:
-            if str(resolved).startswith(restricted):
-                msg = f"trusted_directory cannot be a system directory: {restricted}"
-                raise ValueError(msg)
-
-        st = resolved.stat()
-        if bool(st.st_mode & stat.S_IWOTH):
-            msg = f"trusted_directory {path} is world-writable, which is insecure."
-            raise ValueError(msg)
-
-        if st.st_uid != os.getuid():
-            msg = f"trusted_directory {path} is not owned by the current user. This is insecure."
-            raise ValueError(msg)
-
-        return str(resolved)
+        return res
 
     @classmethod
     def validate_trusted_directories(cls, v: list[str]) -> list[str]:
         validated = []
         for path in v:
-            res = _validate_single_trusted_dir(path)
+            res = _secure_resolve_and_validate_dir(path, check_exists=True)
             if res:
                 validated.append(res)
         return validated
@@ -271,14 +201,6 @@ class OracleConfig(BaseModel):
         default=str(Path.home() / "pseudos"),
         description="Path to pseudopotentials directory (can be overridden by MLIP_PSEUDO_DIR env var)",
     )
-
-    @field_validator("kspacing")
-    @classmethod
-    def validate_kspacing(cls, v: float) -> float:
-        if v < 0.01 or v > 0.15:
-            msg = "kspacing must be within a reasonable range for typical DFT calculations (0.01 to 0.15)"
-            raise ValueError(msg)
-        return v
 
     max_retries: int = Field(default=3, ge=0, description="Max retries for SCF convergence failure")
     buffer_size: float = Field(
@@ -345,7 +267,7 @@ class TrainerConfig(BaseModel):
     def validate_trusted_directories(cls, v: list[str]) -> list[str]:
         validated = []
         for path in v:
-            res = _validate_single_trusted_dir(path)
+            res = _secure_resolve_and_validate_dir(path, check_exists=True)
             if res:
                 validated.append(res)
         return validated
@@ -383,9 +305,30 @@ class StructureGeneratorConfig(BaseModel):
         default_factory=lambda: ["FePt", "MgO"],
         description="Whitelist of explicitly supported synthetic interface components",
     )
+    fept_lattice_constant: float = Field(default=3.8, description="Lattice constant for FePt")
+    mgo_lattice_constant: float = Field(default=4.21, description="Lattice constant for MgO")
+    interface_max_strain: float = Field(
+        default=10.0, description="Max strain for stacking interfaces"
+    )
 
 
 class PolicyConfig(BaseModel):
+    @field_validator("fallback_metal_melting_point", "fallback_insulator_melting_point")
+    @classmethod
+    def validate_melting_point(cls, v: float) -> float:
+        if v <= 0.0:
+            msg = "Melting point must be positive"
+            raise ValueError(msg)
+        return v
+
+    @field_validator("fallback_metal_bulk_modulus", "fallback_insulator_bulk_modulus")
+    @classmethod
+    def validate_bulk_modulus(cls, v: float) -> float:
+        if v <= 0.0:
+            msg = "Bulk modulus must be positive"
+            raise ValueError(msg)
+        return v
+
     model_config = ConfigDict(extra="forbid")
     default_t_max_scale: float = Field(
         default=0.5, ge=0.0, description="Default max temp scale vs melting point"
@@ -405,6 +348,32 @@ class PolicyConfig(BaseModel):
     )
     strain_heavy_range: float = Field(
         default=0.15, description="strain_range for Strain-Heavy policy"
+    )
+    uncertainty_variance_threshold: float = Field(
+        default=1.0, description="Threshold for initial gamma variance to trigger cautious policy"
+    )
+    metal_band_gap_threshold: float = Field(
+        default=0.1, description="Band gap threshold below which a material is considered a metal"
+    )
+    hard_material_bulk_modulus_threshold: float = Field(
+        default=200.0,
+        description="Bulk modulus threshold above which a material is considered hard",
+    )
+    fallback_metal_band_gap: float = Field(default=0.0, description="Fallback band gap for metals")
+    fallback_metal_melting_point: float = Field(
+        default=1500.0, description="Fallback melting point for metals"
+    )
+    fallback_metal_bulk_modulus: float = Field(
+        default=150.0, description="Fallback bulk modulus for metals"
+    )
+    fallback_insulator_band_gap: float = Field(
+        default=2.0, description="Fallback band gap for insulators"
+    )
+    fallback_insulator_melting_point: float = Field(
+        default=800.0, description="Fallback melting point for insulators"
+    )
+    fallback_insulator_bulk_modulus: float = Field(
+        default=50.0, description="Fallback bulk modulus for insulators"
     )
 
 
@@ -438,9 +407,7 @@ class ProjectConfig(BaseSettings):
             msg = "Environment variable value exceeds maximum length"
             raise ValueError(msg)
         if ".." in val or ";" in val or "&" in val or "|" in val:
-            msg = (
-                f"Invalid characters or traversal sequences in .env variable value: {val}."
-            )
+            msg = f"Invalid characters or traversal sequences in .env variable value: {val}."
             raise ValueError(msg)
 
     @classmethod
@@ -473,19 +440,33 @@ class ProjectConfig(BaseSettings):
 
     @model_validator(mode="before")
     @classmethod
-    def validate_env_content(cls, values: dict[str, Any]) -> dict[str, Any]:
-        from src.dynamics.security_utils import (
-            _validate_env_key,
-            _validate_env_value,
-            validate_env_file_security,
-        )
-
+    def validate_env_content(cls, values: dict[str, Any]) -> dict[str, Any]:  # noqa: PLR0912
         expected_base = Path.cwd().resolve(strict=True)
-        # Using the base directory strictly, not allowing arbitrary values for .env paths
         env_file = expected_base / ".env"
 
         if env_file.exists():
-            resolved_env = validate_env_file_security(env_file, expected_base)
+            if not env_file.is_file():
+                msg = ".env must be a regular file."
+                raise ValueError(msg)
+
+            if env_file.is_symlink():
+                msg = ".env file must not be a symlink."
+                raise ValueError(msg)
+
+            resolved_env = env_file.resolve(strict=True)
+
+            # Additional content safety checks
+            with Path.open(resolved_env, encoding="utf-8") as f:
+                content = f.read()
+                if "import " in content or "eval(" in content or "exec(" in content:
+                    msg = "Suspicious content detected in .env file."
+                    raise ValueError(msg)
+
+            with Path.open(resolved_env, encoding="utf-8") as f:
+                fc = f.read()
+                if "import " in fc or "eval(" in fc or "exec(" in fc:
+                    msg = "Suspicious content detected in .env file."
+                    raise ValueError(msg)
 
             with Path.open(resolved_env, encoding="utf-8") as f:
                 for raw_line in f:
@@ -497,8 +478,23 @@ class ProjectConfig(BaseSettings):
                     key = key.strip()
                     val = val.strip().strip("'").strip('"')
 
-                    _validate_env_key(key)
-                    _validate_env_value(val)
+                    cls._validate_env_key(key)
+                    cls._validate_env_value(val)
+
+                    # Strict type parsing based on expected model fields
+                    # We inject the parsed and type-checked values directly into the configuration dict
+                    if val.lower() in ("true", "1", "yes"):
+                        values[key.replace("MLIP_", "").lower()] = True
+                    elif val.lower() in ("false", "0", "no"):
+                        values[key.replace("MLIP_", "").lower()] = False
+                    else:
+                        try:
+                            if "." in val:
+                                values[key.replace("MLIP_", "").lower()] = float(val)
+                            else:
+                                values[key.replace("MLIP_", "").lower()] = int(val)
+                        except ValueError:
+                            values[key.replace("MLIP_", "").lower()] = val
 
         return values
 
@@ -525,6 +521,9 @@ class ProjectConfig(BaseSettings):
     @field_validator("project_root")
     @classmethod
     def validate_project_root(cls, v: Path) -> Path:
+        if ".." in str(v):
+            msg = "Path traversal sequences (..) are not allowed in project_root"
+            raise ValueError(msg)
         if ".." in str(v):
             msg = "Path traversal sequences (..) are not allowed in project_root"
             raise ValueError(msg)

@@ -1,4 +1,5 @@
 import logging
+import typing
 
 from ase import Atoms
 from ase.build import bulk, stack
@@ -14,10 +15,9 @@ class StructureGenerator(AbstractGenerator):
     def __init__(self, config: StructureGeneratorConfig) -> None:
         self.config = config
 
-    def generate_local_candidates(self, s0: Atoms, n: int = 20) -> list[Atoms]:
+    def generate_local_candidates(self, s0: Atoms, n: int = 20) -> typing.Iterator[Atoms]:
         """Generates candidates via random rattling using streaming generation."""
         from collections.abc import Iterator
-
         if len(s0) > 10000:
             msg = "Structure is too large for rattling (OOM risk)."
             raise ValueError(msg)
@@ -34,20 +34,19 @@ class StructureGenerator(AbstractGenerator):
                 c.rattle(stdev=self.config.stdev, seed=self.config.seed_base + i)
                 yield c
 
-        # In a fully streaming application this would yield directly,
-        # but the trainer pipeline expects a list for selection sampling.
-        # This wrapper explicitly bounds the generation safely.
-        return list(_generator())
+        return _generator()
+
+    def _validate_interface_elements(self, elements: list[str], valid_targets: list[str]) -> None:
+        for elem in elements:
+            if elem not in valid_targets and elem not in chemical_symbols:
+                msg = f"Invalid or unsupported element target for interface generation: {elem}"
+                raise ValueError(msg)
 
     def generate_interface(self, target: InterfaceTarget) -> Atoms:
         """Generates an interface structure based on an InterfaceTarget config."""
         # Security: validate elements before passing to ASE
         valid_targets = self.config.valid_interface_targets
-
-        for elem in [target.element1, target.element2]:
-            if elem not in valid_targets and elem not in chemical_symbols:
-                msg = f"Invalid or unsupported element target for interface generation: {elem}"
-                raise ValueError(msg)
+        self._validate_interface_elements([target.element1, target.element2], valid_targets)
 
         logging.info(
             f"Generating interface between {target.element1} (face {target.face1}) "
@@ -55,20 +54,25 @@ class StructureGenerator(AbstractGenerator):
         )
 
         try:
-            # For simplicity, we create bulk representations and stack them
-            # For FePt, we approximate it by building an Fe bulk, then a Pt bulk and stacking them?
-            # Or just build an L1_0 ordered FePt? The tutorial explicitly mentions FePt vs MgO.
-            # Let's generate a basic FePt structure and an MgO structure.
-
-            # This is a simplified interface construction registry
+            # Basic FePt structure builder
             def _build_fept() -> Atoms:
-                mat = bulk("Fe", crystalstructure="fcc", a=3.8)  # type: ignore[no-untyped-call]
-                mat[0].symbol = "Pt"
+                # To ensure Fe and Pt are present in a basic bulk representation
+                mat = bulk(
+                    "Fe", crystalstructure="fcc", a=self.config.fept_lattice_constant, cubic=True
+                )  # type: ignore[no-untyped-call]
+                # Replace half the atoms with Pt to make it FePt L1_0 like
+                for i in range(len(mat)):
+                    if i % 2 == 0:
+                        mat[i].symbol = "Pt"
                 return mat
 
+            # Basic MgO structure builder
             def _build_mgo() -> Atoms:
                 return bulk(
-                    "MgO", crystalstructure="rocksalt", a=4.21, basis=[[0, 0, 0], [0.5, 0.5, 0.5]]
+                    "MgO",
+                    crystalstructure="rocksalt",
+                    a=self.config.mgo_lattice_constant,
+                    basis=[[0, 0, 0], [0.5, 0.5, 0.5]],
                 )  # type: ignore[no-untyped-call]
 
             builders = {"FePt": _build_fept, "MgO": _build_mgo}
@@ -81,12 +85,10 @@ class StructureGenerator(AbstractGenerator):
             mat1 = _build_generic(target.element1)
             mat2 = _build_generic(target.element2)
 
-            # Adjust lattice parameters slightly to allow stacking without crashing
-            # In a real scenario, this would use sophisticated mismatch analysis
             mat2.set_cell(mat1.get_cell(), scale_atoms=True)  # type: ignore[no-untyped-call]
         except Exception as e:
             logging.exception("Failed to generate interface")
             msg = f"Interface generation failed: {e}"
             raise RuntimeError(msg) from e
         else:
-            return stack(mat1, mat2, axis=2, maxstrain=10.0)  # type: ignore[no-untyped-call]
+            return stack(mat1, mat2, axis=2, maxstrain=self.config.interface_max_strain)  # type: ignore[no-untyped-call]

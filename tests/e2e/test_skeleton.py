@@ -5,12 +5,17 @@ import pytest
 from src.core.orchestrator import Orchestrator
 from src.domain_models.config import (
     DynamicsConfig,
+    InterfaceTarget,
     OracleConfig,
+    PolicyConfig,
     ProjectConfig,
+    StructureGeneratorConfig,
     SystemConfig,
     TrainerConfig,
     ValidatorConfig,
 )
+from src.generators.adaptive_policy import AdaptiveExplorationPolicyEngine, FeatureExtractor
+from src.generators.structure_generator import StructureGenerator
 
 
 def test_full_pipeline_skeleton(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -76,3 +81,51 @@ def test_full_pipeline_skeleton(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
 
     assert result_path is not None
     assert orchestrator.iteration == 1
+
+
+def test_exploration_generation_flow():
+    """E2E Test integrating FeatureExtractor, Policy Engine, and Structure Generator."""
+
+    # 1. Setup minimal configuration
+    system_config = SystemConfig(
+        elements=["Fe", "Pt"], interface_target=InterfaceTarget(element1="FePt", element2="MgO")
+    )
+    policy_config = PolicyConfig()
+    struct_config = StructureGeneratorConfig()
+
+    # 2. Extract features (Cold Start)
+    extractor = FeatureExtractor()
+    features = extractor.extract_features(system_config.elements)
+
+    # Verify features are what we expect for FePt (metallic fallback)
+    assert features.band_gap == 0.0
+    assert features.melting_point > 0.0
+
+    # 3. Decide Policy
+    policy_engine = AdaptiveExplorationPolicyEngine(policy_config)
+    strategy = policy_engine.decide_policy(features)
+
+    # FePt is a multi-component metal -> High-MC Policy
+    assert strategy.policy_name == "High-MC Policy"
+    assert strategy.md_mc_ratio > 0
+
+    # 4. Generate Structure (Initial Interface Generation)
+    generator = StructureGenerator(struct_config)
+    if system_config.interface_target:
+        initial_structure = generator.generate_interface(system_config.interface_target)
+
+        # Verify interface generated successfully
+        symbols = initial_structure.get_chemical_symbols()
+        assert "Fe" in symbols
+        assert "Pt" in symbols
+        assert "Mg" in symbols
+        assert "O" in symbols
+        assert len(initial_structure) > 4
+
+        # 5. Simulate finding an uncertain structure and generating candidates
+        candidates = list(generator.generate_local_candidates(initial_structure, n=5))
+
+        assert len(candidates) == 5
+        for cand in candidates:
+            # The candidates should have the same number of atoms as the initial structure
+            assert len(cand) == len(initial_structure)

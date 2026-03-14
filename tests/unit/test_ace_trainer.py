@@ -59,6 +59,7 @@ def test_select_local_active_set(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert isinstance(selected[0], Atoms)
 
+
 class TestACETrainer:
     @pytest.fixture
     def mock_config(self):

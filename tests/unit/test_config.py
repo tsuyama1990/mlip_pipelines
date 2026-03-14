@@ -58,22 +58,28 @@ def test_project_config(tmp_path: Path) -> None:
 def test_validate_single_trusted_dir_valid(tmp_path: Path) -> None:
     d = tmp_path / "valid_dir"
     d.mkdir()
-    from src.domain_models.config import _validate_single_trusted_dir
+    from src.domain_models.config import (
+        _secure_resolve_and_validate_dir as _validate_single_trusted_dir,
+    )
 
-    assert _validate_single_trusted_dir(str(d)) == str(d.resolve())
+    assert _validate_single_trusted_dir(str(d), check_exists=True) == str(d.resolve())
 
 
 def test_validate_single_trusted_dir_not_exist(tmp_path: Path) -> None:
     d = tmp_path / "not_exist"
-    from src.domain_models.config import _validate_single_trusted_dir
+    from src.domain_models.config import (
+        _secure_resolve_and_validate_dir as _validate_single_trusted_dir,
+    )
 
-    assert _validate_single_trusted_dir(str(d)) is None
+    assert _validate_single_trusted_dir(str(d), check_exists=True) is None
 
 
 def test_validate_single_trusted_dir_not_dir(tmp_path: Path) -> None:
     f = tmp_path / "file.txt"
     f.write_text("dummy")
-    from src.domain_models.config import _validate_single_trusted_dir
+    from src.domain_models.config import (
+        _secure_resolve_and_validate_dir as _validate_single_trusted_dir,
+    )
 
     with pytest.raises(ValueError, match="(?i).*must be a directory.*"):
         _validate_single_trusted_dir(str(f))
@@ -105,8 +111,8 @@ def test_project_config_env_value() -> None:
 
 
 def test_project_config_env_file_security(tmp_path: Path) -> None:
+
     from src.domain_models.config import ProjectConfig
-    import os
 
     base = tmp_path / "base"
     base.mkdir()
@@ -126,7 +132,7 @@ def test_project_config_env_file_security(tmp_path: Path) -> None:
     env.unlink()
 
     # Test oversized file
-    with open(env, "wb") as f:
+    with env.open("wb") as f:
         f.write(b"0" * (11 * 1024))
 
     with pytest.raises(ValueError, match=".*exceeds maximum allowed size.*"):
@@ -139,6 +145,7 @@ def test_project_config_env_file_security(tmp_path: Path) -> None:
     env.chmod(0o777)
     # The system might override 777 depending on umask, so ensure group write is on
     import stat
+
     if bool(env.stat().st_mode & stat.S_IWOTH):
         with pytest.raises(ValueError, match=".*insecure permissions.*"):
             ProjectConfig._validate_env_file_security(env, base)
