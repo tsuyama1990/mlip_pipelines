@@ -30,7 +30,8 @@ The design prioritizes safety (Physics-Informed Robustness) and security (strict
 1.  **Hybrid Potential Enforcement**: To guarantee physical safety during extrapolation, the `MDInterface` must automatically generate LAMMPS input scripts (`in.lammps`) that utilize `pair_style hybrid/overlay`. It must explicitly superimpose the ACE potential (`pace`) with the physical baseline (`zbl` or `lj`) defined in `SystemConfig.baseline_potential`.
 2.  **Uncertainty Watchdog (`fix halt`)**: The `MDInterface` configures LAMMPS to continuously compute the extrapolation grade ($\gamma$) using `compute pace_gamma`. It sets a `fix watchdog` to halt the simulation if the maximum $\gamma$ exceeds `DynamicsConfig.uncertainty_threshold` (e.g., 5.0).
 3.  **Halt Detection and Extraction**: When a simulation halts prematurely (detected via LAMMPS output logs or specific exit codes), the `extract_high_gamma_structures` method parses the final `dump.lammps` file. It identifies the specific atoms responsible for the high $\gamma$ value and extracts their local environments as ASE `Atoms` objects for the Oracle to evaluate.
-4.  **Strict Sandbox Execution**: Because LAMMPS and EON involve running complex external binaries and reading potentially unsafe input files, `security_utils.py` ensures that all working directories are strictly resolved, absolute paths (`resolve(strict=True)`), forbidding symlinks or traversal attempts. All binary paths are validated against `DynamicsConfig.trusted_directories` and optional `binary_hashes`.
+4.  **EON Client Lifecycle Management**: EON processes (like `eonclient`) can easily become zombie processes if not managed carefully. The `EONWrapper` must explicitly manage the subprocess. It must monitor for a specific custom exit code (`100`) emitted by the EON potential driver (`pace_driver.py`) to indicate an extrapolation halt. If halted or if a general exception occurs, it must ensure the `eonclient` subprocess is forcefully terminated to prevent resource leaks.
+5.  **Strict Sandbox Execution**: Because LAMMPS and EON involve running complex external binaries and reading potentially unsafe input files, `security_utils.py` ensures that all working directories are strictly resolved, absolute paths (`resolve(strict=True)`), forbidding symlinks or traversal attempts. All binary paths are validated against `DynamicsConfig.trusted_directories` and optional `binary_hashes`.
 
 ## Implementation Approach
 1.  **Implement Security Utilities (`dynamics/security_utils.py`)**:
@@ -50,7 +51,9 @@ The design prioritizes safety (Physics-Informed Robustness) and security (strict
         -   Extract the full structure or a localized cluster centered on these atoms and return them as a list of `Atoms` objects.
 3.  **Implement EONWrapper (`dynamics/eon_wrapper.py`)**:
     -   Create the `EONWrapper` class inheriting from `AbstractDynamics`.
-    -   Implement `run_exploration` similarly, but executing the `eonclient` binary and managing the `config.ini` generation based on `DynamicsConfig.eon_config_template`.
+    -   Implement `run_exploration` to generate `config.ini` based on `DynamicsConfig.eon_config_template`.
+    -   Use `subprocess.Popen` to execute `eonclient`. Wait for completion or an explicit timeout.
+    -   If `proc.returncode == 100`, log the OTF event, gracefully terminate the process, and return `{'halted': True}` along with the path to the high-$\gamma$ structure written by the driver. Ensure that `finally` blocks are used to `proc.kill()` the client if an unexpected error breaks the loop.
 
 ## Test Strategy
 

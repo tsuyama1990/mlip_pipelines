@@ -25,7 +25,7 @@ src/
 ## Design Architecture
 The design is strongly typed using the `TrainerConfig` Pydantic model to define strict boundaries for the Pacemaker CLI interactions.
 
-1.  **Strict Subprocess Execution**: The `PacemakerWrapper` interacts with external Pacemaker binaries (`pace_train`, `pace_activeset`). To prevent command injection vulnerabilities, it uses `subprocess.run(shell=False)` with strictly constructed argument lists derived from the validated `TrainerConfig`. Template strings (`pace_train_args_template`) are filled programmatically, and binary paths are resolved against the project root and verified against a whitelist (`trusted_directories`) or explicit SHA256 hashes (`binary_hashes`).
+1.  **Strict Subprocess Execution and Limits**: The `PacemakerWrapper` interacts with external Pacemaker binaries (`pace_train`, `pace_activeset`). To prevent command injection vulnerabilities, it uses `subprocess.run(shell=False)` with strictly constructed argument lists derived from the validated `TrainerConfig`. Crucially, to prevent infinite hangs and resource exhaustion during training (a common issue in iterative ML), `subprocess.run` must be wrapped with an explicit `timeout` argument.
 2.  **D-Optimality Filtering**: Before adding new structures to the dataset, `select_local_active_set` uses `pace_activeset` to identify the most mathematically informative subsets from the candidates generated in CYCLE02. This prevents dataset bloat and over-representation of highly correlated structures, fulfilling the "Data Efficiency" requirement.
 3.  **Delta Learning Configuration**: The `train` method strictly enforces the `baseline_potential` setting from `TrainerConfig` (e.g., "zbl"). It programmatically injects this requirement into the Pacemaker training configuration or CLI arguments, ensuring the ACE model learns only the many-body corrections to the strong repulsive core.
 
@@ -44,13 +44,14 @@ The design is strongly typed using the `TrainerConfig` Pydantic model to define 
         -   Construct the `pace_train` command list using the `pace_train_args_template` from `TrainerConfig`.
         -   Inject the `dataset`, `max_epochs`, `active_set_size`, `baseline_potential`, and `regularization` parameters.
         -   If `initial_potential` is provided, add the `--initial_potential` argument for fine-tuning.
-        -   Execute the subprocess securely (`shell=False`).
+        -   Execute the subprocess securely (`shell=False`), explicitly passing `timeout=3600` (or a configurable value) and capturing stdout/stderr.
+        -   If a `subprocess.TimeoutExpired` exception is caught, log the error and raise a `RuntimeError` to trigger the Orchestrator's general cleanup mechanism.
         -   Verify that the resulting `output_potential.yace` file exists in `output_dir` and return its path.
 
 ## Test Strategy
 
 ### Unit Testing Approach
--   **Secure Command Construction**: Instantiate `PacemakerWrapper` with a standard `TrainerConfig`. Mock the `subprocess.run` method. Call `train()`. Verify that the constructed command list passed to `subprocess.run` matches the expected format, contains no shell meta-characters (e.g., `;`, `&`, `|`), and correctly incorporates the `baseline_potential` and `initial_potential` arguments.
+-   **Secure Command Construction**: Instantiate `PacemakerWrapper` with a standard `TrainerConfig`. Mock the `subprocess.run` method. Call `train()`. Verify that the constructed command list passed to `subprocess.run` matches the expected format, contains no shell meta-characters (e.g., `;`, `&`, `|`), correctly incorporates the `baseline_potential` and `initial_potential` arguments, and that the `timeout` parameter is explicitly set.
 -   **Dataset Updating**: Create a temporary file representing `accumulated.extxyz` containing one structure. Call `update_dataset` with a list of two new mock `Atoms` objects. Read the resulting file back using ASE and verify it now contains exactly three structures, demonstrating successful appending.
 
 ### Integration Testing Approach

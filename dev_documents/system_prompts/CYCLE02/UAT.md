@@ -17,6 +17,11 @@
 **Priority**: High
 **Description**: Verify that the `StructureGenerator.generate_local_candidates` method strictly limits the size of the input structure (`s0`) and the number of candidates generated (`n`) to prevent Out-Of-Memory (OOM) errors and Denial of Service (DoS) attacks from excessively large cluster requests.
 
+### Scenario 4: Autonomous Feature Extraction (Cold Start)
+**ID**: `UAT-02-04`
+**Priority**: High
+**Description**: Verify that the system can autonomously deduce material features required for the Adaptive Policy Engine without user input. It should attempt to use universal potentials (M3GNet/CHGNet), but must gracefully fall back to a deterministic rule-based mock if those heavy dependencies are unavailable, guaranteeing the pipeline never stalls due to missing features.
+
 ## Behavior Definitions
 
 ### UAT-02-01: Adaptive Exploration Policy Evaluation
@@ -58,4 +63,15 @@ GIVEN a moderately large `Atoms` object (e.g., 2,000 atoms) and a request for `n
 WHEN `generate_local_candidates()` is called
 THEN the method should automatically scale down the number of generated candidates to a safe maximum (e.g., `max(1, n // 10)`)
 AND the returned list of rattled structures should not exceed this safe limit.
+```
+
+### UAT-02-04: Autonomous Feature Extraction (Cold Start)
+```gherkin
+GIVEN a minimal user configuration specifying only the elements `["Fe", "Pt"]`
+AND the environment does not have `matgl` or `chgnet` installed (simulating a lightweight CI runner)
+WHEN the Orchestrator requests material features via the `FeatureExtractor`
+THEN the extractor should catch the `ImportError`
+AND it should automatically invoke the fallback mock routine
+AND it should return a fully populated `MaterialFeatures` object (e.g., $E_g \approx 0$ for metals)
+AND the `AdaptiveExplorationPolicyEngine` should successfully consume these features without crashing.
 ```

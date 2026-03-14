@@ -68,7 +68,6 @@ def __() -> tuple[Any, ...]:
         if project_config.use_mock:
             # Replace components natively using explicit Mock implementations via Dependency Injection
             # avoiding brittle MagicMock method overwriting on existing instance boundaries.
-            from ase.io import write
 
             from src.dynamics.dynamics_engine import MDInterface
 

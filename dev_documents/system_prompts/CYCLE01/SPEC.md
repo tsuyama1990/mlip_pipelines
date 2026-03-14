@@ -31,7 +31,8 @@ The system is fully designed around robust Pydantic-based schemas. The domain co
 2.  **Security and Path Validation**: The `ProjectConfig` includes extensive custom validators. `project_root` must be an absolute path, cannot contain traversal characters (`..`), and must not reside in restricted system directories (`/etc`, `/bin`). `.env` file loading is strictly secured; the file cannot be a symlink, must have secure permissions (not world-writable), and keys/values are checked against strict regular expressions to prevent environment injection.
 3.  **Dependency Injection**: The Orchestrator is instantiated with the `ProjectConfig`. It then instantiates the concrete implementations of `AbstractDynamics`, `AbstractOracle`, `AbstractTrainer`, and `AbstractGenerator` by passing down the specific sub-configurations (`config.dynamics`, `config.oracle`, etc.).
 4.  **Atomic File Operations**: The Orchestrator manages the Active Learning iterations via temporary directories (`tmp_work_dir`). The final potential file (`generation_NNN.yace`) is strictly verified for size limits (preventing OOM) and headers (preventing corruption) before being atomically moved to its final destination using `shutil.move()`.
-5.  **Extensibility**: The configuration is designed to be easily extensible in future cycles. For example, adding new parameters to the Adaptive Policy Engine simply involves adding typed fields to the `PolicyConfig` model.
+5.  **State Checkpointing and Resilience**: The `Orchestrator` implements a `resume_state()` method. Upon instantiation, instead of resetting `self.iteration = 0`, it scans the `active_learning/` and `potentials/` directories to definitively establish the highest successfully completed iteration, allowing the pipeline to recover gracefully from unexpected HPC node preemptions or power losses.
+6.  **Extensibility**: The configuration is designed to be easily extensible in future cycles. For example, adding new parameters to the Adaptive Policy Engine simply involves adding typed fields to the `PolicyConfig` model.
 
 ## Implementation Approach
 1.  **Define Pydantic Models (`config.py`)**:
@@ -47,6 +48,7 @@ The system is fully designed around robust Pydantic-based schemas. The domain co
     -   Create `AbstractDynamics`, `AbstractOracle`, `AbstractTrainer`, and `AbstractGenerator` with abstract methods representing their core responsibilities (e.g., `run_exploration`, `compute_batch`, `train`, `generate_local_candidates`).
 4.  **Implement Orchestrator (`core/orchestrator.py`)**:
     -   Implement the `__init__` method to initialize the system based on `ProjectConfig`.
+    -   Implement `resume_state()`. This method must scan `self.config.project_root / "potentials"` for the highest `generation_NNN.yace` file to accurately set `self.iteration`. It should also handle cleaning up any orphaned `iter_XXX` temporary folders from a crashed run.
     -   Implement `run_cycle()`, the main loop. Use a robust context manager (`@contextlib.contextmanager`) with `try...finally` to ensure temporary execution directories (`tmp_work_dir`) are always cleaned up, even on failure.
     -   Implement `_secure_copy_potential()` to safely validate the resulting YACE file (size limit, header check) and atomically copy it to the `potentials/` directory.
     -   Handle domain-specific exceptions (`DynamicsHaltInterrupt`, `OracleConvergenceError`) appropriately.
@@ -59,3 +61,4 @@ The system is fully designed around robust Pydantic-based schemas. The domain co
 
 ### Integration Testing Approach
 -   **Orchestrator Loop**: Create mock implementations of `AbstractDynamics`, `AbstractOracle`, and `AbstractTrainer` that simply return dummy success values without actually executing LAMMPS or DFT. Instantiate the `Orchestrator` with these mocks and a valid `ProjectConfig`. Call `run_cycle()` and verify that the orchestration state machine correctly transitions through all phases (Exploration $\rightarrow$ Candidate Selection $\rightarrow$ DFT $\rightarrow$ Training $\rightarrow$ Deployment) and successfully produces the final `generation_001.yace` file in the mocked output directory. Use `tmp_path` for all file I/O to ensure a side-effect-free execution environment.
+-   **State Recovery (Checkpointing)**: Pre-populate the `tmp_path` with a mock directory structure mimicking a system that completed up to iteration 005 (`potentials/generation_005.yace`). Instantiate the `Orchestrator`. Verify that `self.iteration` correctly initializes to 5 without human intervention.

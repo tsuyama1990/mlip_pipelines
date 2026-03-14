@@ -35,9 +35,13 @@ graph TD
 
     subgraph Core Orchestration
         Orchestrator
+        StateRecovery[Filesystem Checkpointing]
+        ColdStart[Universal Potential Feature Extraction]
         PolicyEngine[Adaptive Policy Engine]
     end
 
+    Orchestrator -->|Recovers State| StateRecovery
+    Orchestrator -->|Extracts Features| ColdStart
     Orchestrator -->|Decides Strategy| PolicyEngine
 
     subgraph Abstract Interfaces
@@ -108,24 +112,24 @@ The new requirements are seamlessly integrated by extending the existing Pydanti
 The project is decomposed into six sequential, valid cycles. Each cycle builds upon the previous one, maintaining a fully testable state.
 
 ### CYCLE01: Core Orchestrator & Configuration
-- **Scope**: Finalise the strict Pydantic configuration schemas (`ProjectConfig`, `SystemConfig`, etc.) in `src/domain_models/config.py`. Enhance the `Orchestrator` in `src/core/orchestrator.py` to robustly manage the state machine, directory swapping, atomic file movements, and exception handling without breaking existing abstract interfaces.
-- **Goal**: Establish the secure, type-safe backbone of the pipeline capable of reading configurations and executing a mocked loop.
+- **Scope**: Finalise the strict Pydantic configuration schemas (`ProjectConfig`, `SystemConfig`, etc.) in `src/domain_models/config.py`. Enhance the `Orchestrator` in `src/core/orchestrator.py` to robustly manage the state machine, directory swapping, atomic file movements, state checkpointing (resuming from previous iterations), and exception handling without breaking existing abstract interfaces.
+- **Goal**: Establish the secure, type-safe backbone of the pipeline capable of reading configurations, executing a mocked loop, and recovering gracefully from node preemptions/crashes.
 
 ### CYCLE02: Structure Generator & Adaptive Policy
-- **Scope**: Implement the `AdaptiveExplorationPolicyEngine` to dynamically calculate `ExplorationStrategy` parameters (temperature, MD/MC ratio) based on material features. Enhance `StructureGenerator` to support robust local candidate generation (rattling) and complex synthetic interface building (e.g., FePt/MgO) using ASE.
-- **Goal**: Provide intelligent, physics-informed structure sampling that avoids redundant random generation.
+- **Scope**: Implement the "Initial Exploration (Cold Start)" mechanism to extract intrinsic material features (e.g., predicted melting point, bulk modulus) using a universal potential API (e.g., M3GNet mock) if available. Implement the `AdaptiveExplorationPolicyEngine` to dynamically calculate `ExplorationStrategy` parameters (temperature, MD/MC ratio) based on these features. Enhance `StructureGenerator` to support robust local candidate generation (rattling) and complex synthetic interface building (e.g., FePt/MgO) using ASE.
+- **Goal**: Provide intelligent, physics-informed structure sampling that avoids redundant random generation, driven by autonomously extracted material data.
 
 ### CYCLE03: Oracle (DFT Integration)
 - **Scope**: Implement the `DFTManager` within `src/oracles/dft_oracle.py`. Focus on the self-healing calculation loop using Quantum Espresso (via ASE). Implement Periodic Embedding to securely and correctly wrap high-uncertainty clusters into valid periodic supercells before DFT execution.
 - **Goal**: Ensure the system can autonomously calculate exact forces and energies, recovering gracefully from SCF convergence failures.
 
 ### CYCLE04: Trainer (Pacemaker Integration)
-- **Scope**: Implement `PacemakerWrapper` in `src/trainers/ace_trainer.py`. Integrate the D-Optimality active set selection (`pace_activeset`) to filter structures. Enforce Delta Learning by composing the ACE potential with a ZBL/LJ baseline during training (`pace_train`).
-- **Goal**: Train highly accurate potentials using only the most mathematically informative structures, preventing overfitting.
+- **Scope**: Implement `PacemakerWrapper` in `src/trainers/ace_trainer.py`. Integrate the D-Optimality active set selection (`pace_activeset`) to filter structures. Enforce Delta Learning by composing the ACE potential with a ZBL/LJ baseline during training (`pace_train`). Implement strict subprocess memory and timeout limits to prevent the orchestrator from hanging indefinitely.
+- **Goal**: Train highly accurate potentials securely and efficiently using only the most mathematically informative structures, preventing overfitting and resource exhaustion.
 
 ### CYCLE05: Dynamics Engine (LAMMPS & EON Integration)
-- **Scope**: Finalise `MDInterface` and `EONWrapper` in `src/dynamics/`. Implement the logic to inject the hybrid potential (`pair_style hybrid/overlay`) into LAMMPS. Configure the uncertainty watchdog (`fix halt` based on $\gamma$ threshold) to interrupt the simulation when extrapolating.
-- **Goal**: Enable continuous On-The-Fly (OTF) execution that safely halts before unphysical crashes occur.
+- **Scope**: Finalise `MDInterface` and `EONWrapper` in `src/dynamics/`. Implement the logic to inject the hybrid potential (`pair_style hybrid/overlay`) into LAMMPS. Configure the uncertainty watchdog (`fix halt` based on $\gamma$ threshold) to interrupt the simulation when extrapolating. Explicitly manage the `eonclient` background process lifecycle to catch custom exit codes (e.g., `100` for halt) and avoid zombie processes.
+- **Goal**: Enable continuous On-The-Fly (OTF) execution that safely halts before unphysical crashes occur across both MD and kMC domains.
 
 ### CYCLE06: Validator & Quality Assurance
 - **Scope**: Implement the `Validator` and `Reporter` modules. Integrate routines to calculate Test Set RMSE, check mechanical stability (Born criteria), and generate visual HTML reports summarizing the MLIP's quality.

@@ -17,6 +17,11 @@
 **Priority**: Medium
 **Description**: Verify that the Orchestrator's `_secure_copy_potential` method correctly validates the integrity and size of a newly generated MLIP (`.yace` file) before deploying it to the production directory. The test should simulate the generation of both a valid potential (correct headers, within size limits) and an invalid potential (missing headers, exceeding size limits), ensuring that the invalid file is rejected and the system cleans up the temporary directory correctly.
 
+### Scenario 4: Automated State Checkpointing and Recovery
+**ID**: `UAT-01-04`
+**Priority**: High
+**Description**: Verify that if the Orchestrator process is killed or preempted mid-run, it can seamlessly resume its iteration tracking upon restart. The system must autonomously scan the `potentials/` directory for the latest valid `.yace` file (e.g., `generation_008.yace`) and correctly initialize `self.iteration` (e.g., to 8) without requiring manual configuration changes from the user.
+
 ## Behavior Definitions
 
 ### UAT-01-01: Initial System Startup with Valid Configuration
@@ -53,4 +58,14 @@ WHEN the Orchestrator attempts to deploy the potential via `_secure_copy_potenti
 THEN the validation should fail
 AND a `ValueError` should be raised indicating the file size limit was exceeded
 AND the invalid file should not be deployed.
+
+### UAT-01-04: Automated State Checkpointing and Recovery
+```gherkin
+GIVEN a previous run of the pipeline was preempted
+AND the `potentials/` directory contains `generation_001.yace`, `generation_002.yace`, and `generation_003.yace`
+WHEN the user initializes a new instance of the Orchestrator
+THEN the Orchestrator should successfully execute `resume_state()`
+AND `self.iteration` should be automatically set to `3`
+AND the next generated potential should correctly be named `generation_004.yace`.
+```
 ```
