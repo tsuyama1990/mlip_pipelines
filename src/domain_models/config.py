@@ -193,6 +193,19 @@ if __name__ == "__main__":
 
 class OracleConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    max_coord: float = Field(
+        default=1e5, description="Maximum allowed coordinate magnitude to prevent overflow"
+    )
+    max_atoms: int = Field(
+        default=10000, description="Maximum number of atoms allowed to prevent OOM"
+    )
+    min_atom_distance: float = Field(
+        default=0.1, description="Minimum allowed interatomic distance to prevent crash"
+    )
+    max_cell_dimension: float = Field(
+        default=1000.0, description="Maximum allowed cell vector length"
+    )
+
     kspacing: float = Field(
         default=0.05, gt=0.0, description="K-point spacing in inverse Angstroms"
     )
@@ -229,9 +242,11 @@ class OracleConfig(BaseModel):
 
 class TrainerConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    max_epochs: int = Field(default=50, ge=1, description="Number of epochs for fine-tuning")
+    max_epochs: int = Field(
+        default=50, ge=1, le=10000, description="Number of epochs for fine-tuning"
+    )
     active_set_size: int = Field(
-        default=500, ge=1, description="Target size of active set for D-Optimality"
+        default=500, ge=1, le=10000, description="Target size of active set for D-Optimality"
     )
     baseline_potential: str = Field(default="zbl", description="Baseline potential strategy")
     regularization: str = Field(default="L2", description="Regularization strategy for PACE")

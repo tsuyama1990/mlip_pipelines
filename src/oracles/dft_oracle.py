@@ -29,15 +29,13 @@ class DFTManager(AbstractOracle):
             msg = "Atomic positions contain NaN or Inf values."
             raise ValueError(msg)
 
-        max_coord = 1e5
+        max_coord = self.config.max_coord
         if np.any(np.abs(pos) > max_coord):
             msg = f"Atomic positions exceed maximum allowed coordinates ({max_coord})"
             raise ValueError(msg)
 
-        if len(atoms) > 10000:
-            msg = (
-                "Atomic structure is too large (exceeds 10000 atoms). Potential memory exhaustion."
-            )
+        if len(atoms) > self.config.max_atoms:
+            msg = f"Atomic structure is too large (exceeds {self.config.max_atoms} atoms). Potential memory exhaustion."
             raise ValueError(msg)
 
         from ase.data import atomic_numbers
@@ -47,11 +45,11 @@ class DFTManager(AbstractOracle):
                 msg = f"Invalid chemical symbol detected in structure: {symbol}"
                 raise ValueError(msg)
 
-        # Check for overlapping atoms (distance < 0.1 A)
+        # Check for overlapping atoms ({f"distance < {self.config.min_atom_distance} A"})
         distances = embedded.get_all_distances()
         np.fill_diagonal(distances, np.inf)
-        if np.any(distances < 0.1):
-            msg = "Structure contains overlapping atoms (distance < 0.1 A)."
+        if np.any(distances < self.config.min_atom_distance):
+            msg = f"Structure contains overlapping atoms (distance < {self.config.min_atom_distance} A)."
             raise ValueError(msg)
 
         min_pos = pos.min(axis=0)
@@ -63,7 +61,7 @@ class DFTManager(AbstractOracle):
             raise ValueError(msg)
         lengths = max_pos - min_pos + 2 * buffer
 
-        if any(L > 1000.0 for L in lengths):
+        if any(self.config.max_cell_dimension < L for L in lengths):
             msg = "Calculated cell dimensions are too large, potential memory exhaustion."
             raise ValueError(msg)
 
@@ -114,6 +112,12 @@ class DFTManager(AbstractOracle):
             resolved_upf_path = upf_path.resolve(strict=True)
             if not resolved_upf_path.is_relative_to(pseudo_dir_path.resolve(strict=True)):
                 msg = f"Strict path traversal detected for pseudopotential: {upf_name}"
+                raise ValueError(msg)
+            # Validate pseudo file header minimally
+            with Path.open(resolved_upf_path, "r", errors="ignore") as f:
+                header = f.read(1024)
+            if "<UPF" not in header and "PP_INFO" not in header:
+                msg = f"Invalid UPF format for pseudopotential: {upf_name}"
                 raise ValueError(msg)
             pseudos[el] = upf_name
         return pseudos

@@ -13,9 +13,6 @@ from ase.io import write
 from src.core import AbstractTrainer
 from src.domain_models.config import TrainerConfig
 
-BINARY_NAME_PATTERN = re.compile(r"^[-a-zA-Z0-9_.]+$")
-PARAM_PATTERN = re.compile(r"^[-a-zA-Z0-9_.]+$")
-
 
 class PacemakerWrapper(AbstractTrainer):
     """Manages Pacemaker active set selection and training."""
@@ -64,12 +61,8 @@ class PacemakerWrapper(AbstractTrainer):
         return resolved_path
 
     def _get_trusted_dirs(self) -> list[str]:
-        trusted = [
-            "/usr/bin",
-            "/usr/local/bin",
-            "/opt/homebrew/bin",
-            str(Path(sys.prefix) / "bin"),
-        ]
+        trusted = list(self.config.trusted_directories)
+        trusted.append(str(Path(sys.prefix) / "bin"))
         if hasattr(self.config, "project_root"):
             trusted.append(str(Path(self.config.project_root) / "bin"))
         return trusted
@@ -109,7 +102,7 @@ class PacemakerWrapper(AbstractTrainer):
     def _resolve_relative_binary(
         self, binary_setting: str, binary_name: str, trusted_dirs: list[str]
     ) -> str:
-        if not BINARY_NAME_PATTERN.match(binary_setting):
+        if not re.match(r"^[-a-zA-Z0-9_.]+$", binary_setting):
             msg = f"Invalid binary name: {binary_setting}"
             raise ValueError(msg)
         resolved_which = shutil.which(binary_setting)
@@ -194,6 +187,17 @@ class PacemakerWrapper(AbstractTrainer):
             msg = f"Dataset not found: {resolved_dataset}"
             raise FileNotFoundError(msg)
 
+        # Verify it's an extxyz file
+        if resolved_dataset.suffix != ".extxyz":
+            msg = f"Dataset must be an .extxyz file, got: {resolved_dataset.name}"
+            raise ValueError(msg)
+
+        with Path.open(resolved_dataset, "r") as f:
+            first_line = f.readline().strip()
+            if not first_line.isdigit():
+                msg = "Dataset does not appear to be a valid XYZ format (first line must be atom count)."
+                raise ValueError(msg)
+
         # Force directory existence to allow strict resolution
         Path(output_dir).mkdir(parents=True, exist_ok=True)
         resolved_output_dir = Path(output_dir).resolve(strict=True)
@@ -217,10 +221,10 @@ class PacemakerWrapper(AbstractTrainer):
     def _build_train_command(
         self, pace_train_bin: str, dataset: Path, output_dir: Path, initial_potential: Path | None
     ) -> list[str]:
-        if not PARAM_PATTERN.match(self.config.baseline_potential):
+        if not re.match(r"^[-a-zA-Z0-9_.]+$", self.config.baseline_potential):
             msg = "Invalid baseline potential format"
             raise ValueError(msg)
-        if not PARAM_PATTERN.match(self.config.regularization):
+        if not re.match(r"^[-a-zA-Z0-9_.]+$", self.config.regularization):
             msg = "Invalid regularization format"
             raise ValueError(msg)
 
