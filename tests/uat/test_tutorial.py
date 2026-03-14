@@ -9,11 +9,21 @@ def test_uat_01_01_valid_startup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     from src.core.orchestrator import Orchestrator
     from src.domain_models.config import ProjectConfig
 
-    # Since Pydantic validates .env files strictly on instantiation, we must patch out the environment checking
-    # if we are just testing instantiation with direct kwargs.
-    monkeypatch.setattr(ProjectConfig, "validate_env_content", lambda x: x)
-
     (tmp_path / "README.md").touch()
+
+    env_content = f"""MLIP_SYSTEM__ELEMENTS='["Fe", "C"]'
+MLIP_PROJECT_ROOT={tmp_path.resolve()}
+MLIP_DYNAMICS__TRUSTED_DIRECTORIES=[]
+MLIP_TRAINER__TRUSTED_DIRECTORIES=[]
+"""
+    env_file = tmp_path / ".env"
+    env_file.write_text(env_content)
+    env_file.chmod(0o600)
+
+    monkeypatch.setattr(Path, "cwd", lambda: tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("MLIP_PROJECT_ROOT", raising=False)
+    monkeypatch.delenv("MLIP_SYSTEM__ELEMENTS", raising=False)
 
     # Needs to patch pyacemaker because we might not have it installed
     monkeypatch.setitem(
@@ -127,7 +137,21 @@ def test_uat_01_02_invalid_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
 
     from src.domain_models.config import ProjectConfig
 
-    monkeypatch.setattr(ProjectConfig, "validate_env_content", lambda x: x)
+    (tmp_path / "README.md").touch()
+
+    env_content = f"""MLIP_SYSTEM__ELEMENTS='["Fe", "C"]'
+MLIP_PROJECT_ROOT={tmp_path.resolve()}/../
+MLIP_DYNAMICS__TRUSTED_DIRECTORIES=[]
+MLIP_TRAINER__TRUSTED_DIRECTORIES=[]
+"""
+    env_file = tmp_path / ".env"
+    env_file.write_text(env_content)
+    env_file.chmod(0o600)
+
+    monkeypatch.setattr(Path, "cwd", lambda: tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("MLIP_PROJECT_ROOT", raising=False)
+    monkeypatch.delenv("MLIP_SYSTEM__ELEMENTS", raising=False)
 
     from src.domain_models.config import (
         DynamicsConfig,
@@ -136,15 +160,8 @@ def test_uat_01_02_invalid_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
         TrainerConfig,
         ValidatorConfig,
     )
-    with pytest.raises(ValidationError, match=".*Path traversal characters.*"):
-        ProjectConfig(
-            project_root=Path(f"{tmp_path.resolve()}/../"),
-            system=SystemConfig(elements=["Fe", "C"]),
-            dynamics=DynamicsConfig(project_root=str(tmp_path), trusted_directories=[]),
-            oracle=OracleConfig(),
-            trainer=TrainerConfig(trusted_directories=[]),
-            validator=ValidatorConfig()
-        )
+    with pytest.raises(ValidationError, match=".*(Path traversal sequences|Invalid characters or traversal sequences).*"):
+        ProjectConfig()
 
 
 def test_uat_01_04_checkpointing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -158,9 +175,21 @@ def test_uat_01_04_checkpointing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     (pot_dir / "generation_002.yace").touch()
     (pot_dir / "generation_003.yace").touch()
 
-    monkeypatch.setattr(ProjectConfig, "validate_env_content", lambda x: x)
-
     (tmp_path / "README.md").touch()
+
+    env_content = f"""MLIP_SYSTEM__ELEMENTS='["Fe", "C"]'
+MLIP_PROJECT_ROOT={tmp_path.resolve()}
+MLIP_DYNAMICS__TRUSTED_DIRECTORIES=[]
+MLIP_TRAINER__TRUSTED_DIRECTORIES=[]
+"""
+    env_file = tmp_path / ".env"
+    env_file.write_text(env_content)
+    env_file.chmod(0o600)
+
+    monkeypatch.setattr(Path, "cwd", lambda: tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("MLIP_PROJECT_ROOT", raising=False)
+    monkeypatch.delenv("MLIP_SYSTEM__ELEMENTS", raising=False)
 
     monkeypatch.setitem(
         sys.modules, "pyacemaker.calculator", type("pyacemaker", (), {"pyacemaker": True})

@@ -1,3 +1,7 @@
+import logging
+import os
+import re
+import stat
 from pathlib import Path
 from typing import Any, Literal
 
@@ -14,11 +18,6 @@ class InterfaceTarget(BaseModel):
 
 
 def _validate_single_trusted_dir(path: str) -> str | None:
-    import logging
-    import os
-    import stat
-    from pathlib import Path
-
     if ".." in path:
         msg = f"Path traversal characters not allowed in trusted_directory: {path}"
         raise ValueError(msg)
@@ -181,10 +180,6 @@ class DynamicsConfig(BaseModel):
 
     @classmethod
     def _validate_single_trusted_dir(cls, path: str) -> str | None:
-        import logging
-        import os
-        import stat
-
         if ".." in path:
             msg = f"Path traversal characters not allowed in trusted_directory: {path}"
             raise ValueError(msg)
@@ -427,8 +422,6 @@ class ProjectConfig(BaseSettings):
 
     @classmethod
     def _validate_env_key(cls, key: str) -> None:
-        import re
-
         if not key.startswith("MLIP_"):
             msg = f"Unauthorized environment variable injected via .env: {key}. Only MLIP_ prefixes are allowed."
             raise ValueError(msg)
@@ -452,9 +445,6 @@ class ProjectConfig(BaseSettings):
 
     @classmethod
     def _validate_env_file_security(cls, env_file: Path, expected_base: Path) -> Path:
-        import os
-        import stat
-
         if env_file.is_symlink():
             msg = ".env file must not be a symlink."
             raise ValueError(msg)
@@ -484,8 +474,6 @@ class ProjectConfig(BaseSettings):
     @model_validator(mode="before")
     @classmethod
     def validate_env_content(cls, values: dict[str, Any]) -> dict[str, Any]:
-        from pathlib import Path
-
         from src.dynamics.security_utils import (
             _validate_env_key,
             _validate_env_value,
@@ -537,8 +525,6 @@ class ProjectConfig(BaseSettings):
     @field_validator("project_root")
     @classmethod
     def validate_project_root(cls, v: Path) -> Path:
-        import os
-
         if ".." in str(v):
             msg = "Path traversal sequences (..) are not allowed in project_root"
             raise ValueError(msg)

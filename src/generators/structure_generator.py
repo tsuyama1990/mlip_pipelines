@@ -1,6 +1,8 @@
 import logging
 
 from ase import Atoms
+from ase.build import bulk, stack
+from ase.data import chemical_symbols
 
 from src.core import AbstractGenerator
 from src.domain_models.config import InterfaceTarget, StructureGeneratorConfig
@@ -39,9 +41,6 @@ class StructureGenerator(AbstractGenerator):
 
     def generate_interface(self, target: InterfaceTarget) -> Atoms:
         """Generates an interface structure based on an InterfaceTarget config."""
-        from ase.build import bulk, stack
-        from ase.data import chemical_symbols
-
         # Security: validate elements before passing to ASE
         valid_targets = self.config.valid_interface_targets
 

@@ -106,26 +106,42 @@ def test_project_config_env_value() -> None:
 
 def test_project_config_env_file_security(tmp_path: Path) -> None:
     from src.domain_models.config import ProjectConfig
+    import os
 
     base = tmp_path / "base"
     base.mkdir()
     env = base / ".env"
 
-    with pytest.raises(FileNotFoundError, match=".*"):
+    # Test file doesn't exist
+    with pytest.raises(FileNotFoundError):
         ProjectConfig._validate_env_file_security(env, base)
 
-    env.mkdir()
-    with pytest.raises(ValueError, match=".*"):
-        ProjectConfig._validate_env_file_security(env, base)
-
-    env.rmdir()
+    # Test symlink
     target = base / "target.txt"
     target.write_text("test")
-    from pathlib import Path
-
-    Path(env).symlink_to(target)
+    env.symlink_to(target)
     with pytest.raises(ValueError, match=".*must not be a symlink.*"):
         ProjectConfig._validate_env_file_security(env, base)
+
+    env.unlink()
+
+    # Test oversized file
+    with open(env, "wb") as f:
+        f.write(b"0" * (11 * 1024))
+
+    with pytest.raises(ValueError, match=".*exceeds maximum allowed size.*"):
+        ProjectConfig._validate_env_file_security(env, base)
+
+    env.unlink()
+
+    # Test bad permissions (world writable)
+    env.write_text("TEST=1")
+    env.chmod(0o777)
+    # The system might override 777 depending on umask, so ensure group write is on
+    import stat
+    if bool(env.stat().st_mode & stat.S_IWOTH):
+        with pytest.raises(ValueError, match=".*insecure permissions.*"):
+            ProjectConfig._validate_env_file_security(env, base)
 
 
 def test_project_config_convert_str_to_path() -> None:

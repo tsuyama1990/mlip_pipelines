@@ -3,11 +3,13 @@ import logging
 import os
 import re
 import shutil
+import hashlib
 import tempfile
 from collections.abc import Generator, Iterator
 from pathlib import Path
 from typing import Any
 
+import ase.io
 from ase import Atoms
 
 from src.core import AbstractDynamics, AbstractGenerator, AbstractOracle, AbstractTrainer
@@ -42,9 +44,6 @@ class Orchestrator:
 
     def resume_state(self) -> None:
         """Scans the potentials directory to find the highest completed iteration."""
-        import re
-        import shutil
-
         pot_dir = self.config.project_root / "potentials"
         if not pot_dir.exists():
             self.iteration = 0
@@ -190,8 +189,6 @@ class Orchestrator:
             raise ValueError(msg)
 
         if halt_info.get("is_kmc"):
-            import ase.io
-
             high_gamma_atoms = [ase.io.read(dump_path)]
             if not isinstance(high_gamma_atoms[0], Atoms):
                 high_gamma_atoms = [high_gamma_atoms[0][0]]
@@ -268,9 +265,6 @@ class Orchestrator:
     def _secure_copy_potential(
         self, src_pot: Path, pot_dir: Path, iteration: int, tmp_work_dir: Path
     ) -> Path:
-        import hashlib
-        import os
-
         final_dest = pot_dir / f"generation_{iteration:03d}.yace"
 
         if not src_pot.is_file():
@@ -377,9 +371,6 @@ class Orchestrator:
             (tmp_work_dir / expected).mkdir(parents=True, exist_ok=True)
 
     def _swap_directories(self, tmp_work_dir: Path, work_dir: Path) -> None:
-        import os
-        import shutil
-
         if work_dir.exists():
             # Use mkstemp for atomic temporary name generation guaranteed to not collide
             fd, tmp_name = tempfile.mkstemp(dir=str(work_dir.parent))
@@ -449,7 +440,6 @@ class Orchestrator:
                 initial_struct = self.structure_generator.generate_interface(
                     self.config.system.interface_target
                 )
-                from ase.io import write
 
                 work_dir_setup = (
                     self.config.project_root
@@ -459,7 +449,7 @@ class Orchestrator:
                 )
                 work_dir_setup.mkdir(parents=True, exist_ok=True)
                 target_file = work_dir_setup / "initial_structure.extxyz"
-                write(str(target_file), initial_struct, format="extxyz")
+                ase.io.write(str(target_file), initial_struct, format="extxyz")
                 logging.info(
                     f"Generated interface structure with {len(initial_struct)} atoms and saved to {target_file}"
                 )
@@ -492,8 +482,6 @@ class Orchestrator:
         work_dir: Path = base_dir / f"iter_{self.iteration:03d}"
 
         # Cleanly instantiate temp dir via robust context manager mapping explicitly for resource cleanup
-        import tempfile
-
         @contextlib.contextmanager
         def isolated_work_dir(base: Path) -> Generator[Path, None, None]:
             tmp_path = Path(tempfile.mkdtemp(dir=str(base)))
