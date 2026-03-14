@@ -20,7 +20,13 @@ def test_uat_01_01_valid_startup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
         sys.modules, "pyacemaker.calculator", type("pyacemaker", (), {"pyacemaker": True})
     )
 
-    from src.domain_models.config import SystemConfig, DynamicsConfig, OracleConfig, TrainerConfig, ValidatorConfig
+    from src.domain_models.config import (
+        DynamicsConfig,
+        OracleConfig,
+        SystemConfig,
+        TrainerConfig,
+        ValidatorConfig,
+    )
     config = ProjectConfig(
         project_root=tmp_path,
         system=SystemConfig(elements=["Fe", "C"]),
