@@ -93,7 +93,7 @@ class DFTManager(AbstractOracle):
             upf_name = f"{el}.upf"
 
             # Additional layer of security: Ensure the resolved path strictly resides within the intended directory
-            upf_path = (pseudo_dir_path / upf_name).resolve()
+            upf_path = (pseudo_dir_path / upf_name).resolve(strict=False)
 
             if not upf_path.is_relative_to(pseudo_dir_path):
                 msg = f"Path traversal detected for pseudopotential: {upf_name}"
@@ -102,6 +102,11 @@ class DFTManager(AbstractOracle):
             if not upf_path.exists():
                 msg = f"Pseudopotential file not found: {upf_name} in {pseudo_dir_path}"
                 raise FileNotFoundError(msg)
+
+            if not upf_path.resolve(strict=True).is_relative_to(pseudo_dir_path.resolve(strict=True)):
+                msg = f"Strict path traversal detected for pseudopotential: {upf_name}"
+                raise ValueError(msg)
+
             pseudos[el] = upf_name
 
         # Check for transition metals

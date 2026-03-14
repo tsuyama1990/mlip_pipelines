@@ -206,11 +206,11 @@ class Orchestrator:
         final_dest = pot_dir / f"generation_{iteration:03d}.yace"
         src_pot = tmp_work_dir / "training" / "output_potential.yace"
 
-        if not src_pot.is_file() or not src_pot.resolve(strict=True).is_relative_to(
-            tmp_work_dir.resolve(strict=True)
-        ):
+        if not src_pot.is_file():
             msg = "Source potential file missing or invalid"
             raise FileNotFoundError(msg)
+
+        assert src_pot.resolve(strict=True).is_relative_to(tmp_work_dir.resolve(strict=True)), "Path traversal detected"  # noqa: S101
 
         if not src_pot.name.endswith(".yace"):
             msg = "Source potential file must have .yace extension"
@@ -265,12 +265,15 @@ class Orchestrator:
             backup_dir = Path(tempfile.mkdtemp(dir=str(work_dir.parent)))
             try:
                 work_dir.replace(backup_dir)
+                tmp_work_dir.replace(work_dir.resolve(strict=False))
             except Exception:
-                shutil.rmtree(str(backup_dir), ignore_errors=True)
+                if backup_dir.exists() and not work_dir.exists():
+                    backup_dir.replace(work_dir)
                 raise
-            shutil.rmtree(str(backup_dir), ignore_errors=True)
-
-        tmp_work_dir.replace(work_dir.resolve(strict=False))
+            finally:
+                shutil.rmtree(str(backup_dir), ignore_errors=True)
+        else:
+            tmp_work_dir.replace(work_dir.resolve(strict=False))
 
     def _resume_md_engine(self, final_dest: Path, work_dir: Path) -> None:
         from src.dynamics.dynamics_engine import MDInterface

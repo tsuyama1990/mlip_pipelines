@@ -25,10 +25,12 @@ def test_orchestrator_oracle_convergence_error(
     mock_project_config: ProjectConfig, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Verifies OracleConvergenceError usage through the Orchestrator via dependency injection."""
-    from src.core.exceptions import OracleConvergenceError
-    from src.core import AbstractOracle
-    from ase import Atoms
     import sys
+
+    from ase import Atoms
+
+    from src.core import AbstractOracle
+    from src.core.exceptions import OracleConvergenceError
 
     monkeypatch.setitem(
         sys.modules, "pyacemaker.calculator", type("pyacemaker", (), {"pyacemaker": True})
@@ -37,7 +39,8 @@ def test_orchestrator_oracle_convergence_error(
 
     class FailingOracle(AbstractOracle):
         def compute_batch(self, structures: list[Atoms], calc_dir: Path) -> list[Atoms]:
-            raise OracleConvergenceError("Mocked SCF failure")
+            msg = "Mocked SCF failure"
+            raise OracleConvergenceError(msg)
 
     orch.oracle = FailingOracle()
 
@@ -50,9 +53,10 @@ def test_orchestrator_dynamics_halt_interrupt(
     mock_project_config: ProjectConfig, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Verifies DynamicsHaltInterrupt usage through the Orchestrator via dependency injection."""
-    from src.core.exceptions import DynamicsHaltInterrupt
-    from src.core import AbstractDynamics
     import sys
+
+    from src.core import AbstractDynamics
+    from src.core.exceptions import DynamicsHaltInterrupt
 
     monkeypatch.setitem(
         sys.modules, "pyacemaker.calculator", type("pyacemaker", (), {"pyacemaker": True})
@@ -61,7 +65,8 @@ def test_orchestrator_dynamics_halt_interrupt(
 
     class FailingDynamics(AbstractDynamics):
         def run_exploration(self, potential: Path | None, work_dir: Path) -> dict[str, Any]:
-            raise DynamicsHaltInterrupt("Mocked Halt")
+            msg = "Mocked Halt"
+            raise DynamicsHaltInterrupt(msg)
 
     orch.md_engine = FailingDynamics()
 
@@ -79,6 +84,7 @@ def test_run_cycle(monkeypatch: pytest.MonkeyPatch, mock_project_config: Project
 
     # Mock all internal models
     from src.dynamics.dynamics_engine import MDInterface
+
     class MockMD(MDInterface):
         def run_exploration(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
             work_dir = kwargs.get("work_dir")
@@ -178,6 +184,7 @@ def test_run_cycle_converged(
     orch = Orchestrator(mock_project_config)
 
     from src.dynamics.dynamics_engine import MDInterface
+
     class MockMD(MDInterface):
         def run_exploration(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
             return {"halted": False, "dump_file": "dummy_dump"}

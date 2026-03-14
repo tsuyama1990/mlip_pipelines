@@ -24,9 +24,7 @@ class MDInterface(AbstractDynamics):
     def _write_cold_start_input(self, tmp_in_file: Any, dump_name: str, work_dir: Path) -> None:
         import re
 
-        if not re.match(r"^[a-zA-Z0-9_]+\.lammps$", dump_name) and not re.match(
-            r"^[a-zA-Z0-9_]+$", dump_name
-        ):
+        if not re.match(r"^[a-zA-Z0-9_]+(\.lammps)?$", dump_name):
             msg = "Dump file name contains invalid characters"
             raise ValueError(msg)
 
@@ -43,6 +41,8 @@ class MDInterface(AbstractDynamics):
             msg = "Invalid characters in work_dir"
             raise ValueError(msg)
 
+        import shlex
+
         template = self.config.lammps_cold_start_template
         script = template.format(
             lattice_type=lattice_type,
@@ -51,9 +51,9 @@ class MDInterface(AbstractDynamics):
             box_y=int(box_y),
             box_z=int(box_z),
             zbl_mapping=self._get_zbl_mapping(),
-            dump_name=dump_name,
+            dump_name=shlex.quote(dump_name),
             md_steps=int(min(self.config.md_steps, 1000)),
-            work_dir=work_dir_str,
+            work_dir=shlex.quote(work_dir_str),
         )
         tmp_in_file.write(script)
 
@@ -82,9 +82,7 @@ class MDInterface(AbstractDynamics):
             msg = "Potential path contains invalid characters for LAMMPS"
             raise ValueError(msg)
 
-        if not re.match(r"^[a-zA-Z0-9_]+\.lammps$", dump_name) and not re.match(
-            r"^[a-zA-Z0-9_]+$", dump_name
-        ):
+        if not re.match(r"^[a-zA-Z0-9_]+(\.lammps)?$", dump_name):
             msg = "Dump file name contains invalid characters"
             raise ValueError(msg)
 
@@ -102,18 +100,20 @@ class MDInterface(AbstractDynamics):
             msg = "Invalid characters in work_dir"
             raise ValueError(msg)
 
+        import shlex
+
         script = template.format(
             lattice_type=lattice_type,
             lattice_size=float(self.config.lattice_size),
             box_x=int(box_x),
             box_y=int(box_y),
             box_z=int(box_z),
-            pot_path=pot_path_str,
+            pot_path=shlex.quote(pot_path_str),
             zbl_mapping=self._get_zbl_mapping(),
             threshold=float(self.config.uncertainty_threshold),
-            dump_name=dump_name,
+            dump_name=shlex.quote(dump_name),
             md_steps=int(self.config.md_steps),
-            work_dir=work_dir_str,
+            work_dir=shlex.quote(work_dir_str),
         )
         tmp_in_file.write(script)
 

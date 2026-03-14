@@ -14,6 +14,10 @@ class StructureGenerator(AbstractGenerator):
         """Generates candidates via random rattling using streaming generation."""
         from collections.abc import Iterator
 
+        if len(s0) > 10000:
+            msg = "Structure is too large for rattling (OOM risk)."
+            raise ValueError(msg)
+
         # Hard cap n to prevent memory exhaustion attacks
         n = min(n, 100)
 

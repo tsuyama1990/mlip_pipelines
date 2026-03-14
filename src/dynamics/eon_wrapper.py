@@ -14,6 +14,14 @@ class EONWrapper(AbstractDynamics):
         self.system_config = system_config
 
     def _write_config_ini(self, work_dir: Path) -> None:
+        import re
+        if not re.match(r"^[a-zA-Z0-9_-]+$", self.config.eon_job):
+            msg = f"Invalid EON job string: {self.config.eon_job}"
+            raise ValueError(msg)
+        if not re.match(r"^[a-zA-Z0-9_-]+$", self.config.eon_min_mode_method):
+            msg = f"Invalid EON min_mode_method string: {self.config.eon_min_mode_method}"
+            raise ValueError(msg)
+
         ini_content = self.config.eon_config_template.format(
             eon_job=self.config.eon_job,
             temperature=self.config.temperature,

@@ -128,7 +128,7 @@ class PacemakerWrapper(AbstractTrainer):
                     for arg in self.template:
                         formatted_arg = arg.format(**kwargs)
                         if formatted_arg != arg:
-                            if not re.match(r"^[/a-zA-Z0-9_.-]+$", formatted_arg):
+                            if not re.match(r"^[/a-zA-Z0-9_.\-=]+$", formatted_arg):
                                 msg = (
                                     f"Command argument contains invalid characters: {formatted_arg}"
                                 )
@@ -269,7 +269,7 @@ class PacemakerWrapper(AbstractTrainer):
                 for arg in self.template:
                     formatted_arg = arg.format(**kwargs)
                     if formatted_arg != arg:
-                        if not re.match(r"^[/a-zA-Z0-9_.-]+$", formatted_arg):
+                        if not re.match(r"^[/a-zA-Z0-9_.\-=]+$", formatted_arg):
                             msg = f"Command argument contains invalid characters: {formatted_arg}"
                             raise ValueError(msg)
                         self.cmd.append(formatted_arg)
