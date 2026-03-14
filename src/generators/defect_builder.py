@@ -14,7 +14,7 @@ class DefectBuilder:
             self.config = StructureGeneratorConfig()
         else:
             self.config = config
-        self.rng = random.Random(self.config.seed_base)  # noqa: S311
+        self.rng = random.SystemRandom()  # Cryptographically secure random source
 
     def apply_vacancies(self, atoms: Atoms, n_defects_ratio: float) -> Atoms:
         """Removes a percentage of atoms randomly to create vacancies."""
