@@ -1,0 +1,49 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.13, pytest-9.0.2, pluggy-1.6.0
+rootdir: /app
+configfile: pyproject.toml
+testpaths: tests
+plugins: cov-7.0.0, anyio-4.12.1
+collected 52 items
+
+tests/e2e/test_skeleton.py s                                             [  1%]
+tests/uat/test_tutorial.py .                                             [  3%]
+tests/unit/test_ace_trainer.py ...                                       [  9%]
+tests/unit/test_adaptive_policy.py ...                                   [ 15%]
+tests/unit/test_config.py .....                                          [ 25%]
+tests/unit/test_dft_oracle.py ...                                        [ 30%]
+tests/unit/test_domain_models.py .....                                   [ 40%]
+tests/unit/test_dynamics_engine.py ...............                       [ 69%]
+tests/unit/test_eon_wrapper.py ...                                       [ 75%]
+tests/unit/test_orchestrator.py .......                                  [ 88%]
+tests/unit/test_stability.py ....                                        [ 96%]
+tests/unit/test_validator.py .s                                          [100%]
+
+================================ tests coverage ================================
+_______________ coverage: platform linux, python 3.12.13-final-0 _______________
+
+Name                                    Stmts   Miss  Cover   Missing
+---------------------------------------------------------------------
+src/__init__.py                             0      0   100%
+src/core/__init__.py                        0      0   100%
+src/core/orchestrator.py                  218     51    77%   52-53, 56-57, 62-64, 76-90, 96-97, 125-129, 179-180, 189-190, 204-205, 208-209, 215-216, 221-222, 227-228, 236-238, 248-249, 253-254, 257-263, 276, 331, 335
+src/domain_models/__init__.py               3      0   100%
+src/domain_models/config.py               171     53    69%   209-210, 358-418, 444-445, 448-449, 456-457, 461-462
+src/domain_models/dtos.py                  39      2    95%   42-43
+src/dynamics/__init__.py                    0      0   100%
+src/dynamics/dynamics_engine.py           238     54    77%   29-30, 37-38, 42-43, 67-72, 87-88, 96-97, 101-102, 131-132, 137-138, 142-143, 148-149, 152-153, 156-157, 162, 174-175, 246-248, 294, 300-301, 308-309, 313-314, 319-320, 323-324, 327-328, 340-341, 356, 373, 376-377
+src/dynamics/eon_wrapper.py               103     52    50%   39-42, 53-54, 71-74, 89-90, 95, 102-164, 168-171
+src/generators/__init__.py                  0      0   100%
+src/generators/adaptive_policy.py          29      7    76%   13-14, 46-51
+src/generators/structure_generator.py      15      9    40%   14-31
+src/oracles/__init__.py                     0      0   100%
+src/oracles/dft_oracle.py                 113     70    38%   19-20, 32-33, 40-41, 46-47, 65-152, 185-204
+src/trainers/__init__.py                    0      0   100%
+src/trainers/ace_trainer.py               198    137    31%   27, 36, 48-49, 71, 76-94, 97-98, 103-116, 131-134, 157, 159-168, 172-310
+src/validators/__init__.py                  0      0   100%
+src/validators/reporter.py                  7      0   100%
+src/validators/stability_tests.py         119     23    81%   18-23, 32-33, 51, 59-60, 63-66, 90-96, 103-106, 121-124
+src/validators/validator.py                96     76    21%   20-22, 32-33, 39-40, 43-56, 59-139, 143-165
+---------------------------------------------------------------------
+TOTAL                                    1349    534    60%
+======================== 50 passed, 2 skipped in 5.94s =========================

@@ -1,0 +1,15 @@
+1
+Properties=species:S:1:pos:R:3 pbc="F F F"
+Fe       0.00000000       0.00000000       0.00000000
+1
+Properties=species:S:1:pos:R:3 pbc="F F F"
+Fe       0.10000000       0.00000000       0.00000000
+1
+Properties=species:S:1:pos:R:3 pbc="F F F"
+Fe       0.20000000       0.00000000       0.00000000
+1
+Properties=species:S:1:pos:R:3 pbc="F F F"
+Fe       0.30000000       0.00000000       0.00000000
+1
+Properties=species:S:1:pos:R:3 pbc="F F F"
+Fe       0.40000000       0.00000000       0.00000000
