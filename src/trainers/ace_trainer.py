@@ -117,6 +117,7 @@ class PacemakerWrapper(AbstractTrainer):
         expected_hash = self.config.binary_hashes.get(binary_name)
         if expected_hash:
             import hashlib
+
             h = hashlib.sha256()
             with Path.open(resolved_bin, "rb") as f:
                 for chunk in iter(lambda: f.read(4096), b""):
@@ -164,9 +165,12 @@ class PacemakerWrapper(AbstractTrainer):
 
             cmd = [
                 pace_activeset_bin,
-                "--input", in_file_str,
-                "--output", out_file_str,
-                "--n", str(n)
+                "--input",
+                in_file_str,
+                "--output",
+                out_file_str,
+                "--n",
+                str(n),
             ]
 
             try:
@@ -247,12 +251,18 @@ class PacemakerWrapper(AbstractTrainer):
 
         cmd = [
             pace_train_bin,
-            "--dataset", dataset_str,
-            "--max_num_epochs", str(int(self.config.max_epochs)),
-            "--active_set_size", str(int(self.config.active_set_size)),
-            "--baseline_potential", self.config.baseline_potential,
-            "--regularization", self.config.regularization,
-            "--output_dir", output_dir_str
+            "--dataset",
+            dataset_str,
+            "--max_num_epochs",
+            str(int(self.config.max_epochs)),
+            "--active_set_size",
+            str(int(self.config.active_set_size)),
+            "--baseline_potential",
+            self.config.baseline_potential,
+            "--regularization",
+            self.config.regularization,
+            "--output_dir",
+            output_dir_str,
         ]
 
         if initial_potential and initial_potential.exists():

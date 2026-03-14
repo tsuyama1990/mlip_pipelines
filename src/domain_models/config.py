@@ -37,7 +37,7 @@ class DynamicsConfig(BaseModel):
     )
     binary_hashes: dict[str, str] = Field(
         default={},
-        description="Optional dict mapping binary names to SHA256 hashes for strict validation"
+        description="Optional dict mapping binary names to SHA256 hashes for strict validation",
     )
     pace_train_args_template: list[str] = Field(
         default=[
@@ -91,6 +91,7 @@ class DynamicsConfig(BaseModel):
     @classmethod
     def validate_trusted_directories(cls, v: list[str]) -> list[str]:
         import os
+
         validated = []
         for path in v:
             try:
@@ -198,13 +199,14 @@ class TrainerConfig(BaseModel):
     )
     binary_hashes: dict[str, str] = Field(
         default={},
-        description="Optional dict mapping binary names to SHA256 hashes for strict validation"
+        description="Optional dict mapping binary names to SHA256 hashes for strict validation",
     )
 
     @field_validator("trusted_directories")
     @classmethod
     def validate_trusted_directories(cls, v: list[str]) -> list[str]:
         import os
+
         validated = []
         for path in v:
             try:

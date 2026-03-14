@@ -116,6 +116,7 @@ def test_concrete_interface_compliance() -> None:
     from src.generators.structure_generator import StructureGenerator
     from src.oracles.dft_oracle import DFTManager
     from src.trainers.ace_trainer import PacemakerWrapper
+
     sys_cfg = SystemConfig(elements=["Fe", "Pt"], baseline_potential="zbl")
     dyn_cfg = DynamicsConfig(trusted_directories=[], project_root=str(Path.cwd()))
     md_engine = MDInterface(dyn_cfg, sys_cfg)

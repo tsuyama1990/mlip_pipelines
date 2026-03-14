@@ -9,7 +9,13 @@ from src.dynamics.dynamics_engine import MDInterface
 
 
 def test_md_interface_initialization() -> None:
-    config = DynamicsConfig(uncertainty_threshold=6.0, md_steps=1000, temperature=300.0, project_root=str(Path.cwd()), trusted_directories=[])
+    config = DynamicsConfig(
+        uncertainty_threshold=6.0,
+        md_steps=1000,
+        temperature=300.0,
+        project_root=str(Path.cwd()),
+        trusted_directories=[],
+    )
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
     assert engine.config.uncertainty_threshold == 6.0
@@ -113,7 +119,9 @@ ITEM: ATOMS id type x y z c_pace_gamma
 
 
 def test_run_exploration_invalid_potential(tmp_path: Path) -> None:
-    config = DynamicsConfig(uncertainty_threshold=2.0, project_root=str(tmp_path), trusted_directories=[])
+    config = DynamicsConfig(
+        uncertainty_threshold=2.0, project_root=str(tmp_path), trusted_directories=[]
+    )
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
@@ -315,9 +323,7 @@ def test_execute_lammps_invalid_binary_name(tmp_path: Path) -> None:
         engine._execute_lammps(tmp_path)
 
 
-def test_resume_invalid_binary_name(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_resume_invalid_binary_name(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     config = DynamicsConfig(trusted_directories=[], project_root=str(Path.cwd()))
     config.lmp_binary = "lmp;"
     sys_config = SystemConfig(elements=["Fe", "Pt"])

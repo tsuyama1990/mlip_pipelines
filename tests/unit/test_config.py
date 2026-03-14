@@ -28,7 +28,9 @@ def test_system_config_invalid() -> None:
 
 
 def test_dynamics_config_valid() -> None:
-    config = DynamicsConfig(uncertainty_threshold=10.0, project_root=str(Path.cwd()), trusted_directories=[])
+    config = DynamicsConfig(
+        uncertainty_threshold=10.0, project_root=str(Path.cwd()), trusted_directories=[]
+    )
     assert config.uncertainty_threshold == 10.0
 
 

@@ -23,6 +23,7 @@ def _check_trusted_location(resolved_bin: Path, all_trusted: list[str]) -> None:
 
 def _verify_executable_hash(resolved_bin: Path, expected_hash: str) -> None:
     import hashlib
+
     h = hashlib.sha256()
     with Path.open(resolved_bin, "rb") as f:
         for chunk in iter(lambda: f.read(4096), b""):

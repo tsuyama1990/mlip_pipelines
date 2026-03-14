@@ -41,6 +41,7 @@ class EONWrapper(AbstractDynamics):
 
         resolved_pot_str = "None"
         if potential:
+            validate_filename(potential.name)
             resolved_pot = Path(os.path.normpath(os.path.realpath(potential))).resolve(strict=True)
             if self.config.project_root:
                 root = Path(os.path.normpath(os.path.realpath(self.config.project_root))).resolve(
@@ -52,7 +53,11 @@ class EONWrapper(AbstractDynamics):
             # Ensure the potential string itself doesn't contain injected template syntax
             resolved_pot_str = str(resolved_pot)
             # Stricter checks for potential path characters
-            if not re.match(r"^[/a-zA-Z0-9_.-]+$", resolved_pot_str) or "\x00" in resolved_pot_str or ".." in resolved_pot_str:
+            if (
+                not re.match(r"^[/a-zA-Z0-9_.-]+$", resolved_pot_str)
+                or "\x00" in resolved_pot_str
+                or ".." in resolved_pot_str
+            ):
                 msg = "Potential path contains invalid characters"
                 raise ValueError(msg)
 
@@ -88,7 +93,9 @@ cmd = [
     {executable!r},
     {str(static_driver)!r},
     "--threshold", {str(self.config.uncertainty_threshold)!r},
-    "--potential", {resolved_pot_str!r}
+    "--potential", {resolved_pot_str!r},
+    "--default_element", {self.system_config.elements[0]!r},
+    "--default_cell", {str(self.config.lattice_size)!r}
 ]
 
 env = os.environ.copy()
@@ -161,21 +168,23 @@ sys.exit(res.returncode)
         safe_keys = ("PATH", "LD_LIBRARY_PATH", "OMP_NUM_THREADS")
         for k in safe_keys:
             if k in os.environ:
-                val = os.environ[k]
+                val: str = os.environ[k]
+                if not isinstance(val, str):
+                    continue
                 if k in ("PATH", "LD_LIBRARY_PATH"):
                     # Validate PATH-like variables to ensure they only contain allowed characters and paths
-                    paths = val.split(os.pathsep)
-                    safe_paths = []
+                    paths: list[str] = val.split(os.pathsep)
+                    safe_paths: list[str] = []
                     for raw_p in paths:
-                        clean_p = raw_p.strip()
+                        clean_p: str = raw_p.strip()
                         if not clean_p:
                             continue
-                        p_obj = Path(clean_p).resolve(strict=False)
+                        p_obj: Path = Path(clean_p).resolve(strict=False)
                         # Only allow existing absolute paths
                         if p_obj.is_absolute() and p_obj.is_dir():
                             safe_paths.append(str(p_obj))
                     env[k] = os.pathsep.join(safe_paths)
-                elif re.match(r"^[/a-zA-Z0-9_.-]+$", val):
+                elif re.match(r"^[/a-zA-Z0-9_.-:=]+$", val):
                     env[k] = val
         return env
 

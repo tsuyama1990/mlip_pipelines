@@ -11,6 +11,7 @@ def __() -> tuple[Any, ...]:
     import logging
     import os
     import sys
+    from collections.abc import Callable
     from pathlib import Path
 
     import matplotlib.pyplot as plt
@@ -44,7 +45,9 @@ def __() -> tuple[Any, ...]:
         # Avoid running full MLIP dependencies like eonclient by providing fallbacks
         # in the UAT execution while preserving real core code for tests
         sys_config = SystemConfig(elements=["Fe", "Pt", "Mg", "O"])
-        dyn_config = DynamicsConfig(md_steps=100, project_root=str(Path.cwd()), trusted_directories=[])
+        dyn_config = DynamicsConfig(
+            md_steps=100, project_root=str(Path.cwd()), trusted_directories=[]
+        )
         oracle_config = OracleConfig()
         trainer_config = TrainerConfig(max_epochs=2, trusted_directories=[])
         val_config = ValidatorConfig()
@@ -149,14 +152,12 @@ def __() -> tuple[Any, ...]:
         ValidationReport,
         setup_orchestrator,
         os,
+        Callable,
     )
 
 
-from typing import Callable
-from src.core.orchestrator import Orchestrator
-
 @app.cell
-def __phase1(setup_orchestrator: Callable[[], Orchestrator], plt: Any, np: Any) -> tuple[Orchestrator, dict[str, Any], Any]:
+def __phase1(setup_orchestrator: Any, plt: Any, np: Any) -> tuple[Any, dict[str, Any], Any]:
     # ==========================================
     # Phase 1: Zero-Config Run & OTF Halt
     # ==========================================
@@ -202,7 +203,7 @@ def __p1r(phase1_results: dict[str, Any]) -> None:
 
 
 @app.cell
-def __phase2(setup_orchestrator: Callable[[], Orchestrator]) -> tuple[Orchestrator, dict[str, float]]:
+def __phase2(setup_orchestrator: Any) -> tuple[Any, dict[str, float]]:
     # ==========================================
     # Phase 2: The Aha! Moment (FePt/MgO Interface)
     # ==========================================

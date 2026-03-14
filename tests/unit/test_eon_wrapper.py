@@ -8,7 +8,9 @@ from src.dynamics.eon_wrapper import EONWrapper
 
 @pytest.fixture
 def config(tmp_path: Path) -> DynamicsConfig:
-    return DynamicsConfig(trusted_directories=[], project_root=str(tmp_path),
+    return DynamicsConfig(
+        trusted_directories=[],
+        project_root=str(tmp_path),
         uncertainty_threshold=5.0,
         md_steps=100,
         temperature=300.0,
@@ -91,7 +93,6 @@ def test_write_pace_driver_invalid_potential(tmp_path: Path) -> None:
         project_root=str(tmp_path),
         eon_binary="eonclient",
         trusted_directories=[],
-
         eon_job="dummy",
         eon_min_mode_method="dummy",
     )
@@ -127,7 +128,6 @@ def test_run_kmc_invalid_work_dir(tmp_path: Path) -> None:
         project_root=str(tmp_path),
         eon_binary="eonclient",
         trusted_directories=[],
-
         eon_job="dummy",
         eon_min_mode_method="dummy",
     )
@@ -147,7 +147,6 @@ def test_run_kmc_subprocess_fail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
         project_root=str(tmp_path),
         eon_binary="eonclient",
         trusted_directories=[str(dummy_bin_dir)],
-
         eon_job="dummy",
         eon_min_mode_method="dummy",
     )
@@ -184,7 +183,6 @@ def test_run_kmc_subprocess_halted(tmp_path: Path, monkeypatch: pytest.MonkeyPat
         project_root=str(tmp_path),
         eon_binary="eonclient",
         trusted_directories=[str(dummy_bin_dir)],
-
         eon_job="dummy",
         eon_min_mode_method="dummy",
     )
@@ -219,7 +217,6 @@ def test_run_kmc_missing_executable(tmp_path: Path, monkeypatch: pytest.MonkeyPa
         project_root=str(tmp_path),
         eon_binary="eonclient",
         trusted_directories=[],
-
         eon_job="dummy",
         eon_min_mode_method="dummy",
     )
