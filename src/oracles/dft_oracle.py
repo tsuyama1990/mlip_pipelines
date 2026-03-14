@@ -20,17 +20,36 @@ class DFTManager(AbstractOracle):
             msg = "Cannot embed an empty structure."
             raise ValueError(msg)
 
-        # Spec says to define a cubic or orthorhombic box around atoms.
         embedded: Atoms = atoms.copy()  # type: ignore[no-untyped-call]
-
-        # We need an orthorhombic cell for embedding.
-        # Find bounds and pad by buffer
         pos = embedded.get_positions()  # type: ignore[no-untyped-call]
 
         import numpy as np
 
         if np.isnan(pos).any() or np.isinf(pos).any():
             msg = "Atomic positions contain NaN or Inf values."
+            raise ValueError(msg)
+
+        max_coord = self.config.max_coord
+        if np.any(np.abs(pos) > max_coord):
+            msg = f"Atomic positions exceed maximum allowed coordinates ({max_coord})"
+            raise ValueError(msg)
+
+        if len(atoms) > self.config.max_atoms:
+            msg = f"Atomic structure is too large (exceeds {self.config.max_atoms} atoms). Potential memory exhaustion."
+            raise ValueError(msg)
+
+        from ase.data import atomic_numbers
+
+        for symbol in atoms.get_chemical_symbols():
+            if symbol not in atomic_numbers:
+                msg = f"Invalid chemical symbol detected in structure: {symbol}"
+                raise ValueError(msg)
+
+        # Check for overlapping atoms ({f"distance < {self.config.min_atom_distance} A"})
+        distances = embedded.get_all_distances()
+        np.fill_diagonal(distances, np.inf)
+        if np.any(distances < self.config.min_atom_distance):
+            msg = f"Structure contains overlapping atoms (distance < {self.config.min_atom_distance} A)."
             raise ValueError(msg)
 
         min_pos = pos.min(axis=0)
@@ -42,93 +61,90 @@ class DFTManager(AbstractOracle):
             raise ValueError(msg)
         lengths = max_pos - min_pos + 2 * buffer
 
-        # Validate reasonable cell size to prevent memory exhaustion (buffer overflow defense)
-        if any(L > 1000.0 for L in lengths):
+        if any(self.config.max_cell_dimension < L for L in lengths):
             msg = "Calculated cell dimensions are too large, potential memory exhaustion."
             raise ValueError(msg)
 
-        # Shift positions so they center within the box
         center = (max_pos + min_pos) / 2
         box_center = lengths / 2
-
-        # update positions correctly
         shifted_pos = pos + box_center - center
         embedded.set_positions(shifted_pos)  # type: ignore[no-untyped-call]
 
-        # Set Orthorhombic cell
         embedded.set_cell([[lengths[0], 0.0, 0.0], [0.0, lengths[1], 0.0], [0.0, 0.0, lengths[2]]])  # type: ignore[no-untyped-call]
         embedded.set_pbc(True)  # type: ignore[no-untyped-call]
         return embedded
 
-    def _get_calculator(self, atoms: Atoms, work_dir: Path) -> Espresso:  # noqa: C901
-        """Creates the ESPRESSO calculator with self-healing parameters."""
-        # Determine pseudopotentials from elements
+    def _validate_pseudopotentials(self, symbols: set[str]) -> dict[str, str]:
         import re
 
         from ase.data import atomic_numbers
 
-        symbols: set[str] = set(atoms.get_chemical_symbols())  # type: ignore[no-untyped-call]
         pseudos = {}
-
-        # Use strict resolution to ensure the base directory exists and is canonical
         try:
-            pseudo_dir_path = Path(self.config.pseudo_dir).resolve(strict=True)
-            if not pseudo_dir_path.is_absolute() or not pseudo_dir_path.is_dir():
-                msg = f"Pseudopotential directory must be an absolute path to a valid directory: {self.config.pseudo_dir}"
+            raw_pseudo_dir = Path(self.config.pseudo_dir)
+            if not raw_pseudo_dir.is_absolute():
+                msg = (
+                    f"Pseudopotential directory must be an absolute path: {self.config.pseudo_dir}"
+                )
+                raise ValueError(msg)
+            pseudo_dir_path = raw_pseudo_dir.resolve(strict=True)
+            if not pseudo_dir_path.is_dir():
+                msg = (
+                    f"Pseudopotential directory is not a valid directory: {self.config.pseudo_dir}"
+                )
                 raise ValueError(msg)
         except FileNotFoundError as e:
             msg = f"Pseudopotential directory not found: {self.config.pseudo_dir}"
             raise FileNotFoundError(msg) from e
 
         for el in symbols:
-            # Validate element names strictly against a whitelist of valid chemical symbols structure
-            # to prevent path traversal attacks (e.g. element name "../malicious")
             if not re.match(r"^[A-Z][a-z]?$", el):
                 msg = "Invalid element name"
                 raise ValueError(msg)
             if el not in atomic_numbers:
                 msg = f"Invalid chemical symbol detected: {el}"
                 raise ValueError(msg)
-
             upf_name = f"{el}.upf"
-
-            # Additional layer of security: Ensure the resolved path strictly resides within the intended directory
-            upf_path = (pseudo_dir_path / upf_name)
-
-            if not upf_path.resolve(strict=False).is_relative_to(pseudo_dir_path):
-                msg = f"Path traversal detected for pseudopotential: {upf_name}"
-                raise ValueError(msg)
-
+            upf_path = pseudo_dir_path / upf_name
             if not upf_path.exists():
                 msg = f"Pseudopotential file not found: {upf_name} in {pseudo_dir_path}"
                 raise FileNotFoundError(msg)
-
-            if not upf_path.resolve(strict=True).is_relative_to(pseudo_dir_path.resolve(strict=True)):
+            resolved_upf_path = upf_path.resolve(strict=True)
+            if not resolved_upf_path.is_relative_to(pseudo_dir_path.resolve(strict=True)):
                 msg = f"Strict path traversal detected for pseudopotential: {upf_name}"
                 raise ValueError(msg)
-
+            # Validate pseudo file header minimally
+            with Path.open(resolved_upf_path, "r", errors="ignore") as f:
+                header = f.read(1024)
+            if "<UPF" not in header and "PP_INFO" not in header:
+                msg = f"Invalid UPF format for pseudopotential: {upf_name}"
+                raise ValueError(msg)
             pseudos[el] = upf_name
+        return pseudos
 
-        # Check for transition metals
-        transition_metals = set(self.config.transition_metals)
-        has_tm = any(el in transition_metals for el in symbols)
-
-        # K-points from Kspacing
-        cell = atoms.get_cell()  # type: ignore[no-untyped-call]
+    def _calculate_kpoints(self, atoms: Atoms) -> list[int]:
         import numpy as np
 
-        b = np.linalg.norm(cell, axis=0)  # roughly real lattice vectors lengths
+        cell = atoms.get_cell()  # type: ignore[no-untyped-call]
+        b = np.linalg.norm(cell, axis=0)
 
-        # Validate cell dimensions for kspacing
         if any(x <= 1e-5 or np.isnan(x) or np.isinf(x) for x in b):
             msg = "Cell dimensions must be strictly positive and finite for kspacing calculation"
             raise ValueError(msg)
 
         kpts = [int(np.ceil(2 * np.pi / (self.config.kspacing * x))) for x in b]
+        if np.prod(kpts) > 1000:
+            msg = f"Calculated k-point grid {kpts} exceeds maximum allowed points (1000) to prevent computational exhaustion."
+            raise ValueError(msg)
+        return kpts
 
-        # Validated smearing
+    def _get_calculator(self, atoms: Atoms, work_dir: Path) -> Espresso:
+        """Creates the ESPRESSO calculator with self-healing parameters."""
+        symbols: set[str] = set(atoms.get_chemical_symbols())  # type: ignore[no-untyped-call]
+        pseudos = self._validate_pseudopotentials(symbols)
+        kpts = self._calculate_kpoints(atoms)
+
         degauss = self.config.smearing_width if self.config.smearing_width > 0.0 else 0.02
-
         input_data = {
             "control": {"calculation": self.config.calculation},
             "system": {
@@ -144,15 +160,10 @@ class DFTManager(AbstractOracle):
             },
         }
 
-        if has_tm:
+        transition_metals = set(self.config.transition_metals)
+        if any(el in transition_metals for el in symbols):
             input_data["system"]["nspin"] = 2  # type: ignore[index]
-
-            # Start magnetisation heuristics
-            start_mag = {}
-            for _i, el in enumerate(atoms.get_chemical_symbols()):  # type: ignore[no-untyped-call]
-                if el in transition_metals:
-                    start_mag[el] = 1.0  # High spin initialization
-
+            start_mag = {el: 1.0 for el in atoms.get_chemical_symbols() if el in transition_metals}  # type: ignore[no-untyped-call]
             input_data["system"]["starting_magnetization"] = start_mag  # type: ignore[index]
 
         return Espresso(  # type: ignore[no-untyped-call]
@@ -179,20 +190,12 @@ class DFTManager(AbstractOracle):
             embedded_atoms.calc = calc
 
             try:
-                # Calculate properties.
-                # Since ASE just executes pw.x, we assume pw.x is in PATH.
-                # If not, ASE will fail. We need to handle this robustly.
                 embedded_atoms.get_potential_energy()  # type: ignore[no-untyped-call]
                 embedded_atoms.get_forces()  # type: ignore[no-untyped-call]
                 embedded_atoms.get_stress()  # type: ignore[no-untyped-call]
-
                 results.append(embedded_atoms)
-
             except Exception as e:
-                # Self-healing logic for SCF convergence error:
                 logging.warning(f"SCF failed for struct {i}: {e}. Attempting self-healing...")
-
-                # Retry 1: Lower mixing beta
                 calc.parameters["input_data"]["electrons"]["mixing_beta"] = 0.3
                 try:
                     embedded_atoms.get_potential_energy()  # type: ignore[no-untyped-call]
@@ -201,7 +204,6 @@ class DFTManager(AbstractOracle):
                 except Exception as inner_e:
                     logging.warning(f"Self-healing retry 1 failed: {inner_e}")
 
-                # Retry 2: Change diagonalization
                 calc.parameters["input_data"]["electrons"]["diagonalization"] = "cg"
                 try:
                     embedded_atoms.get_potential_energy()  # type: ignore[no-untyped-call]

@@ -1,52 +1,8 @@
-============================= test session starts ==============================
-platform linux -- Python 3.12.13, pytest-9.0.2, pluggy-1.6.0
-rootdir: /app
-configfile: pyproject.toml
-testpaths: tests
-plugins: cov-7.0.0, anyio-4.12.1
-collected 61 items
-
-tests/e2e/test_skeleton.py s                                             [  1%]
-tests/uat/test_tutorial.py s                                             [  3%]
-tests/unit/test_ace_trainer.py ...                                       [  8%]
-tests/unit/test_adaptive_policy.py ...                                   [ 13%]
-tests/unit/test_config.py .....                                          [ 21%]
-tests/unit/test_dft_oracle.py ...                                        [ 26%]
-tests/unit/test_domain_models.py ............                            [ 45%]
-tests/unit/test_dynamics_engine.py ...............                       [ 70%]
-tests/unit/test_eon_wrapper.py ...                                       [ 75%]
-tests/unit/test_orchestrator.py .........                                [ 90%]
-tests/unit/test_stability.py ....                                        [ 96%]
-tests/unit/test_validator.py .s                                          [100%]
-
-================================ tests coverage ================================
-_______________ coverage: platform linux, python 3.12.13-final-0 _______________
-
-Name                                    Stmts   Miss  Cover   Missing
----------------------------------------------------------------------
-src/__init__.py                             0      0   100%
-src/core/__init__.py                       22      0   100%
-src/core/exceptions.py                      2      0   100%
-src/core/orchestrator.py                  234     60    74%   57-58, 61-62, 67-69, 81-95, 101-102, 130-134, 146, 161-162, 194-195, 204-205, 213-214, 217-218, 221-222, 228-229, 234-235, 240-241, 249-251, 258-259, 263-264, 267-276, 293-294, 297, 350, 354
-src/domain_models/__init__.py               3      0   100%
-src/domain_models/config.py               168     53    68%   209-210, 349-409, 435-436, 439-440, 447-448, 452-453
-src/domain_models/dtos.py                  39      2    95%   42-43
-src/dynamics/__init__.py                    0      0   100%
-src/dynamics/dynamics_engine.py           234     53    77%   32-33, 40-41, 45-46, 77-80, 83-84, 92-93, 97-98, 122-123, 128-129, 133-134, 139-140, 143-144, 147-148, 153, 165-166, 234-236, 282, 286-287, 292-293, 297-298, 303-304, 307-308, 311-312, 324-325, 340, 357, 360-361
-src/dynamics/eon_wrapper.py               111     55    50%   23-24, 26-27, 50-53, 64-65, 78, 86-89, 100-101, 106, 113-171, 175-178
-src/generators/__init__.py                  0      0   100%
-src/generators/adaptive_policy.py          29      7    76%   13-14, 46-51
-src/generators/structure_generator.py      19     12    37%   15-36
-src/oracles/__init__.py                     0      0   100%
-src/oracles/dft_oracle.py                 117     73    38%   20-21, 33-34, 41-42, 47-48, 66-158, 191-210
-src/trainers/__init__.py                    0      0   100%
-src/trainers/ace_trainer.py               231    166    28%   32, 41, 52-53, 75, 80-106, 109-110, 115-136, 151-154, 177, 179-188, 192-343
-src/validators/__init__.py                  0      0   100%
-src/validators/reporter.py                  7      0   100%
-src/validators/stability_tests.py         119     23    81%   18-23, 32-33, 51, 59-60, 63-66, 90-96, 103-106, 121-124
-src/validators/validator.py                90     73    19%   20-22, 27-29, 33-35, 38-51, 54-120, 124-146
----------------------------------------------------------------------
-TOTAL                                    1425    577    60%
-======================== 58 passed, 3 skipped in 2.73s =========================
-/app/.venv/lib/python3.12/site-packages/coverage/inorout.py:561: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.4/messages.html#warning-module-not-imported
-  self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")
+ImportError while loading conftest '/app/tests/conftest.py'.
+tests/conftest.py:5: in <module>
+    from src.domain_models.config import (
+src/domain_models/__init__.py:1: in <module>
+    from .config import (
+src/domain_models/config.py:4: in <module>
+    from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+E   ModuleNotFoundError: No module named 'pydantic'

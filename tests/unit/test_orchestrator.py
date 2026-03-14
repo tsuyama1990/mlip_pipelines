@@ -123,7 +123,7 @@ def test_run_cycle(monkeypatch: pytest.MonkeyPatch, mock_project_config: Project
         def train(self, dataset: Any, initial_potential: Any, output_dir: Path) -> Path:
             pot = output_dir / "output_potential.yace"
             pot.parent.mkdir(parents=True, exist_ok=True)
-            pot.write_text("elements version dummy potential")
+            pot.write_text("elements version b_functions dummy potential")
             return pot
 
     class MockValidator:
