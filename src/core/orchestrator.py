@@ -1,9 +1,9 @@
 import contextlib
+import hashlib
 import logging
 import os
 import re
 import shutil
-import hashlib
 import tempfile
 from collections.abc import Generator, Iterator
 from pathlib import Path

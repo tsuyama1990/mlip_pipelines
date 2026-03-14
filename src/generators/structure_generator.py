@@ -34,9 +34,6 @@ class StructureGenerator(AbstractGenerator):
                 c.rattle(stdev=self.config.stdev, seed=self.config.seed_base + i)
                 yield c
 
-        # In a fully streaming application this would yield directly,
-        # but the trainer pipeline expects a list for selection sampling.
-        # This wrapper explicitly bounds the generation safely.
         return list(_generator())
 
     def generate_interface(self, target: InterfaceTarget) -> Atoms:
@@ -55,17 +52,17 @@ class StructureGenerator(AbstractGenerator):
         )
 
         try:
-            # For simplicity, we create bulk representations and stack them
-            # For FePt, we approximate it by building an Fe bulk, then a Pt bulk and stacking them?
-            # Or just build an L1_0 ordered FePt? The tutorial explicitly mentions FePt vs MgO.
-            # Let's generate a basic FePt structure and an MgO structure.
-
-            # This is a simplified interface construction registry
+            # Basic FePt structure builder
             def _build_fept() -> Atoms:
-                mat = bulk("Fe", crystalstructure="fcc", a=3.8)  # type: ignore[no-untyped-call]
-                mat[0].symbol = "Pt"
+                # To ensure Fe and Pt are present in a basic bulk representation
+                mat = bulk("Fe", crystalstructure="fcc", a=3.8, cubic=True)  # type: ignore[no-untyped-call]
+                # Replace half the atoms with Pt to make it FePt L1_0 like
+                for i in range(len(mat)):
+                    if i % 2 == 0:
+                        mat[i].symbol = "Pt"
                 return mat
 
+            # Basic MgO structure builder
             def _build_mgo() -> Atoms:
                 return bulk(
                     "MgO", crystalstructure="rocksalt", a=4.21, basis=[[0, 0, 0], [0.5, 0.5, 0.5]]
@@ -81,8 +78,6 @@ class StructureGenerator(AbstractGenerator):
             mat1 = _build_generic(target.element1)
             mat2 = _build_generic(target.element2)
 
-            # Adjust lattice parameters slightly to allow stacking without crashing
-            # In a real scenario, this would use sophisticated mismatch analysis
             mat2.set_cell(mat1.get_cell(), scale_atoms=True)  # type: ignore[no-untyped-call]
         except Exception as e:
             logging.exception("Failed to generate interface")

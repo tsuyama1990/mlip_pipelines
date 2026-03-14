@@ -4,24 +4,24 @@ rootdir: /app
 configfile: pyproject.toml
 testpaths: tests
 plugins: cov-7.0.0, anyio-4.12.1
-collected 138 items
+collected 152 items
 
-tests/e2e/test_skeleton.py s                                             [  0%]
-tests/uat/test_tutorial.py ...s                                          [  3%]
-tests/unit/test_ace_trainer.py ................                          [ 15%]
-tests/unit/test_adaptive_policy.py ...                                   [ 17%]
-tests/unit/test_config.py ..............                                 [ 27%]
-tests/unit/test_defect_builder.py ...                                    [ 29%]
-tests/unit/test_dft_oracle.py ...............                            [ 40%]
-tests/unit/test_domain_models.py .                                       [ 41%]
-tests/unit/test_dynamics_engine.py ....................                  [ 55%]
+tests/e2e/test_skeleton.py s.                                            [  1%]
+tests/uat/test_tutorial.py ...s....                                      [  6%]
+tests/unit/test_ace_trainer.py ................                          [ 17%]
+tests/unit/test_adaptive_policy.py .......                               [ 21%]
+tests/unit/test_config.py ..............                                 [ 30%]
+tests/unit/test_defect_builder.py ...                                    [ 32%]
+tests/unit/test_dft_oracle.py ...............                            [ 42%]
+tests/unit/test_domain_models.py .                                       [ 43%]
+tests/unit/test_dynamics_engine.py ....................                  [ 56%]
 tests/unit/test_eon_driver.py .............                              [ 65%]
-tests/unit/test_eon_wrapper.py ...........                               [ 73%]
-tests/unit/test_orchestrator.py .............                            [ 82%]
-tests/unit/test_reporter.py ..                                           [ 84%]
-tests/unit/test_security_utils.py ....                                   [ 86%]
-tests/unit/test_stability.py ........                                    [ 92%]
-tests/unit/test_structure_generator.py .                                 [ 93%]
+tests/unit/test_eon_wrapper.py ...........                               [ 72%]
+tests/unit/test_orchestrator.py .............                            [ 80%]
+tests/unit/test_reporter.py ..                                           [ 82%]
+tests/unit/test_security_utils.py ....                                   [ 84%]
+tests/unit/test_stability.py ........                                    [ 90%]
+tests/unit/test_structure_generator.py ......                            [ 94%]
 tests/unit/test_validator.py ........s                                   [100%]
 
 ================================ tests coverage ================================
@@ -40,11 +40,11 @@ src/dynamics/__init__.py                    0      0   100%
 src/dynamics/dynamics_engine.py           228     52    77%   32-33, 40-41, 44-45, 48-49, 52-53, 57-58, 62-63, 98-99, 110-111, 117-118, 121-122, 125-126, 129-130, 133-134, 138-139, 143-144, 178-179, 190-191, 194-195, 201-202, 204-205, 269-271, 331-332, 338-339, 341-342, 370
 src/dynamics/eon_driver.py                 78     10    87%   23-25, 50, 65-66, 102-104, 125
 src/dynamics/eon_wrapper.py               134     22    84%   61-62, 73-74, 77-78, 114, 146-147, 149-150, 161-162, 173, 181, 187-188, 203-204, 238-241
-src/dynamics/security_utils.py             96     32    67%   16-17, 25-31, 46-47, 66-67, 77, 96-97, 99-100, 102-103, 108-109, 118-119, 124-125, 130-131, 134-135, 138-139
+src/dynamics/security_utils.py             97     32    67%   17-18, 26-32, 47-48, 67-68, 78, 97-98, 100-101, 103-104, 109-110, 119-120, 125-126, 131-132, 135-136, 139-140
 src/generators/__init__.py                  0      0   100%
-src/generators/adaptive_policy.py          29      7    76%   13-14, 46-51
-src/generators/defect_builder.py           72     14    81%   14, 22-23, 26, 43-44, 47, 66-67, 76-77, 81, 105-106
-src/generators/structure_generator.py      49     19    61%   19-40, 49-50, 79, 87-90
+src/generators/adaptive_policy.py          64      5    92%   29, 34-35, 77-78
+src/generators/defect_builder.py           72     15    79%   14, 22-23, 26, 43-44, 47, 66-67, 76-77, 81, 103, 105-106
+src/generators/structure_generator.py      51      5    90%   76, 82-85
 src/oracles/__init__.py                     0      0   100%
 src/oracles/dft_oracle.py                 146     20    86%   20-21, 29-30, 34-35, 38-39, 45-46, 52-53, 60-61, 65-66, 97-98, 114-115
 src/trainers/__init__.py                    0      0   100%
@@ -54,5 +54,7 @@ src/validators/reporter.py                  7      0   100%
 src/validators/stability_tests.py         119      5    96%   51, 59-60, 63-66
 src/validators/validator.py                93     11    88%   20-22, 33-35, 39-41, 85, 99-100
 ---------------------------------------------------------------------
-TOTAL                                    1997    485    76%
-======================== 135 passed, 3 skipped in 3.33s ========================
+TOTAL                                    2035    470    77%
+======================== 149 passed, 3 skipped in 3.62s ========================
+/app/.venv/lib/python3.12/site-packages/coverage/inorout.py:561: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.4/messages.html#warning-module-not-imported
+  self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")

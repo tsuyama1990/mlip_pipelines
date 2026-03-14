@@ -105,8 +105,8 @@ def test_project_config_env_value() -> None:
 
 
 def test_project_config_env_file_security(tmp_path: Path) -> None:
+
     from src.domain_models.config import ProjectConfig
-    import os
 
     base = tmp_path / "base"
     base.mkdir()
@@ -126,7 +126,7 @@ def test_project_config_env_file_security(tmp_path: Path) -> None:
     env.unlink()
 
     # Test oversized file
-    with open(env, "wb") as f:
+    with env.open("wb") as f:
         f.write(b"0" * (11 * 1024))
 
     with pytest.raises(ValueError, match=".*exceeds maximum allowed size.*"):
