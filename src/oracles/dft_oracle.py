@@ -34,6 +34,26 @@ class DFTManager(AbstractOracle):
             msg = f"Atomic positions exceed maximum allowed coordinates ({max_coord})"
             raise ValueError(msg)
 
+        if len(atoms) > 10000:
+            msg = (
+                "Atomic structure is too large (exceeds 10000 atoms). Potential memory exhaustion."
+            )
+            raise ValueError(msg)
+
+        from ase.data import atomic_numbers
+
+        for symbol in atoms.get_chemical_symbols():
+            if symbol not in atomic_numbers:
+                msg = f"Invalid chemical symbol detected in structure: {symbol}"
+                raise ValueError(msg)
+
+        # Check for overlapping atoms (distance < 0.1 A)
+        distances = embedded.get_all_distances()
+        np.fill_diagonal(distances, np.inf)
+        if np.any(distances < 0.1):
+            msg = "Structure contains overlapping atoms (distance < 0.1 A)."
+            raise ValueError(msg)
+
         min_pos = pos.min(axis=0)
         max_pos = pos.max(axis=0)
 
@@ -88,15 +108,11 @@ class DFTManager(AbstractOracle):
                 raise ValueError(msg)
             upf_name = f"{el}.upf"
             upf_path = pseudo_dir_path / upf_name
-            if not upf_path.resolve(strict=False).is_relative_to(pseudo_dir_path):
-                msg = f"Path traversal detected for pseudopotential: {upf_name}"
-                raise ValueError(msg)
             if not upf_path.exists():
                 msg = f"Pseudopotential file not found: {upf_name} in {pseudo_dir_path}"
                 raise FileNotFoundError(msg)
-            if not upf_path.resolve(strict=True).is_relative_to(
-                pseudo_dir_path.resolve(strict=True)
-            ):
+            resolved_upf_path = upf_path.resolve(strict=True)
+            if not resolved_upf_path.is_relative_to(pseudo_dir_path.resolve(strict=True)):
                 msg = f"Strict path traversal detected for pseudopotential: {upf_name}"
                 raise ValueError(msg)
             pseudos[el] = upf_name

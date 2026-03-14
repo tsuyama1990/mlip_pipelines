@@ -194,14 +194,17 @@ class PacemakerWrapper(AbstractTrainer):
             msg = f"Dataset not found: {resolved_dataset}"
             raise FileNotFoundError(msg)
 
-        resolved_output_dir = Path(output_dir).resolve(strict=False)
+        # Force directory existence to allow strict resolution
+        Path(output_dir).mkdir(parents=True, exist_ok=True)
+        resolved_output_dir = Path(output_dir).resolve(strict=True)
 
         if hasattr(self.config, "project_root"):
             proj_root = Path(self.config.project_root).resolve(strict=True)
-            if not resolved_output_dir.is_relative_to(proj_root) and not str(
-                resolved_output_dir
-            ).startswith(tempfile.gettempdir()):
-                msg = f"output_dir is outside the trusted base directory: {resolved_output_dir}"
+            tmp_root = Path(tempfile.gettempdir()).resolve(strict=True)
+            if not resolved_output_dir.is_relative_to(
+                proj_root
+            ) and not resolved_output_dir.is_relative_to(tmp_root):
+                msg = f"output_dir is outside the trusted base directory or temp dir: {resolved_output_dir}"
                 raise ValueError(msg)
 
         resolved_output_dir.mkdir(parents=True, exist_ok=True)
