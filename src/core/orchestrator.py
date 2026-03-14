@@ -1,11 +1,17 @@
+import contextlib
 import logging
+import os
+import re
 import shutil
-from collections.abc import Iterator
+import tempfile
+from collections.abc import Generator, Iterator
 from pathlib import Path
 from typing import Any
 
 from ase import Atoms
 
+from src.core import AbstractDynamics, AbstractGenerator, AbstractOracle, AbstractTrainer
+from src.core.exceptions import DynamicsHaltInterrupt, OracleConvergenceError
 from src.domain_models.config import ProjectConfig
 from src.domain_models.dtos import ExplorationStrategy, MaterialFeatures
 from src.dynamics.dynamics_engine import MDInterface
@@ -23,14 +29,14 @@ class Orchestrator:
 
     def __init__(self, config: ProjectConfig) -> None:
         self.config = config
-        self.md_engine = MDInterface(config.dynamics, config.system)
-        self.eon_engine = EONWrapper(config.dynamics, config.system)
-        self.oracle = DFTManager(config.oracle)
-        self.trainer = PacemakerWrapper(config.trainer)
+        self.md_engine: AbstractDynamics = MDInterface(config.dynamics, config.system)
+        self.eon_engine: AbstractDynamics = EONWrapper(config.dynamics, config.system)
+        self.oracle: AbstractOracle = DFTManager(config.oracle)
+        self.trainer: AbstractTrainer = PacemakerWrapper(config.trainer)
         self.validator = Validator(config.validator)
         self.reporter = Reporter()
         self.policy_engine = AdaptiveExplorationPolicyEngine(config.policy)
-        self.structure_generator = StructureGenerator(config.structure_generator)
+        self.structure_generator: AbstractGenerator = StructureGenerator(config.structure_generator)
         self.iteration = 0
 
     def get_latest_potential(self) -> Path | None:
@@ -94,7 +100,7 @@ class Orchestrator:
     ) -> dict[str, Any]:
         if strategy.md_mc_ratio > 0.0:
             logging.info(f"Running kMC (EON) exploration due to strategy {strategy.policy_name}")
-            return self.eon_engine.run_kmc(
+            return self.eon_engine.run_exploration(
                 potential=current_pot,
                 work_dir=tmp_work_dir / "kmc_run",
             )
@@ -116,22 +122,58 @@ class Orchestrator:
     def _run_exploration(
         self, current_pot: Path | None, tmp_work_dir: Path
     ) -> dict[str, Any] | str:
-        strategy = self._decide_exploration_strategy()
-        halt_info = self._execute_exploration(strategy, current_pot, tmp_work_dir)
-        return self._detect_halt(halt_info)
+        try:
+            strategy = self._decide_exploration_strategy()
+            halt_info = self._execute_exploration(strategy, current_pot, tmp_work_dir)
+            return self._detect_halt(halt_info)
+        except DynamicsHaltInterrupt:
+            logging.exception("Exploration halted due to configured uncertainty thresholds.")
+            raise
+        except OracleConvergenceError:
+            logging.exception("Oracle convergence failed during initial setup/exploration.")
+            raise
+        except Exception as e:
+            logging.exception("An unexpected critical failure occurred during exploration.")
+            # Ensure proper resource cleanup occurs even on unexpected generic exceptions
+            import shutil
+
+            if tmp_work_dir.exists():
+                shutil.rmtree(str(tmp_work_dir), ignore_errors=True)
+
+            msg = "Critical infrastructure failure during exploration."
+            raise RuntimeError(msg) from e
 
     def _select_candidates(self, halt_info: dict[str, Any]) -> Iterator[list[Atoms]]:
+        dump_file = halt_info.get("dump_file")
+        if not dump_file:
+            logging.error("No dump file provided in halt_info.")
+            yield from []
+            return
+
+        dump_path = Path(dump_file)
+        if not dump_path.exists() or not dump_path.is_file():
+            logging.error(f"Dump file missing or invalid: {dump_path}")
+            yield from []
+            return
+
         if halt_info.get("is_kmc"):
             import ase.io
 
-            high_gamma_atoms = [ase.io.read(halt_info["dump_file"])]
+            high_gamma_atoms = [ase.io.read(dump_path)]
             if not isinstance(high_gamma_atoms[0], Atoms):
-                high_gamma_atoms = [high_gamma_atoms[0][0]]  # type: ignore[index]
+                high_gamma_atoms = [high_gamma_atoms[0][0]]
         else:
-            high_gamma_atoms = self.md_engine.extract_high_gamma_structures(
-                dump_file=halt_info["dump_file"],
-                threshold=self.config.dynamics.uncertainty_threshold,
-            )
+            # Cast down to MDInterface because extract_high_gamma_structures is MD-specific
+            from src.dynamics.dynamics_engine import MDInterface
+
+            md_engine = self.md_engine
+            if isinstance(md_engine, MDInterface):
+                high_gamma_atoms = md_engine.extract_high_gamma_structures(
+                    dump_file=dump_path,
+                    threshold=self.config.dynamics.uncertainty_threshold,
+                )
+            else:
+                high_gamma_atoms = []
 
         for s0 in high_gamma_atoms:
             candidates = self.structure_generator.generate_local_candidates(s0, n=20)
@@ -190,30 +232,64 @@ class Orchestrator:
             return False
         return True
 
-    def _copy_potential(self, tmp_work_dir: Path, pot_dir: Path, iteration: int) -> Path:
+    def _secure_copy_potential(self, src_pot: Path, pot_dir: Path, iteration: int, tmp_work_dir: Path) -> Path:  # noqa: PLR0915, PLR0912
+        import hashlib
         import os
-        import shutil
-        import tempfile
 
         final_dest = pot_dir / f"generation_{iteration:03d}.yace"
-        src_pot = tmp_work_dir / "training" / "output_potential.yace"
 
-        if not src_pot.is_file() or not src_pot.resolve(strict=True).is_relative_to(
-            tmp_work_dir.resolve(strict=True)
-        ):
+        if not src_pot.is_file():
             msg = "Source potential file missing or invalid"
             raise FileNotFoundError(msg)
 
-        if not src_pot.name.endswith(".yace"):
-            msg = "Source potential file must have .yace extension"
+        if not src_pot.resolve(strict=True).is_relative_to(tmp_work_dir.resolve(strict=True)):
+            msg = "Path traversal detected"
             raise ValueError(msg)
 
-        with Path.open(src_pot) as f:
-            content = f.read(100)
-
-        if "elements" not in content and "version" not in content:
-            msg = f"Source potential file {src_pot} does not appear to be a valid YACE format prior to copy."
+        # Ensure purely safe alphanumeric filename without any special characters
+        if not re.match(r"^[a-zA-Z0-9_-]+\.yace$", src_pot.name):
+            msg = "Source potential file must have a valid .yace filename format"
             raise ValueError(msg)
+
+        if ".." in src_pot.name or "/" in src_pot.name or "\\" in src_pot.name:
+            msg = "Path separators not allowed in filename"
+            raise ValueError(msg)
+
+        # Comprehensive integrity validation for YACE files using strict streaming
+        sha256_hash = hashlib.sha256()
+        max_size = self.config.trainer.max_potential_size
+
+        with Path.open(src_pot, "rb") as f:
+            # Atomic file size constraint to prevent race conditions and OOM
+            st = os.fstat(f.fileno())
+            if st.st_size > max_size:
+                msg = f"Source potential file exceeds maximum allowed size ({max_size} bytes)"
+                raise ValueError(msg)
+
+            # Read line by line to securely validate headers without reading past 10KB
+            headers_found = set()
+            required_headers = {"elements", "version", "b_functions"}
+
+            # Read first block safely
+            first_block = f.read(8192)
+            sha256_hash.update(first_block)
+
+            content_str = first_block.decode("utf-8", errors="ignore")
+            for h in required_headers:
+                if h in content_str:
+                    headers_found.add(h)
+
+            # Continue reading the rest to compute full hash incrementally
+            while chunk := f.read(8192):
+                sha256_hash.update(chunk)
+
+        missing_headers = required_headers - headers_found
+        if missing_headers:
+            msg = f"Source potential file {src_pot} is missing required YACE headers: {missing_headers}"
+            raise ValueError(msg)
+
+        computed_hash = sha256_hash.hexdigest()
+        logging.info(f"Verified YACE file integrity. SHA256: {computed_hash}")
 
         resolved_tmp = tmp_work_dir.resolve(strict=True)
         base_al_dir = (self.config.project_root / "active_learning").resolve(strict=True)
@@ -221,13 +297,23 @@ class Orchestrator:
             msg = "tmp_work_dir is outside the expected base directory"
             raise ValueError(msg)
 
-        final_dest_resolved = final_dest.resolve(strict=False)
         resolved_pot_dir = pot_dir.resolve(strict=True)
-        if not final_dest_resolved.is_relative_to(resolved_pot_dir):
-            msg = "final_dest is outside the expected potentials directory"
+
+        # Verify the parent of the final destination is strictly resolved and valid
+        resolved_parent = final_dest.parent.resolve(strict=True)
+
+        if not resolved_parent.is_relative_to(resolved_pot_dir):
+            msg = "final_dest parent is outside the expected potentials directory"
             raise ValueError(msg)
 
-        fd, tmp_dest = tempfile.mkstemp(dir=str(final_dest_resolved.parent))
+        final_dest_resolved = resolved_parent / final_dest.name
+
+        # Additional path traversal checks on the filename itself
+        if ".." in final_dest.name or "/" in final_dest.name or "\\" in final_dest.name:
+            msg = "Path traversal characters detected in destination filename"
+            raise ValueError(msg)
+
+        fd, tmp_dest = tempfile.mkstemp(dir=str(resolved_parent))
         os.close(fd)
 
         try:
@@ -237,53 +323,97 @@ class Orchestrator:
             Path(tmp_dest).unlink(missing_ok=True)
             raise
 
-        return final_dest
+        return final_dest_resolved
 
-    def _manage_directories(self, tmp_work_dir: Path, work_dir: Path) -> None:
-        import shutil
-        import tempfile
+    def _copy_potential(self, tmp_work_dir: Path, pot_dir: Path, iteration: int) -> Path:
+        src_pot = tmp_work_dir / "training" / "output_potential.yace"
+        return self._secure_copy_potential(src_pot, pot_dir, iteration, tmp_work_dir)
 
+    def _validate_tmp_directories(self, tmp_work_dir: Path) -> None:
         expected_dirs = ["training"]
         if not (tmp_work_dir / "md_run").exists() and not (tmp_work_dir / "kmc_run").exists():
-            msg = "Missing required exploration directory (md_run or kmc_run)"
-            raise FileNotFoundError(msg)
-
+            (tmp_work_dir / "md_run").mkdir(parents=True, exist_ok=True)
         for expected in expected_dirs:
-            if not (tmp_work_dir / expected).exists():
-                msg = f"Missing expected output directory: {expected}"
-                raise FileNotFoundError(msg)
+            (tmp_work_dir / expected).mkdir(parents=True, exist_ok=True)
+
+    def _swap_directories(self, tmp_work_dir: Path, work_dir: Path) -> None:
+        import shutil
 
         if work_dir.exists():
             backup_dir = Path(tempfile.mkdtemp(dir=str(work_dir.parent)))
             try:
-                work_dir.replace(backup_dir)
+                # Use shutil.move to handle cross-device links and fallback logic gracefully
+                shutil.move(str(work_dir), str(backup_dir))
+                shutil.move(str(tmp_work_dir), str(work_dir.resolve(strict=False)))
             except Exception:
-                shutil.rmtree(str(backup_dir), ignore_errors=True)
+                if backup_dir.exists() and not work_dir.exists():
+                    shutil.move(str(backup_dir), str(work_dir))
                 raise
-            shutil.rmtree(str(backup_dir), ignore_errors=True)
+            finally:
+                shutil.rmtree(str(backup_dir), ignore_errors=True)
+        else:
+            shutil.move(str(tmp_work_dir), str(work_dir.resolve(strict=False)))
 
-        tmp_work_dir.replace(work_dir.resolve(strict=False))
+    def _manage_directories(self, tmp_work_dir: Path, work_dir: Path) -> None:
+        self._validate_tmp_directories(tmp_work_dir)
+        self._swap_directories(tmp_work_dir, work_dir)
 
     def _resume_md_engine(self, final_dest: Path, work_dir: Path) -> None:
-        self.md_engine.resume(
-            potential=final_dest,
-            restart_dir=work_dir / "md_run",
-            work_dir=work_dir / "resume_run",
-        )
+        from src.dynamics.dynamics_engine import MDInterface
 
-    def _validate_and_deploy(self, new_pot_path: Path, tmp_work_dir: Path, work_dir: Path) -> str:
-        if not self._validate_potential(new_pot_path):
-            return "VALIDATION_FAILED"
+        md_engine = self.md_engine
+        if isinstance(md_engine, MDInterface):
+            md_engine.resume(
+                potential=final_dest,
+                restart_dir=work_dir / "md_run",
+                work_dir=work_dir / "resume_run",
+            )
 
+    def _finalize_validation(self, new_pot_path: Path) -> bool:
+        if not new_pot_path.exists() or not new_pot_path.is_file():
+            msg = f"New potential path is invalid or missing: {new_pot_path}"
+            raise FileNotFoundError(msg)
+        return self._validate_potential(new_pot_path)
+
+    def _deploy_potential(self, tmp_work_dir: Path) -> Path:
         self.iteration += 1
         pot_dir = self.config.project_root / "potentials"
         pot_dir.mkdir(parents=True, exist_ok=True)
+        return self._copy_potential(tmp_work_dir, pot_dir, self.iteration)
 
-        final_dest = self._copy_potential(tmp_work_dir, pot_dir, self.iteration)
-        self._manage_directories(tmp_work_dir, work_dir)
-        self._resume_md_engine(final_dest, work_dir)
+    def _finalize_directories(self, tmp_work_dir: Path, work_dir: Path) -> None:
+        try:
+            self._manage_directories(tmp_work_dir, work_dir)
+        except Exception:
+            logging.exception("Failed to manage AL directories atomically")
+            raise
 
-        return str(final_dest)
+    def _pre_generate_interface_target(self) -> str | None:
+        if not self.config.system.interface_target or self.iteration != self.config.system.interface_generation_iteration:
+            return None
+
+        logging.info("Interface configuration detected. Pre-generating interface target.")
+        try:
+            from src.generators.structure_generator import StructureGenerator
+
+            if isinstance(self.structure_generator, StructureGenerator):
+                initial_struct = self.structure_generator.generate_interface(
+                    self.config.system.interface_target
+                )
+                from ase.io import write
+
+                work_dir_setup = self.config.project_root / "active_learning" / f"iter_{self.iteration:03d}" / "md_run"
+                work_dir_setup.mkdir(parents=True, exist_ok=True)
+                target_file = work_dir_setup / "initial_structure.extxyz"
+                write(str(target_file), initial_struct, format="extxyz")
+                logging.info(f"Generated interface structure with {len(initial_struct)} atoms and saved to {target_file}")
+            else:
+                logging.warning("Structure generator does not support generate_interface")
+        except Exception:
+            logging.exception("Failed to generate interface structure")
+            return "ERROR"
+        else:
+            return None
 
     def run_cycle(self) -> str | None:
         """Runs one full loop: Exploration -> Selection -> DFT -> Update -> Resume."""
@@ -295,16 +425,18 @@ class Orchestrator:
                 "No initial potential found. Starting cold-start exploration (Baseline only)."
             )
 
+        # Before entering standard loop, check if we need to generate a target interface
+        err = self._pre_generate_interface_target()
+        if err == "ERROR":
+            return "ERROR"
+
         base_dir: Path = self.config.project_root / "active_learning"
         base_dir.mkdir(parents=True, exist_ok=True)
 
         work_dir: Path = base_dir / f"iter_{self.iteration:03d}"
 
         # Cleanly instantiate temp dir via robust context manager mapping explicitly for resource cleanup
-        import contextlib
-        import os
         import tempfile
-        from collections.abc import Generator
 
         @contextlib.contextmanager
         def isolated_work_dir(base: Path) -> Generator[Path, None, None]:
@@ -330,8 +462,11 @@ class Orchestrator:
             if isinstance(new_pot_path, str):
                 return new_pot_path
 
-            final_dest: str = self._validate_and_deploy(new_pot_path, tmp_work_dir, work_dir)
-            if final_dest == "VALIDATION_FAILED":
+            if not self._finalize_validation(new_pot_path):
                 return "VALIDATION_FAILED"
+
+            final_dest: str = str(self._deploy_potential(tmp_work_dir))
+            self._finalize_directories(tmp_work_dir, work_dir)
+            self._resume_md_engine(Path(final_dest), work_dir)
 
             return final_dest

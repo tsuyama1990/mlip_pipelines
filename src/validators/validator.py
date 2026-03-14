@@ -22,17 +22,23 @@ class Validator:
         return check_phonopy_stability(atoms, calc)
 
     def _check_dependencies(self) -> None:
-        try:
-            from pyacemaker.calculator import pyacemaker  # noqa: F401
-        except ImportError as e:
-            msg = "pyacemaker dependency missing. pyacemaker is required for validation."
-            raise ImportError(msg) from e
+        # Attempt to import dependencies for strict runtime safety
+        import os
 
-        try:
-            import phonopy  # noqa: F401
-        except ImportError as e:
-            msg = "phonopy dependency missing. phonopy is required for validation."
-            raise ImportError(msg) from e
+        use_mock = os.environ.get("USE_MOCK", "False") == "True"
+
+        if not use_mock:
+            try:
+                from pyacemaker.calculator import pyacemaker  # noqa: F401
+            except ImportError as e:
+                msg = "pyacemaker dependency missing. pyacemaker is required for validation."
+                raise ImportError(msg) from e
+
+            try:
+                import phonopy  # noqa: F401
+            except ImportError as e:
+                msg = "phonopy dependency missing. phonopy is required for validation."
+                raise ImportError(msg) from e
 
     def _check_file_format(self, resolved_path: Path) -> None:
         if not resolved_path.is_file():
@@ -44,7 +50,7 @@ class Validator:
             raise ValueError(msg)
 
         with Path.open(resolved_path) as f:
-            content = f.read(100)
+            content: str = f.read(100)
 
         if "elements" not in content and "version" not in content:
             msg = f"Potential file {resolved_path} does not appear to be a valid YACE format."

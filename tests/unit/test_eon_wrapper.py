@@ -7,8 +7,10 @@ from src.dynamics.eon_wrapper import EONWrapper
 
 
 @pytest.fixture
-def config() -> DynamicsConfig:
+def config(tmp_path: Path) -> DynamicsConfig:
     return DynamicsConfig(
+        trusted_directories=[],
+        project_root=str(tmp_path),
         uncertainty_threshold=5.0,
         md_steps=100,
         temperature=300.0,
@@ -66,3 +68,173 @@ def test_eon_wrapper_run_kmc_no_halt(
     wrapper = EONWrapper(config, sys_config)
     with pytest.raises(RuntimeError, match="EON client executable not found"):
         wrapper.run_kmc(None, tmp_path)
+
+
+def test_write_config_ini_invalid_eon_job(tmp_path: Path) -> None:
+    config = DynamicsConfig(trusted_directories=[], project_root=str(tmp_path))
+    config.eon_job = "job;"
+    sys_config = SystemConfig(elements=["Fe", "Pt"])
+    engine = EONWrapper(config, sys_config)
+    with pytest.raises(ValueError, match="Invalid characters in filename:"):
+        engine._write_config_ini(tmp_path)
+
+
+def test_write_config_ini_invalid_min_mode_method(tmp_path: Path) -> None:
+    config = DynamicsConfig(trusted_directories=[], project_root=str(tmp_path))
+    config.eon_min_mode_method = "method;"
+    sys_config = SystemConfig(elements=["Fe", "Pt"])
+    engine = EONWrapper(config, sys_config)
+    with pytest.raises(ValueError, match="Invalid characters in filename:"):
+        engine._write_config_ini(tmp_path)
+
+
+def test_write_pace_driver_invalid_potential(tmp_path: Path) -> None:
+    config = DynamicsConfig(
+        project_root=str(tmp_path),
+        eon_binary="eonclient",
+        trusted_directories=[],
+        eon_job="dummy",
+        eon_min_mode_method="dummy",
+    )
+    sys_config = SystemConfig(elements=["Fe", "Pt"])
+    engine = EONWrapper(config, sys_config)
+
+    # Potential path is outside project root
+    pot_path = Path("/var/tmp/hacker_dummy.yace")  # noqa: S108
+    pot_path.parent.mkdir(parents=True, exist_ok=True)
+    pot_path.touch()
+
+    with pytest.raises(ValueError, match="Potential path must be within the project root"):
+        engine._write_pace_driver(tmp_path, pot_path)
+
+
+def test_write_pace_driver_invalid_python_executable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = DynamicsConfig(trusted_directories=[], project_root=str(tmp_path))
+    sys_config = SystemConfig(elements=["Fe", "Pt"])
+    engine = EONWrapper(config, sys_config)
+
+    import sys
+
+    monkeypatch.setattr(sys, "executable", "python;")
+
+    with pytest.raises(ValueError, match="Invalid python executable path"):
+        engine._write_pace_driver(tmp_path, None)
+
+
+def test_run_kmc_invalid_work_dir(tmp_path: Path) -> None:
+    config = DynamicsConfig(
+        project_root=str(tmp_path),
+        eon_binary="eonclient",
+        trusted_directories=[],
+        eon_job="dummy",
+        eon_min_mode_method="dummy",
+    )
+    sys_config = SystemConfig(elements=["Fe", "Pt"])
+    engine = EONWrapper(config, sys_config)
+
+    work_dir = Path("/var/tmp/hacker_work")  # noqa: S108
+    with pytest.raises(ValueError, match="is outside the allowed project root"):
+        engine.run_kmc(None, work_dir)
+
+
+def test_run_kmc_subprocess_fail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    dummy_bin_dir = tmp_path / "bin"
+    dummy_bin_dir.mkdir(parents=True, exist_ok=True)
+
+    config = DynamicsConfig(
+        project_root=str(tmp_path),
+        eon_binary="eonclient",
+        trusted_directories=[str(dummy_bin_dir)],
+        eon_job="dummy",
+        eon_min_mode_method="dummy",
+    )
+    sys_config = SystemConfig(elements=["Fe", "Pt"])
+    engine = EONWrapper(config, sys_config)
+
+    dummy = dummy_bin_dir / "eonclient"
+    dummy.touch()
+    dummy.chmod(0o755)
+
+    import shutil
+
+    monkeypatch.setattr(shutil, "which", lambda *args, **kwargs: str(dummy))
+
+    class MockRes:
+        returncode = 1
+
+    import subprocess
+
+    monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: MockRes())
+
+    work_dir = tmp_path / "work"
+    work_dir.mkdir(parents=True, exist_ok=True)
+
+    with pytest.raises(RuntimeError, match="EON client failed with return code"):
+        engine.run_kmc(None, work_dir)
+
+
+def test_run_kmc_subprocess_halted(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    dummy_bin_dir = tmp_path / "bin"
+    dummy_bin_dir.mkdir(parents=True, exist_ok=True)
+
+    config = DynamicsConfig(
+        project_root=str(tmp_path),
+        eon_binary="eonclient",
+        trusted_directories=[str(dummy_bin_dir)],
+        eon_job="dummy",
+        eon_min_mode_method="dummy",
+    )
+    sys_config = SystemConfig(elements=["Fe", "Pt"])
+    engine = EONWrapper(config, sys_config)
+
+    dummy = dummy_bin_dir / "eonclient"
+    dummy.touch()
+    dummy.chmod(0o755)
+
+    import shutil
+
+    monkeypatch.setattr(shutil, "which", lambda *args, **kwargs: str(dummy))
+
+    class MockRes:
+        returncode = 100
+
+    import subprocess
+
+    monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: MockRes())
+
+    work_dir = tmp_path / "work"
+    work_dir.mkdir(parents=True, exist_ok=True)
+
+    res = engine.run_kmc(None, work_dir)
+    assert res["halted"] is True
+    assert res["is_kmc"] is True
+
+
+def test_run_kmc_missing_executable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    config = DynamicsConfig(
+        project_root=str(tmp_path),
+        eon_binary="eonclient",
+        trusted_directories=[],
+        eon_job="dummy",
+        eon_min_mode_method="dummy",
+    )
+    sys_config = SystemConfig(elements=["Fe", "Pt"])
+    engine = EONWrapper(config, sys_config)
+
+    from typing import Any
+
+    import src.dynamics.security_utils
+
+    def mock_val(*args: Any, **kwargs: Any) -> str:
+        msg = "EON client executable not found."
+        raise RuntimeError(msg)
+
+    monkeypatch.setattr(src.dynamics.security_utils, "validate_executable_path", mock_val)
+
+    work_dir = tmp_path / "work"
+    work_dir.mkdir(parents=True, exist_ok=True)
+
+    with pytest.raises(RuntimeError, match="EON client executable not found."):
+        engine.run_kmc(None, work_dir)
