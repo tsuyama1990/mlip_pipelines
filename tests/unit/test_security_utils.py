@@ -14,7 +14,7 @@ def test_valid_trusted_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setattr(shutil, "which", lambda *args, **kwargs: str(dummy_bin))
 
     res = validate_executable_path("lmp", [str(tmp_path)])
-    assert res == str(dummy_bin.resolve(strict=True))
+    assert str(res) == str(dummy_bin.resolve(strict=True))
 
 
 def test_symlink_rejected(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

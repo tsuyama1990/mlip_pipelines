@@ -8,7 +8,7 @@ from src.dynamics.eon_wrapper import EONWrapper
 
 @pytest.fixture
 def config(tmp_path: Path) -> DynamicsConfig:
-    return DynamicsConfig(project_root=str(tmp_path),
+    return DynamicsConfig(trusted_directories=[], project_root=str(tmp_path),
         uncertainty_threshold=5.0,
         md_steps=100,
         temperature=300.0,
@@ -69,7 +69,7 @@ def test_eon_wrapper_run_kmc_no_halt(
 
 
 def test_write_config_ini_invalid_eon_job(tmp_path: Path) -> None:
-    config = DynamicsConfig(project_root=str(tmp_path))
+    config = DynamicsConfig(trusted_directories=[], project_root=str(tmp_path))
     config.eon_job = "job;"
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = EONWrapper(config, sys_config)
@@ -78,7 +78,7 @@ def test_write_config_ini_invalid_eon_job(tmp_path: Path) -> None:
 
 
 def test_write_config_ini_invalid_min_mode_method(tmp_path: Path) -> None:
-    config = DynamicsConfig(project_root=str(tmp_path))
+    config = DynamicsConfig(trusted_directories=[], project_root=str(tmp_path))
     config.eon_min_mode_method = "method;"
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = EONWrapper(config, sys_config)
@@ -110,7 +110,7 @@ def test_write_pace_driver_invalid_potential(tmp_path: Path) -> None:
 def test_write_pace_driver_invalid_python_executable(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    config = DynamicsConfig(project_root=str(tmp_path))
+    config = DynamicsConfig(trusted_directories=[], project_root=str(tmp_path))
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = EONWrapper(config, sys_config)
 

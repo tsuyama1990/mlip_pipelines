@@ -117,14 +117,14 @@ def test_concrete_interface_compliance() -> None:
     from src.oracles.dft_oracle import DFTManager
     from src.trainers.ace_trainer import PacemakerWrapper
     sys_cfg = SystemConfig(elements=["Fe", "Pt"], baseline_potential="zbl")
-    dyn_cfg = DynamicsConfig(project_root=str(Path.cwd()))
+    dyn_cfg = DynamicsConfig(trusted_directories=[], project_root=str(Path.cwd()))
     md_engine = MDInterface(dyn_cfg, sys_cfg)
     eon_engine = EONWrapper(dyn_cfg, sys_cfg)
 
     ora_cfg = OracleConfig()
     oracle = DFTManager(ora_cfg)
 
-    trn_cfg = TrainerConfig()
+    trn_cfg = TrainerConfig(trusted_directories=[])
     trainer = PacemakerWrapper(trn_cfg)
 
     gen_cfg = StructureGeneratorConfig()

@@ -189,13 +189,12 @@ sys.exit(res.returncode)
         try:
             # We execute 'eonclient'. If it's missing, subprocess raises FileNotFoundError.
             eon_bin_path = self._get_validated_eon_bin()
-            eon_bin_str = str(eon_bin_path)
 
-            if not re.match(r"^[/a-zA-Z0-9_.-]+$", eon_bin_str):
-                msg = "Invalid characters in resolved EON binary path"
+            if not eon_bin_path.is_absolute() or not eon_bin_path.is_file():
+                msg = "Invalid resolved EON binary path"
                 raise ValueError(msg)
 
-            cmd: list[str] = [eon_bin_str]
+            cmd: list[str] = [str(eon_bin_path)]
 
             # We use check=False to capture return code 100 gracefully
             # Create a minimal safe environment whitelist to prevent sensitive credential leaks

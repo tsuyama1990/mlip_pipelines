@@ -189,7 +189,7 @@ class PacemakerWrapper(AbstractTrainer):
             raise RuntimeError(msg)
 
     def _validate_train_directories(self, dataset: Path, output_dir: Path) -> tuple[Path, Path]:
-        resolved_dataset = dataset.resolve(strict=True)
+        resolved_dataset: Path = dataset.resolve(strict=True)
         if not resolved_dataset.exists():
             msg = f"Dataset not found: {resolved_dataset}"
             raise FileNotFoundError(msg)
@@ -200,18 +200,18 @@ class PacemakerWrapper(AbstractTrainer):
             raise ValueError(msg)
 
         with Path.open(resolved_dataset, "r") as f:
-            first_line = f.readline().strip()
+            first_line: str = f.readline().strip()
             if not first_line.isdigit():
                 msg = "Dataset does not appear to be a valid XYZ format (first line must be atom count)."
                 raise ValueError(msg)
 
         # Force directory existence to allow strict resolution
         Path(output_dir).mkdir(parents=True, exist_ok=True)
-        resolved_output_dir = Path(output_dir).resolve(strict=True)
+        resolved_output_dir: Path = Path(output_dir).resolve(strict=True)
 
         if hasattr(self.config, "project_root"):
-            proj_root = Path(self.config.project_root).resolve(strict=True)
-            tmp_root = Path(tempfile.gettempdir()).resolve(strict=True)
+            proj_root: Path = Path(self.config.project_root).resolve(strict=True)
+            tmp_root: Path = Path(tempfile.gettempdir()).resolve(strict=True)
             if not resolved_output_dir.is_relative_to(
                 proj_root
             ) and not resolved_output_dir.is_relative_to(tmp_root):

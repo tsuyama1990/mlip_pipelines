@@ -32,8 +32,8 @@ class DynamicsConfig(BaseModel):
         pattern=r"^[a-zA-Z0-9_-]+$",
     )
     trusted_directories: list[str] = Field(
-        default=["/usr/bin", "/usr/local/bin", "/opt/homebrew/bin"],
-        description="List of trusted directories for executables",
+        ...,
+        description="List of trusted directories for executables. Required.",
     )
     binary_hashes: dict[str, str] = Field(
         default={},
@@ -193,8 +193,8 @@ class TrainerConfig(BaseModel):
         pattern=r"^[a-zA-Z0-9_-]+$",
     )
     trusted_directories: list[str] = Field(
-        default=["/usr/bin", "/usr/local/bin", "/opt/homebrew/bin", "/bin"],
-        description="List of trusted directories for executables",
+        ...,
+        description="List of trusted directories for executables. Required.",
     )
     binary_hashes: dict[str, str] = Field(
         default={},

@@ -25,9 +25,9 @@ def test_full_pipeline_skeleton(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
 
     config = ProjectConfig(
         system=SystemConfig(elements=["Fe", "Pt"], baseline_potential="zbl"),
-        dynamics=DynamicsConfig(uncertainty_threshold=5.0, md_steps=100, project_root=str(tmp_path)),
+        dynamics=DynamicsConfig(uncertainty_threshold=5.0, md_steps=100, project_root=str(tmp_path), trusted_directories=[]),
         oracle=OracleConfig(kspacing=0.1, smearing_width=0.02, pseudo_dir=str(tmp_path)),
-        trainer=TrainerConfig(max_epochs=2, active_set_size=10),
+        trainer=TrainerConfig(max_epochs=2, active_set_size=10, trusted_directories=[]),
         validator=ValidatorConfig(energy_rmse_threshold=0.05),
         project_root=tmp_path,
     )
@@ -61,7 +61,7 @@ def test_full_pipeline_skeleton(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
         pytest.skip("phonopy is missing, skipping.")
 
     try:
-        result = orchestrator.run_cycle()
+        result_path: str | None = orchestrator.run_cycle()
     except Exception as e:
         import pytest
 
@@ -69,5 +69,5 @@ def test_full_pipeline_skeleton(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
             f"Integration cycle failed due to unconfigured environment specifics or missing structural input data: {e}"
         )
 
-    assert result is not None
+    assert result_path is not None
     assert orchestrator.iteration == 1

@@ -37,22 +37,22 @@ def validate_executable_path(
     trusted_directories: list[str],
     project_root: str | None = None,
     expected_hash: str | None = None,
-) -> str:
+) -> Path:
     """
     Validates that an executable path is safe to use.
-    Returns the resolved absolute path as a string if safe, raises ValueError otherwise.
+    Returns the resolved absolute path as a Path object if safe, raises ValueError otherwise.
     """
 
     if not re.match(r"^[/a-zA-Z0-9_.-]+$", executable_name) or ".." in executable_name:
         msg = "Invalid characters in executable name"
         raise ValueError(msg)
 
-    resolved_which = shutil.which(executable_name)
+    resolved_which: str | None = shutil.which(executable_name)
     if resolved_which is None:
         msg = f"Executable not found: {executable_name}"
         raise RuntimeError(msg)
 
-    resolved_bin = Path(os.path.realpath(resolved_which)).resolve(strict=True)
+    resolved_bin: Path = Path(os.path.realpath(resolved_which)).resolve(strict=True)
 
     # Do not allow resolving via symlinks that point outside trusted domains; explicitly fail if the base was a symlink.
     if Path(resolved_which).is_symlink():
@@ -63,7 +63,7 @@ def validate_executable_path(
         msg = f"Binary is not an executable file: {resolved_bin}"
         raise ValueError(msg)
 
-    all_trusted = trusted_directories.copy()
+    all_trusted: list[str] = trusted_directories.copy()
     all_trusted.append(str(Path(sys.prefix) / "bin"))
     if project_root:
         all_trusted.append(str(Path(project_root) / "bin"))
@@ -73,7 +73,7 @@ def validate_executable_path(
     if expected_hash:
         _verify_executable_hash(resolved_bin, expected_hash)
 
-    return str(resolved_bin.absolute())
+    return resolved_bin.absolute()
 
 
 def validate_filename(filename: str, extra_allowed_chars: str = "") -> None:

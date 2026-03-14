@@ -190,11 +190,11 @@ class MDInterface(AbstractDynamics):
             msg = "LAMMPS executable not found."
             raise RuntimeError(msg) from e
 
-        if not re.match(r"^[/a-zA-Z0-9_.-]+$", lmp_bin):
-            msg = "Invalid characters in resolved LAMMPS binary path"
+        if not lmp_bin.is_absolute() or not lmp_bin.is_file():
+            msg = "Invalid resolved LAMMPS binary path"
             raise ValueError(msg)
 
-        cmd: list[str] = [lmp_bin, "-in", in_file_name]
+        cmd: list[str] = [str(lmp_bin), "-in", in_file_name]
 
         for arg in cmd:
             if not isinstance(arg, str):
@@ -327,11 +327,11 @@ write_data {work_dir.resolve()}/data.lammps
             msg = "LAMMPS executable not found."
             raise RuntimeError(msg) from e
 
-        if not re.match(r"^[/a-zA-Z0-9_.-]+$", lmp_bin):
-            msg = "Invalid characters in resolved LAMMPS binary path"
+        if not lmp_bin.is_absolute() or not lmp_bin.is_file():
+            msg = "Invalid resolved LAMMPS binary path"
             raise ValueError(msg)
 
-        cmd = [lmp_bin, "-in", in_file.name]
+        cmd = [str(lmp_bin), "-in", in_file.name]
 
         for arg in cmd:
             if not isinstance(arg, str):

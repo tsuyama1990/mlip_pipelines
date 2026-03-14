@@ -44,9 +44,9 @@ def __() -> tuple[Any, ...]:
         # Avoid running full MLIP dependencies like eonclient by providing fallbacks
         # in the UAT execution while preserving real core code for tests
         sys_config = SystemConfig(elements=["Fe", "Pt", "Mg", "O"])
-        dyn_config = DynamicsConfig(md_steps=100, project_root=str(Path.cwd()))
+        dyn_config = DynamicsConfig(md_steps=100, project_root=str(Path.cwd()), trusted_directories=[])
         oracle_config = OracleConfig()
-        trainer_config = TrainerConfig(max_epochs=2)
+        trainer_config = TrainerConfig(max_epochs=2, trusted_directories=[])
         val_config = ValidatorConfig()
 
         project_config = ProjectConfig(
@@ -152,8 +152,11 @@ def __() -> tuple[Any, ...]:
     )
 
 
+from typing import Callable
+from src.core.orchestrator import Orchestrator
+
 @app.cell
-def __phase1(setup_orchestrator: Any, plt: Any, np: Any) -> tuple[Any, ...]:
+def __phase1(setup_orchestrator: Callable[[], Orchestrator], plt: Any, np: Any) -> tuple[Orchestrator, dict[str, Any], Any]:
     # ==========================================
     # Phase 1: Zero-Config Run & OTF Halt
     # ==========================================
@@ -194,12 +197,12 @@ def __fig(fig: Any) -> None:
 
 
 @app.cell
-def __p1r(phase1_results: Any) -> None:
+def __p1r(phase1_results: dict[str, Any]) -> None:
     print(f"Phase 1 Completed. Generated potential at: {phase1_results['final_potential']}")
 
 
 @app.cell
-def __phase2(setup_orchestrator: Any) -> tuple[Any, ...]:
+def __phase2(setup_orchestrator: Callable[[], Orchestrator]) -> tuple[Orchestrator, dict[str, float]]:
     # ==========================================
     # Phase 2: The Aha! Moment (FePt/MgO Interface)
     # ==========================================
@@ -221,7 +224,7 @@ def __phase2(setup_orchestrator: Any) -> tuple[Any, ...]:
 
 
 @app.cell
-def __aha(aha_results: Any) -> None:
+def __aha(aha_results: dict[str, float]) -> None:
     print("==========================================")
     print("Phase 2: The Aha! Moment (FePt/MgO Interface)")
     print("==========================================")

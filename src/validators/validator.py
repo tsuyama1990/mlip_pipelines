@@ -50,7 +50,7 @@ class Validator:
             raise ValueError(msg)
 
         with Path.open(resolved_path) as f:
-            content = f.read(100)
+            content: str = f.read(100)
 
         if "elements" not in content and "version" not in content:
             msg = f"Potential file {resolved_path} does not appear to be a valid YACE format."

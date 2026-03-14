@@ -1,8 +1,8 @@
 import argparse
 import sys
-from typing import TYPE_CHECKING
+import typing
 
-if TYPE_CHECKING:
+if typing.TYPE_CHECKING:
     from ase import Atoms
 
 def _raise_empty_stdin() -> None:
@@ -17,12 +17,17 @@ def read_coordinates_from_stdin() -> "Atoms":
         sys.exit(100)
 
     try:
-        lines = sys.stdin.readlines()
+        lines: list[str] = sys.stdin.readlines()
         if not lines:
             _raise_empty_stdin()
         return Atoms("Fe", positions=[[0, 0, 0]], cell=[5, 5, 5], pbc=True)
     except Exception:
-        return Atoms("Fe", positions=[[0, 0, 0]], cell=[5, 5, 5], pbc=True)
+        # Fallback if any error occurs reading or returning default
+        try:
+            from ase import Atoms
+            return Atoms("Fe", positions=[[0, 0, 0]], cell=[5, 5, 5], pbc=True)
+        except ImportError:
+            sys.exit(100)
 
 
 def write_bad_structure(path: str, atoms: "Atoms") -> None:
