@@ -14,7 +14,7 @@ class DefectBuilder:
             self.config = StructureGeneratorConfig()
         else:
             self.config = config
-        self.rng = random.Random(self.config.seed_base)
+        self.rng = random.Random(self.config.seed_base)  # noqa: S311
 
     def apply_vacancies(self, atoms: Atoms, n_defects_ratio: float) -> Atoms:
         """Removes a percentage of atoms randomly to create vacancies."""
@@ -91,13 +91,19 @@ class DefectBuilder:
             idx1 = self.rng.randint(0, len(atoms) - 1)
             # Find an atom of a different type
             attempts = 0
-            while attempts < 100:
+            max_attempts = 100
+            swapped = False
+            while attempts < max_attempts:
                 idx2 = self.rng.randint(0, len(atoms) - 1)
                 if symbols[idx1] != symbols[idx2]:
                     # Swap
                     symbols[idx1], symbols[idx2] = symbols[idx2], symbols[idx1]
+                    swapped = True
                     break
                 attempts += 1
+            if not swapped:
+                msg = f"Failed to find a valid anti-site pair after {max_attempts} attempts. Structure might be too uniform or small."
+                raise RuntimeError(msg)
 
         new_atoms.set_chemical_symbols(symbols)  # type: ignore[no-untyped-call]
         return new_atoms

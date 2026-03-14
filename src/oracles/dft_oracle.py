@@ -33,6 +33,13 @@ class DFTManager(AbstractOracle):
             msg = "Atomic positions contain NaN or Inf values."
             raise ValueError(msg)
 
+        # Security check: Validate reasonable atomic position bounds to prevent memory exhaustion
+        # and numerical instability downstream
+        max_coord = 1e5
+        if np.any(np.abs(pos) > max_coord):
+            msg = f"Atomic positions exceed maximum allowed coordinates ({max_coord})"
+            raise ValueError(msg)
+
         min_pos = pos.min(axis=0)
         max_pos = pos.max(axis=0)
 
@@ -60,7 +67,7 @@ class DFTManager(AbstractOracle):
         embedded.set_pbc(True)  # type: ignore[no-untyped-call]
         return embedded
 
-    def _get_calculator(self, atoms: Atoms, work_dir: Path) -> Espresso:  # noqa: C901
+    def _get_calculator(self, atoms: Atoms, work_dir: Path) -> Espresso:  # noqa: C901, PLR0912, PLR0915
         """Creates the ESPRESSO calculator with self-healing parameters."""
         # Determine pseudopotentials from elements
         import re
@@ -70,11 +77,21 @@ class DFTManager(AbstractOracle):
         symbols: set[str] = set(atoms.get_chemical_symbols())  # type: ignore[no-untyped-call]
         pseudos = {}
 
-        # Use strict resolution to ensure the base directory exists and is canonical
+        # SECURITY: Strictly resolve and canonicalize the pseudopotential directory path
+        # to prevent directory traversal and symlink attacks.
         try:
-            pseudo_dir_path = Path(self.config.pseudo_dir).resolve(strict=True)
-            if not pseudo_dir_path.is_absolute() or not pseudo_dir_path.is_dir():
-                msg = f"Pseudopotential directory must be an absolute path to a valid directory: {self.config.pseudo_dir}"
+            raw_pseudo_dir = Path(self.config.pseudo_dir)
+            if not raw_pseudo_dir.is_absolute():
+                msg = (
+                    f"Pseudopotential directory must be an absolute path: {self.config.pseudo_dir}"
+                )
+                raise ValueError(msg)
+
+            pseudo_dir_path = raw_pseudo_dir.resolve(strict=True)
+            if not pseudo_dir_path.is_dir():
+                msg = (
+                    f"Pseudopotential directory is not a valid directory: {self.config.pseudo_dir}"
+                )
                 raise ValueError(msg)
         except FileNotFoundError as e:
             msg = f"Pseudopotential directory not found: {self.config.pseudo_dir}"

@@ -121,9 +121,15 @@ class Orchestrator:
     def _run_exploration(
         self, current_pot: Path | None, tmp_work_dir: Path
     ) -> dict[str, Any] | str:
-        strategy = self._decide_exploration_strategy()
-        halt_info = self._execute_exploration(strategy, current_pot, tmp_work_dir)
-        return self._detect_halt(halt_info)
+        try:
+            strategy = self._decide_exploration_strategy()
+            halt_info = self._execute_exploration(strategy, current_pot, tmp_work_dir)
+            return self._detect_halt(halt_info)
+        except Exception as e:
+            logging.exception("Exploration engine failed critically during execution.")
+            # Propagate the error so the orchestrator can cleanly fail this iteration
+            msg = f"Exploration engine failed: {e}"
+            raise RuntimeError(msg) from e
 
     def _select_candidates(self, halt_info: dict[str, Any]) -> Iterator[list[Atoms]]:
         if halt_info.get("is_kmc"):
@@ -223,11 +229,16 @@ class Orchestrator:
             msg = "Source potential file must have a valid .yace filename format"
             raise ValueError(msg)
 
+        # Comprehensive integrity validation for YACE files before copy
         with Path.open(src_pot) as f:
-            content = f.read(100)
+            # Read enough of the header to ensure it's not a dummy or corrupted file
+            content = f.read(1024)
 
-        if "elements" not in content and "version" not in content:
-            msg = f"Source potential file {src_pot} does not appear to be a valid YACE format prior to copy."
+        required_headers = ["elements", "version", "b_functions"]
+        missing_headers = [h for h in required_headers if h not in content]
+
+        if missing_headers:
+            msg = f"Source potential file {src_pot} is missing required YACE headers: {missing_headers}"
             raise ValueError(msg)
 
         resolved_tmp = tmp_work_dir.resolve(strict=True)
@@ -302,8 +313,18 @@ class Orchestrator:
         pot_dir = self.config.project_root / "potentials"
         pot_dir.mkdir(parents=True, exist_ok=True)
 
+        # Atomic operations are handled inside _copy_potential via tempfile + replace
         final_dest = self._copy_potential(tmp_work_dir, pot_dir, self.iteration)
-        self._manage_directories(tmp_work_dir, work_dir)
+
+        try:
+            # _manage_directories also uses atomic replacement for the work_dir
+            self._manage_directories(tmp_work_dir, work_dir)
+        except Exception:
+            # If the directory swap fails, we still deployed the potential, but the AL state
+            # might be slightly inconsistent. Log and raise.
+            logging.exception("Failed to manage AL directories atomically")
+            raise
+
         self._resume_md_engine(final_dest, work_dir)
 
         return str(final_dest)

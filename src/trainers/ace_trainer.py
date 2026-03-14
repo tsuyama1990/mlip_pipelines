@@ -31,14 +31,38 @@ class PacemakerWrapper(AbstractTrainer):
         if not resolved_path.parent.exists():
             resolved_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Use ase.io.write iteratively over chunks to prevent memory overhead
-        # ase.io.write handles `append=True` safely without loading the whole file
+        # Use atomic replace for dataset updates to prevent data corruption
+        import shutil
+        import tempfile
 
+        # If it doesn't exist, just write it
         if not resolved_path.exists():
-            write(str(resolved_path), new_atoms_list, format="extxyz")
-        else:
-            # We append chunks
-            write(str(resolved_path), new_atoms_list, format="extxyz", append=True)
+            # Still use tempfile to be atomic
+            fd, temp_path_str = tempfile.mkstemp(dir=str(resolved_path.parent), suffix=".extxyz")
+            os.close(fd)
+            temp_path = Path(temp_path_str)
+            try:
+                write(temp_path_str, new_atoms_list, format="extxyz")
+                temp_path.replace(resolved_path)
+            except Exception:
+                if temp_path.exists():
+                    temp_path.unlink()
+                raise
+            return resolved_path
+
+        # If it exists, copy to temp, append, then replace
+        fd, temp_path_str = tempfile.mkstemp(dir=str(resolved_path.parent), suffix=".extxyz")
+        os.close(fd)
+        temp_path = Path(temp_path_str)
+        try:
+            shutil.copy2(str(resolved_path), temp_path_str)
+            write(temp_path_str, new_atoms_list, format="extxyz", append=True)
+            temp_path.replace(resolved_path)
+        except Exception:
+            if temp_path.exists():
+                temp_path.unlink()
+            raise
+
         return resolved_path
 
     def select_local_active_set(  # noqa: PLR0912
@@ -80,6 +104,8 @@ class PacemakerWrapper(AbstractTrainer):
                 if ".." in binary_setting:
                     msg = f"Invalid absolute binary path: {binary_setting}"
                     raise ValueError(msg)
+
+                # SECURITY: Strictly resolve absolute path to prevent traversal/symlink execution
                 resolved_bin = Path(os.path.realpath(binary_setting)).resolve(strict=True)
 
                 if not resolved_bin.is_file() or not os.access(resolved_bin, os.X_OK):
@@ -95,7 +121,9 @@ class PacemakerWrapper(AbstractTrainer):
                 is_trusted = False
                 for trusted_path in trusted_dirs:
                     try:
-                        if resolved_bin.is_relative_to(Path(trusted_path).resolve(strict=True)):
+                        # Ensure the trusted path itself is resolved securely
+                        resolved_trusted = Path(trusted_path).resolve(strict=True)
+                        if resolved_bin.is_relative_to(resolved_trusted):
                             is_trusted = True
                             break
                     except OSError:
@@ -236,6 +264,8 @@ class PacemakerWrapper(AbstractTrainer):
             if ".." in train_binary_setting:
                 msg = f"Invalid absolute binary path: {train_binary_setting}"
                 raise ValueError(msg)
+
+            # SECURITY: Strictly resolve absolute path to prevent traversal/symlink execution
             resolved_bin = Path(os.path.realpath(train_binary_setting)).resolve(strict=True)
 
             if not resolved_bin.is_file() or not os.access(resolved_bin, os.X_OK):
@@ -249,7 +279,9 @@ class PacemakerWrapper(AbstractTrainer):
             is_trusted = False
             for td in trusted_dirs:
                 try:
-                    if resolved_bin.is_relative_to(Path(td).resolve(strict=True)):
+                    # Ensure the trusted path itself is resolved securely
+                    resolved_trusted = Path(td).resolve(strict=True)
+                    if resolved_bin.is_relative_to(resolved_trusted):
                         is_trusted = True
                         break
                 except OSError:
