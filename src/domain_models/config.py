@@ -196,6 +196,12 @@ class OracleConfig(BaseModel):
     kspacing: float = Field(
         default=0.05, gt=0.0, description="K-point spacing in inverse Angstroms"
     )
+    max_kpoints: int = Field(
+        default=1000, gt=0, description="Maximum allowed k-points grid size to prevent OOM"
+    )
+    min_cell_dimension: float = Field(
+        default=1e-5, gt=0.0, description="Minimum allowed cell dimension to prevent division by zero"
+    )
     smearing_width: float = Field(default=0.02, ge=0.0, description="Smearing width (Ry)")
     pseudo_dir: str = Field(
         default=str(Path.home() / "pseudos"),

@@ -1,5 +1,4 @@
 import logging
-import re
 from pathlib import Path
 
 import numpy as np
@@ -98,14 +97,12 @@ class DFTManager(AbstractOracle):
             return pseudo_dir_path
 
     def _validate_pseudopotentials(self, symbols: set[str]) -> dict[str, str]:
+        import os
         pseudos = {}
         pseudo_dir_path = self._get_pseudo_dir_path()
 
-        import os
         for el in symbols:
-            if not re.match(r"^[A-Z][a-z]?$", el):
-                msg = "Invalid element name"
-                raise ValueError(msg)
+            # Domain-level validation relies on ASE's atomic_numbers dictionary
             if el not in atomic_numbers:
                 msg = f"Invalid chemical symbol detected: {el}"
                 raise ValueError(msg)
@@ -113,28 +110,39 @@ class DFTManager(AbstractOracle):
             upf_name = f"{el}.upf"
             upf_path = pseudo_dir_path / upf_name
 
-            norm_path = os.path.normpath(str(upf_path))
-            if not norm_path.startswith(str(pseudo_dir_path)):
-                msg = f"Strict path traversal detected for pseudopotential: {upf_name}"
+            # Robust pre-resolution TOCTOU validation using commonpath
+            try:
+                is_safe = os.path.commonpath([str(pseudo_dir_path), os.path.normpath(str(upf_path))]) == str(pseudo_dir_path)
+            except ValueError as e:
+                msg = f"Invalid path constructed for pseudopotential: {upf_name}"
+                raise ValueError(msg) from e
+
+            if not is_safe:
+                msg = f"Path traversal detected: {upf_name}"
                 raise ValueError(msg)
 
-            if not upf_path.exists():
-                msg = f"Pseudopotential file not found: {upf_name} in {pseudo_dir_path}"
-                raise FileNotFoundError(msg)
-            resolved_upf_path = upf_path.resolve(strict=True)
-            if not resolved_upf_path.is_relative_to(pseudo_dir_path.resolve(strict=True)):
-                msg = f"Strict path traversal detected after resolution for pseudopotential: {upf_name}"
-                raise ValueError(msg)
+            try:
+                # Open directly to avoid TOCTOU .exists() race conditions
+                # Errors out natively if missing/unreadable
+                with Path.open(upf_path, "r", encoding="utf-8") as f:
+                    fd = f.fileno()
+                    st = os.fstat(fd)
+                    import stat
+                    if not stat.S_ISREG(st.st_mode):
+                        msg = f"Pseudopotential must be a regular file: {upf_name}"
+                        raise ValueError(msg)
 
-            # Validate UPF format properly
-            with Path.open(resolved_upf_path, "r", errors="ignore") as f:
-                content = f.read()
-            if "<UPF" not in content and "PP_INFO" not in content:
-                msg = f"Invalid UPF format for pseudopotential: {upf_name}. Missing required opening tags."
-                raise ValueError(msg)
-            if "</UPF>" not in content and "PP_INFO" not in content:
-                msg = f"Invalid UPF format for pseudopotential: {upf_name}. Missing required closing tags."
-                raise ValueError(msg)
+                    content = f.read()
+
+                    if "<UPF" not in content and "PP_INFO" not in content:
+                        msg = f"Invalid UPF format for pseudopotential: {upf_name}. Missing required opening tags."
+                        raise ValueError(msg)
+                    if "</UPF>" not in content and "PP_INFO" not in content:
+                        msg = f"Invalid UPF format for pseudopotential: {upf_name}. Missing required closing tags."
+                        raise ValueError(msg)
+            except UnicodeDecodeError as e:
+                msg = f"File is corrupted or not utf-8 text: {upf_name}"
+                raise ValueError(msg) from e
 
             pseudos[el] = upf_name
         return pseudos
@@ -148,13 +156,13 @@ class DFTManager(AbstractOracle):
 
         b = np.linalg.norm(cell, axis=0)
 
-        if any(x <= 1e-5 or np.isnan(x) or np.isinf(x) for x in b):
+        if any(x <= self.config.min_cell_dimension or np.isnan(x) or np.isinf(x) for x in b):
             msg = "Cell dimensions must be strictly positive and finite for kspacing calculation"
             raise ValueError(msg)
 
         kpts = [int(np.ceil(2 * np.pi / (self.config.kspacing * x))) for x in b]
-        if np.prod(kpts) > 1000:
-            msg = f"Calculated k-point grid {kpts} exceeds maximum allowed points (1000) to prevent computational exhaustion."
+        if np.prod(kpts) > self.config.max_kpoints:
+            msg = f"Calculated k-point grid {kpts} exceeds maximum allowed points ({self.config.max_kpoints}) to prevent computational exhaustion."
             raise ValueError(msg)
         return kpts
 
