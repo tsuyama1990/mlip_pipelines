@@ -1,10 +1,12 @@
+from pathlib import Path
+from unittest.mock import patch
+
 import pytest
 from ase import Atoms
-from src.oracles.dft_oracle import DFTManager
+
 from src.domain_models.config import OracleConfig
-from unittest.mock import patch
-from pathlib import Path
-from src.core.exceptions import OracleConvergenceError
+from src.oracles.dft_oracle import DFTManager
+
 
 def test_uat_03_01_successful_dft_calculation_and_embedding(tmp_path: Path):
     """
@@ -45,7 +47,7 @@ def test_uat_03_01_successful_dft_calculation_and_embedding(tmp_path: Path):
             # AND the resulting Atoms objects passed to the calculator should have pbc=True
             assert len(results) == 1
             embedded = results[0]
-            assert embedded.get_pbc().all() == True
+            assert embedded.get_pbc().all()
 
             # AND the new cell dimensions should accurately encompass the original cluster plus the 4.0 A buffer on all sides
             cell = embedded.get_cell()
@@ -85,7 +87,8 @@ def test_uat_03_02_self_healing_on_scf_convergence_failure(tmp_path: Path):
             if calc.call_count == 1:
                 # WHEN compute_batch() executes the first calculation attempt
                 # THEN the calculator (mocked) should raise an ase.calculators.calculator.CalculationFailed error
-                raise Exception("SCF Failed")
+                msg = "SCF Failed"
+                raise Exception(msg)
             return 1.0
 
         def mock_get_forces(self):
@@ -124,8 +127,8 @@ def test_uat_03_03_exceeding_physical_constraints():
     # THEN the validation logic should immediately detect the violation
     # AND a ValueError should be raised, indicating the cell dimension is too large
     # AND the structure should be safely skipped or the batch calculation should halt, preventing OOM crashes.
+    manager.config.max_coord = 200.0
     with pytest.raises(ValueError, match="exceed maximum allowed coordinates|too large"):
         # Depends on max_coord. If it fails max_coord first, it's also a ValueError.
         # Let's override max_coord to let it reach max_cell_dimension logic.
-        manager.config.max_coord = 200.0
         manager._apply_periodic_embedding(cluster)

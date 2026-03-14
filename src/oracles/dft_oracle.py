@@ -1,8 +1,11 @@
 import logging
+import re
 from pathlib import Path
 
+import numpy as np
 from ase import Atoms
 from ase.calculators.espresso import Espresso
+from ase.data import atomic_numbers
 
 from src.core import AbstractOracle
 from src.domain_models.config import OracleConfig
@@ -23,8 +26,6 @@ class DFTManager(AbstractOracle):
         embedded: Atoms = atoms.copy()  # type: ignore[no-untyped-call]
         pos = embedded.get_positions()  # type: ignore[no-untyped-call]
 
-        import numpy as np
-
         if np.isnan(pos).any() or np.isinf(pos).any():
             msg = "Atomic positions contain NaN or Inf values."
             raise ValueError(msg)
@@ -37,8 +38,6 @@ class DFTManager(AbstractOracle):
         if len(atoms) > self.config.max_atoms:
             msg = f"Atomic structure is too large (exceeds {self.config.max_atoms} atoms). Potential memory exhaustion."
             raise ValueError(msg)
-
-        from ase.data import atomic_numbers
 
         for symbol in atoms.get_chemical_symbols():
             if symbol not in atomic_numbers:
@@ -75,10 +74,6 @@ class DFTManager(AbstractOracle):
         return embedded
 
     def _validate_pseudopotentials(self, symbols: set[str]) -> dict[str, str]:
-        import re
-
-        from ase.data import atomic_numbers
-
         pseudos = {}
         try:
             raw_pseudo_dir = Path(self.config.pseudo_dir)
@@ -123,8 +118,6 @@ class DFTManager(AbstractOracle):
         return pseudos
 
     def _calculate_kpoints(self, atoms: Atoms) -> list[int]:
-        import numpy as np
-
         cell = atoms.get_cell()  # type: ignore[no-untyped-call]
         b = np.linalg.norm(cell, axis=0)
 
