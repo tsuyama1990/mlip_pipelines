@@ -8,6 +8,7 @@ from typing import Any
 
 from src.core import AbstractDynamics
 from src.domain_models.config import DynamicsConfig, SystemConfig
+from src.dynamics.security_utils import validate_executable_path, validate_filename
 
 
 class EONWrapper(AbstractDynamics):
@@ -18,12 +19,8 @@ class EONWrapper(AbstractDynamics):
         self.system_config = system_config
 
     def _write_config_ini(self, work_dir: Path) -> None:
-        if not re.match(r"^[a-zA-Z0-9_-]+$", self.config.eon_job):
-            msg = f"Invalid EON job string: {self.config.eon_job}"
-            raise ValueError(msg)
-        if not re.match(r"^[a-zA-Z0-9_-]+$", self.config.eon_min_mode_method):
-            msg = f"Invalid EON min_mode_method string: {self.config.eon_min_mode_method}"
-            raise ValueError(msg)
+        validate_filename(self.config.eon_job)
+        validate_filename(self.config.eon_min_mode_method)
 
         ini_content = self.config.eon_config_template.format(
             eon_job=shlex.quote(self.config.eon_job),
@@ -45,17 +42,21 @@ class EONWrapper(AbstractDynamics):
         resolved_pot_str = ""
         if potential:
             resolved_pot = Path(os.path.realpath(potential)).resolve(strict=True)
-            if hasattr(self.config, "project_root"):
+            if self.config.project_root is not None:
                 root = Path(os.path.realpath(self.config.project_root)).resolve(strict=True)
                 if not resolved_pot.is_relative_to(root):
                     msg = f"Potential path must be within the project root: {resolved_pot}"
                     raise ValueError(msg)
+            # Ensure the potential string itself doesn't contain injected template syntax
             resolved_pot_str = str(resolved_pot)
+            if "{" in resolved_pot_str or "}" in resolved_pot_str or '"' in resolved_pot_str or "'" in resolved_pot_str:
+                msg = "Potential path contains invalid characters"
+                raise ValueError(msg)
+
 
         pot_str = repr(resolved_pot_str) if potential else "None"
 
         # Ensure executable doesn't break python logic
-        import re
 
         executable = sys.executable
         if not re.match(r"^[/a-zA-Z0-9_.-]+$", executable):
@@ -80,7 +81,7 @@ class EONWrapper(AbstractDynamics):
         resolved_work_dir = work_dir.resolve(strict=False)
 
         # Verify that the resolved working directory is within the project root to prevent traversal
-        if hasattr(self.config, "project_root"):
+        if self.config.project_root is not None:
             proj_root = Path(self.config.project_root).resolve(strict=True)
             if not resolved_work_dir.is_relative_to(proj_root):
                 msg = f"Working directory {resolved_work_dir} is outside the allowed project root."
@@ -92,9 +93,8 @@ class EONWrapper(AbstractDynamics):
 
         try:
             # We execute 'eonclient'. If it's missing, subprocess raises FileNotFoundError.
-            from src.dynamics.security_utils import validate_executable_path
 
-            project_root = getattr(self.config, "project_root", None)
+            project_root = self.config.project_root
             try:
                 eon_bin = validate_executable_path(
                     self.config.eon_binary,
@@ -105,16 +105,15 @@ class EONWrapper(AbstractDynamics):
                 msg = "EON client executable not found."
                 raise RuntimeError(msg) from e
 
-            cmd: list[str] = [shlex.quote(eon_bin)]
+            cmd: list[str] = [eon_bin]
 
             # We use check=False to capture return code 100 gracefully
-            env: dict[str, str] = os.environ.copy()
-            # Clear sensitive/potentially hazardous env vars
-            for k in ["LD_PRELOAD", "LD_LIBRARY_PATH", "PYTHONPATH"]:
-                env.pop(k, None)
+            # Create a minimal safe environment whitelist to prevent sensitive credential leaks
+            safe_env_keys = ["PATH", "HOME", "USER", "LANG", "LC_ALL"]
+            env: dict[str, str] = {k: os.environ[k] for k in safe_env_keys if k in os.environ}
 
             # Safely invoke EON client using direct list execution through subprocess (shell=False)
-            res: subprocess.CompletedProcess[bytes] = subprocess.run(  # noqa: S603
+            res: subprocess.CompletedProcess[bytes] = subprocess.run(
                 cmd,
                 cwd=str(resolved_work_dir.absolute()),
                 capture_output=True,

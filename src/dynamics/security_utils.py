@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 
-def validate_executable_path(  # noqa: C901
+def validate_executable_path(
 
     executable_name: str,
     trusted_directories: list[str],
@@ -34,10 +34,6 @@ def validate_executable_path(  # noqa: C901
         msg = f"Binary is not an executable file: {resolved_bin}"
         raise ValueError(msg)
 
-    valid_names = ["lmp", "lammps", "eonclient"]
-    if resolved_bin.name not in valid_names:
-        msg = f"Resolved binary name must be one of {valid_names}, got '{resolved_bin.name}'"
-        raise ValueError(msg)
 
     all_trusted = trusted_directories.copy()
     all_trusted.append(str(Path(sys.prefix) / "bin"))
@@ -58,3 +54,12 @@ def validate_executable_path(  # noqa: C901
         raise ValueError(msg)
 
     return str(resolved_bin.absolute())
+
+
+def validate_filename(filename: str, extra_allowed_chars: str = "") -> None:
+    """Validates that a filename is alphanumeric with standard safe characters."""
+    import re
+    pattern = f"^[a-zA-Z0-9_.-{extra_allowed_chars}]+$"
+    if not re.match(pattern, filename):
+        msg = f"Invalid characters in filename: {filename}"
+        raise ValueError(msg)

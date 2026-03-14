@@ -112,6 +112,7 @@ write_data {work_dir}/data.lammps
     eon_min_mode_method: str = Field(
         default="dimer", description="EON Process Search configuration parameter"
     )
+    project_root: str | None = Field(default=None, description="Project root directory for resolving binary paths")
     eon_config_template: str = Field(
         default="""[Main]
 job = {eon_job}

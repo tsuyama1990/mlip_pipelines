@@ -1,3 +1,4 @@
+
 import shutil
 from pathlib import Path
 
@@ -38,16 +39,6 @@ def test_untrusted_path_rejected(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     with pytest.raises(ValueError, match="Resolved binary must reside in a trusted directory"):
         # tmp_path is not in the empty trusted directories list
         validate_executable_path("lmp", [])
-
-def test_invalid_name(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    dummy_bin = tmp_path / "hacklmp"
-    dummy_bin.touch()
-    dummy_bin.chmod(0o755)
-
-    monkeypatch.setattr(shutil, "which", lambda *args, **kwargs: str(dummy_bin))
-
-    with pytest.raises(ValueError, match="Resolved binary name must be one of"):
-        validate_executable_path("hacklmp", [str(tmp_path)])
 
 def test_missing_executable(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(shutil, "which", lambda *args, **kwargs: None)

@@ -14,6 +14,7 @@ from ase.io import read
 
 from src.core import AbstractDynamics
 from src.domain_models.config import DynamicsConfig, SystemConfig
+from src.dynamics.security_utils import validate_executable_path, validate_filename
 
 
 class MDInterface(AbstractDynamics):
@@ -72,8 +73,9 @@ class MDInterface(AbstractDynamics):
         pot_path_str = str(resolved_pot)
 
         # Verify the potential path is within the project root to prevent path traversal
-        if hasattr(self.config, "project_root"):
-            root = Path(os.path.realpath(self.config.project_root)).resolve(strict=True)
+        if self.config.project_root is not None:
+            project_root_str = str(self.config.project_root)
+            root = Path(os.path.realpath(project_root_str)).resolve(strict=True)
             if not resolved_pot.is_relative_to(root):
                 msg = f"Potential path must be within the project root: {resolved_pot}"
                 raise ValueError(msg)
@@ -112,8 +114,8 @@ class MDInterface(AbstractDynamics):
         tmp_in_file.write(script)
 
     def _execute_lammps(self, work_dir: Path) -> None:
-        # Secure input file definition by hardcoding it completely
         in_file_name = "in.lammps"
+        validate_filename(in_file_name)
         resolved_in_file = Path(os.path.realpath(work_dir / in_file_name)).resolve(strict=False)
         resolved_work_dir = work_dir.resolve(strict=True)
 
@@ -121,9 +123,8 @@ class MDInterface(AbstractDynamics):
             msg = f"Invalid input file name causing path traversal: {in_file_name}"
             raise ValueError(msg)
 
-        from src.dynamics.security_utils import validate_executable_path
 
-        project_root = getattr(self.config, "project_root", None)
+        project_root = self.config.project_root
         try:
             lmp_bin = validate_executable_path(
                 self.config.lmp_binary,
@@ -137,7 +138,7 @@ class MDInterface(AbstractDynamics):
         cmd: list[str] = [lmp_bin, "-in", in_file_name]
 
         try:
-            _res: subprocess.CompletedProcess[bytes] = subprocess.run(  # noqa: S603
+            _res: subprocess.CompletedProcess[bytes] = subprocess.run(
                 cmd,
                 cwd=work_dir,
                 check=True,
@@ -239,21 +240,17 @@ write_restart {work_dir.resolve()}/restart.lammps
 write_data {work_dir.resolve()}/data.lammps
 """)
 
-        import re
 
         trusted_dirs = self.config.trusted_directories.copy()
         trusted_dirs.append(str(Path(sys.prefix) / "bin"))
-        if hasattr(self.config, "project_root"):
-            trusted_dirs.append(str(Path(self.config.project_root) / "bin"))
+        if self.config.project_root is not None:
+            project_root_str = str(self.config.project_root)
+            trusted_dirs.append(str(Path(project_root_str) / "bin"))
 
-        # Sanitize in_file.name against injection using a strict alphanumeric + underscore + period pattern
-        if not re.match(r"^[a-zA-Z0-9_]+(\.lammps)?$", in_file.name):
-            msg = f"Invalid input file name: {in_file.name}"
-            raise ValueError(msg)
+        validate_filename(in_file.name)
 
-        from src.dynamics.security_utils import validate_executable_path
 
-        project_root = getattr(self.config, "project_root", None)
+        project_root = self.config.project_root
         try:
             lmp_bin = validate_executable_path(
                 self.config.lmp_binary,
@@ -267,7 +264,7 @@ write_data {work_dir.resolve()}/data.lammps
         cmd = [lmp_bin, "-in", in_file.name]
 
         try:
-            subprocess.run(  # noqa: S603
+            subprocess.run(
                 cmd,
                 cwd=work_dir,
                 check=True,

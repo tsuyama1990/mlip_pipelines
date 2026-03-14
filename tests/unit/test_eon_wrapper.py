@@ -72,7 +72,7 @@ def test_write_config_ini_invalid_eon_job(tmp_path: Path) -> None:
     config.eon_job = "job;"
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = EONWrapper(config, sys_config)
-    with pytest.raises(ValueError, match="Invalid EON job string"):
+    with pytest.raises(ValueError, match="Invalid characters in filename:"):
         engine._write_config_ini(tmp_path)
 
 def test_write_config_ini_invalid_min_mode_method(tmp_path: Path) -> None:
@@ -80,11 +80,11 @@ def test_write_config_ini_invalid_min_mode_method(tmp_path: Path) -> None:
     config.eon_min_mode_method = "method;"
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = EONWrapper(config, sys_config)
-    with pytest.raises(ValueError, match="Invalid EON min_mode_method string"):
+    with pytest.raises(ValueError, match="Invalid characters in filename:"):
         engine._write_config_ini(tmp_path)
 
 def test_write_pace_driver_invalid_potential(tmp_path: Path) -> None:
-    config = type("MockConfig", (), {"project_root": str(tmp_path), "eon_binary": "eonclient", "trusted_directories": [], "eon_job": "dummy", "eon_min_mode_method": "dummy", "temperature": 300, "eon_config_template": "{eon_job} {temperature} {eon_min_mode_method}", "eon_driver_template": "{executable} {threshold} {pot_str}", "uncertainty_threshold": 5.0})()
+    config = DynamicsConfig(project_root=str(tmp_path), eon_binary="eonclient", trusted_directories=[], eon_job="dummy", eon_min_mode_method="dummy")
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = EONWrapper(config, sys_config)
 
@@ -108,7 +108,7 @@ def test_write_pace_driver_invalid_python_executable(tmp_path: Path, monkeypatch
         engine._write_pace_driver(tmp_path, None)
 
 def test_run_kmc_invalid_work_dir(tmp_path: Path) -> None:
-    config = type("MockConfig", (), {"project_root": str(tmp_path), "eon_binary": "eonclient", "trusted_directories": [], "eon_job": "dummy", "eon_min_mode_method": "dummy", "temperature": 300, "eon_config_template": "{eon_job} {temperature} {eon_min_mode_method}", "eon_driver_template": "{executable} {threshold} {pot_str}", "uncertainty_threshold": 5.0})()
+    config = DynamicsConfig(project_root=str(tmp_path), eon_binary="eonclient", trusted_directories=[], eon_job="dummy", eon_min_mode_method="dummy")
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = EONWrapper(config, sys_config)
 
@@ -117,7 +117,7 @@ def test_run_kmc_invalid_work_dir(tmp_path: Path) -> None:
         engine.run_kmc(None, work_dir)
 
 def test_run_kmc_subprocess_fail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    config = type("MockConfig", (), {"project_root": str(tmp_path), "eon_binary": "eonclient", "trusted_directories": [], "eon_job": "dummy", "eon_min_mode_method": "dummy", "temperature": 300, "eon_config_template": "{eon_job} {temperature} {eon_min_mode_method}", "eon_driver_template": "{executable} {threshold} {pot_str}", "uncertainty_threshold": 5.0})()
+    config = DynamicsConfig(project_root=str(tmp_path), eon_binary="eonclient", trusted_directories=[], eon_job="dummy", eon_min_mode_method="dummy")
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = EONWrapper(config, sys_config)
 
@@ -139,7 +139,7 @@ def test_run_kmc_subprocess_fail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
         engine.run_kmc(None, tmp_path / "work")
 
 def test_run_kmc_subprocess_halted(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    config = type("MockConfig", (), {"project_root": str(tmp_path), "eon_binary": "eonclient", "trusted_directories": [], "eon_job": "dummy", "eon_min_mode_method": "dummy", "temperature": 300, "eon_config_template": "{eon_job} {temperature} {eon_min_mode_method}", "eon_driver_template": "{executable} {threshold} {pot_str}", "uncertainty_threshold": 5.0})()
+    config = DynamicsConfig(project_root=str(tmp_path), eon_binary="eonclient", trusted_directories=[], eon_job="dummy", eon_min_mode_method="dummy")
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = EONWrapper(config, sys_config)
 
@@ -162,12 +162,14 @@ def test_run_kmc_subprocess_halted(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     assert res["is_kmc"] is True
 
 def test_run_kmc_missing_executable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    config = type("MockConfig", (), {"project_root": str(tmp_path), "eon_binary": "eonclient", "trusted_directories": [], "eon_job": "dummy", "eon_min_mode_method": "dummy", "temperature": 300, "eon_config_template": "{eon_job} {temperature} {eon_min_mode_method}", "eon_driver_template": "{executable} {threshold} {pot_str}", "uncertainty_threshold": 5.0})()
+    config = DynamicsConfig(project_root=str(tmp_path), eon_binary="eonclient", trusted_directories=[], eon_job="dummy", eon_min_mode_method="dummy")
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = EONWrapper(config, sys_config)
 
+    from typing import Any
+
     import src.dynamics.security_utils
-    def mock_val(*args, **kwargs):
+    def mock_val(*args: Any, **kwargs: Any) -> str:
         msg = "EON client executable not found."
         raise RuntimeError(msg)
 
