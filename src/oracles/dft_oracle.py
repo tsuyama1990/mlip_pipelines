@@ -81,12 +81,22 @@ class DFTManager(AbstractOracle):
             raise ValueError(msg)
 
     def _get_pseudo_dir_path(self) -> Path:
+        import os
         try:
             raw_pseudo_dir = Path(self.config.pseudo_dir)
             if not raw_pseudo_dir.is_absolute():
                 msg = f"Pseudopotential directory must be an absolute path: {self.config.pseudo_dir}"
                 raise ValueError(msg)
             pseudo_dir_path = raw_pseudo_dir.resolve(strict=True)
+
+            # Directory traversal prevention: whitelist checking
+            import tempfile
+            home_dir = Path.home().resolve(strict=True)
+            tmp_dir = Path(tempfile.gettempdir()).resolve(strict=True)
+            if (os.path.commonpath([str(home_dir), str(pseudo_dir_path)]) != str(home_dir) and
+                os.path.commonpath([str(tmp_dir), str(pseudo_dir_path)]) != str(tmp_dir)):
+                msg = f"Pseudopotential directory must reside securely within the user's home directory or temp directory: {pseudo_dir_path}"
+                raise ValueError(msg)
         except FileNotFoundError as e:
             msg = f"Pseudopotential directory not found: {self.config.pseudo_dir}"
             raise FileNotFoundError(msg) from e
@@ -98,6 +108,7 @@ class DFTManager(AbstractOracle):
 
     def _validate_pseudopotentials(self, symbols: set[str]) -> dict[str, str]:
         import os
+        import stat
         pseudos = {}
         pseudo_dir_path = self._get_pseudo_dir_path()
 
