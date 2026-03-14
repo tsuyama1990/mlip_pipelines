@@ -5,11 +5,76 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+class InterfaceTarget(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    element1: str = Field(..., description="First element or material (e.g., 'FePt')")
+    element2: str = Field(..., description="Second element or material (e.g., 'MgO')")
+    face1: str = Field(default="Fe", description="Terminating face of first material")
+    face2: str = Field(default="Mg", description="Terminating face of second material")
+
+
+def _validate_single_trusted_dir(path: str) -> str | None:
+    import logging
+    import os
+    import stat
+    from pathlib import Path
+
+    if ".." in path:
+        msg = f"Path traversal characters not allowed in trusted_directory: {path}"
+        raise ValueError(msg)
+
+    try:
+        st_info = os.lstat(path)
+        if stat.S_ISLNK(st_info.st_mode):
+            msg = f"trusted_directory {path} cannot be a symlink."
+            raise ValueError(msg)
+    except FileNotFoundError:
+        logging.warning(f"Trusted directory skipped as it does not exist: {path}")
+        return None
+
+    resolved = Path(path).resolve(strict=True)
+
+    if not resolved.is_absolute():
+        msg = f"trusted_directory must be absolute: {path}"
+        raise ValueError(msg)
+    if not resolved.is_dir():
+        msg = f"trusted_directory must be a directory: {path}"
+        raise ValueError(msg)
+
+    from src.domain_models.config import SystemConfig
+    restricted_prefixes = SystemConfig.model_fields["restricted_directories"].default_factory() # type: ignore
+    for restricted in restricted_prefixes:
+        if str(resolved).startswith(restricted):
+            msg = f"trusted_directory cannot be a system directory: {restricted}"
+            raise ValueError(msg)
+
+    st = resolved.stat()
+    if bool(st.st_mode & stat.S_IWOTH):
+        msg = f"trusted_directory {path} is world-writable, which is insecure."
+        raise ValueError(msg)
+
+    if st.st_uid != os.getuid():
+        msg = f"trusted_directory {path} is not owned by the current user. This is insecure."
+        raise ValueError(msg)
+
+    return str(resolved)
+
+
 class SystemConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     elements: list[str] = Field(..., min_length=1, description="List of elements in the system")
     baseline_potential: Literal["lj", "zbl"] = Field(
         default="zbl", description="Baseline potential for core repulsion"
+    )
+    interface_target: InterfaceTarget | None = Field(
+        default=None, description="Target interface structure configuration"
+    )
+    interface_generation_iteration: int = Field(
+        default=0, description="The AL iteration number to inject the generated interface target."
+    )
+    restricted_directories: list[str] = Field(
+        default_factory=lambda: ["/etc", "/bin", "/usr", "/sbin", "/var", "/lib", "/boot", "/root"],
+        description="System directories forbidden from sandbox execution.",
     )
 
 
@@ -76,36 +141,81 @@ class DynamicsConfig(BaseModel):
         if not v:
             msg = "project_root cannot be empty"
             raise ValueError(msg)
-        import os
 
-        resolved = Path(os.path.realpath(v)).resolve(strict=True)
+        if ".." in v:
+            msg = "Path traversal sequences (..) are not allowed in project_root"
+            raise ValueError(msg)
+
+        resolved = Path(v).resolve(strict=True)
         if not resolved.is_absolute():
             msg = "project_root must be absolute"
             raise ValueError(msg)
         if not resolved.exists() or not resolved.is_dir():
             msg = "project_root must be an existing directory"
             raise ValueError(msg)
+
+        # Security: forbid system directories
+        from src.domain_models.config import SystemConfig
+        restricted_prefixes = SystemConfig.model_fields["restricted_directories"].default_factory() # type: ignore
+        for restricted in restricted_prefixes:
+            if str(resolved).startswith(restricted):
+                msg = f"project_root cannot be a system directory: {restricted}"
+                raise ValueError(msg)
+
         return str(resolved)
 
-    @field_validator("trusted_directories")
+    @classmethod
+    def _validate_single_trusted_dir(cls, path: str) -> str | None:
+        import logging
+        import os
+        import stat
+
+        if ".." in path:
+            msg = f"Path traversal characters not allowed in trusted_directory: {path}"
+            raise ValueError(msg)
+
+        try:
+            st_info = os.lstat(path)
+            if stat.S_ISLNK(st_info.st_mode):
+                msg = f"trusted_directory {path} cannot be a symlink."
+                raise ValueError(msg)
+        except FileNotFoundError:
+            logging.warning(f"Trusted directory skipped as it does not exist: {path}")
+            return None
+
+        resolved = Path(path).resolve(strict=True)
+
+        if not resolved.is_absolute():
+            msg = f"trusted_directory must be absolute: {path}"
+            raise ValueError(msg)
+        if not resolved.is_dir():
+            msg = f"trusted_directory must be a directory: {path}"
+            raise ValueError(msg)
+
+        restricted_prefixes = ["/etc", "/bin", "/usr", "/sbin", "/var", "/lib", "/boot", "/root"]
+        for restricted in restricted_prefixes:
+            if str(resolved).startswith(restricted):
+                msg = f"trusted_directory cannot be a system directory: {restricted}"
+                raise ValueError(msg)
+
+        st = resolved.stat()
+        if bool(st.st_mode & stat.S_IWOTH):
+            msg = f"trusted_directory {path} is world-writable, which is insecure."
+            raise ValueError(msg)
+
+        if st.st_uid != os.getuid():
+            msg = f"trusted_directory {path} is not owned by the current user. This is insecure."
+            raise ValueError(msg)
+
+        return str(resolved)
+
     @classmethod
     def validate_trusted_directories(cls, v: list[str]) -> list[str]:
-        import os
-
         validated = []
         for path in v:
-            try:
-                resolved = Path(os.path.realpath(path)).resolve(strict=True)
-            except FileNotFoundError:
-                # Same as TrainerConfig, skip safe missing defaults
-                continue
-            if not resolved.is_absolute():
-                msg = f"trusted_directory must be absolute: {path}"
-                raise ValueError(msg)
-            if not resolved.exists() or not resolved.is_dir():
-                msg = f"trusted_directory must exist and be a directory: {path}"
-                raise ValueError(msg)
-            validated.append(str(resolved))
+            res = _validate_single_trusted_dir(path)
+            if res:
+                validated.append(res)
         return validated
 
     eon_config_template: str = Field(
@@ -178,6 +288,9 @@ class TrainerConfig(BaseModel):
     max_epochs: int = Field(
         default=50, ge=1, le=10000, description="Number of epochs for fine-tuning"
     )
+    max_potential_size: int = Field(
+        default=104857600, ge=1024, description="Maximum allowed YACE file size in bytes (default 100MB)"
+    )
     active_set_size: int = Field(
         default=500, ge=1, le=10000, description="Target size of active set for D-Optimality"
     )
@@ -205,24 +318,11 @@ class TrainerConfig(BaseModel):
     @field_validator("trusted_directories")
     @classmethod
     def validate_trusted_directories(cls, v: list[str]) -> list[str]:
-        import os
-
         validated = []
         for path in v:
-            try:
-                resolved = Path(os.path.realpath(path)).resolve(strict=True)
-            except FileNotFoundError:
-                # In config models it is common for some default directories to not exist on all systems.
-                # We skip missing default directories safely.
-                continue
-
-            if not resolved.is_absolute():
-                msg = f"trusted_directory must be absolute: {path}"
-                raise ValueError(msg)
-            if not resolved.is_dir():
-                msg = f"trusted_directory must be a directory: {path}"
-                raise ValueError(msg)
-            validated.append(str(resolved))
+            res = _validate_single_trusted_dir(path)
+            if res:
+                validated.append(res)
         return validated
 
 
@@ -254,6 +354,10 @@ class StructureGeneratorConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     stdev: float = Field(default=0.05, ge=0.0, description="Standard deviation for rattling")
     seed_base: int = Field(default=42, description="Base seed for reproducibility")
+    valid_interface_targets: list[str] = Field(
+        default_factory=lambda: ["FePt", "MgO"],
+        description="Whitelist of explicitly supported synthetic interface components",
+    )
 
 
 class PolicyConfig(BaseModel):
@@ -291,88 +395,103 @@ class ProjectConfig(BaseSettings):
     project_root: Path = Field(..., description="Root directory of the project")
     use_mock: bool = Field(default=False, description="Enable mock mode for CI testing")
 
+    @classmethod
+    def _validate_env_key(cls, key: str) -> None:
+        import re
+        if not key.startswith("MLIP_"):
+            msg = f"Unauthorized environment variable injected via .env: {key}. Only MLIP_ prefixes are allowed."
+            raise ValueError(msg)
+        if len(key) > 64:
+            msg = "Environment variable key exceeds maximum length"
+            raise ValueError(msg)
+        if not re.match(r"^[A-Z0-9_]+$", key):
+            msg = f"Invalid characters in .env variable key: {key}"
+            raise ValueError(msg)
+
+    @classmethod
+    def _validate_env_value(cls, val: str) -> None:
+        import re
+        if len(val) > 256:
+            msg = "Environment variable value exceeds maximum length"
+            raise ValueError(msg)
+        if not re.match(r"^[a-zA-Z0-9_-]+$", val):
+            msg = f"Invalid characters in .env variable value: {val}. Path separators are forbidden."
+            raise ValueError(msg)
+
+    @classmethod
+    def _validate_env_file_security(cls, env_file: Path, expected_base: Path) -> Path:
+        import os
+        import stat
+
+        if env_file.is_symlink():
+            msg = ".env file must not be a symlink."
+            raise ValueError(msg)
+
+        resolved_env = env_file.resolve(strict=True)
+
+        if resolved_env.parent != expected_base:
+            msg = f".env file must reside directly in the allowed base directory: {expected_base}"
+            raise ValueError(msg)
+
+        st = os.lstat(resolved_env)
+
+        if st.st_size > 10 * 1024:
+            msg = ".env file exceeds maximum allowed size (10KB)."
+            raise ValueError(msg)
+
+        if st.st_uid != os.getuid():
+            msg = ".env file is not owned by the current user."
+            raise ValueError(msg)
+
+        if bool(st.st_mode & stat.S_IRWXO) or bool(st.st_mode & stat.S_IRWXG):
+            msg = ".env file has insecure permissions. It must not be group or world readable/writable."
+            raise ValueError(msg)
+
+        return resolved_env
+
     @model_validator(mode="before")
     @classmethod
-    def validate_env_content(cls, values: dict[str, Any]) -> dict[str, Any]:  # noqa: C901, PLR0912
-        import re
+    def validate_env_content(cls, values: dict[str, Any]) -> dict[str, Any]:
         from pathlib import Path
 
-        # Secure the env loading process to verify the file resolves inside the CWD/project root
-        # Force .env file to be specifically in CWD
+        from src.dynamics.security_utils import (
+            _validate_env_key,
+            _validate_env_value,
+            validate_env_file_security,
+        )
+
         expected_base = Path.cwd().resolve(strict=True)
         env_file = expected_base / ".env"
 
         if env_file.exists():
-            # Basic validation of .env file size and canonical location to prevent loading external malicious envs
-            resolved_env = env_file.resolve(strict=True)
-
-            if resolved_env.parent != expected_base:
-                msg = (
-                    f".env file must reside directly in the allowed base directory: {expected_base}"
-                )
-                raise ValueError(msg)
-
-            if resolved_env.stat().st_size > 10 * 1024:
-                msg = ".env file exceeds maximum allowed size (10KB)."
-                raise ValueError(msg)
-
-            # Strict whitelist validation for .env file contents
-            import os
+            resolved_env = validate_env_file_security(env_file, expected_base)
 
             with Path.open(resolved_env, encoding="utf-8") as f:
                 for raw_line in f:
                     clean_line = raw_line.strip()
-                    if not clean_line or clean_line.startswith("#"):
-                        continue
-
-                    if "=" not in clean_line:
+                    if not clean_line or clean_line.startswith("#") or "=" not in clean_line:
                         continue
 
                     key, val = clean_line.split("=", 1)
                     key = key.strip()
                     val = val.strip().strip("'").strip('"')
 
-                    if not key.startswith("MLIP_"):
-                        msg = f"Unauthorized environment variable injected via .env: {key}. Only MLIP_ prefixes are allowed."
-                        raise ValueError(msg)
-
-                    if len(key) > 64:
-                        msg = "Environment variable key exceeds maximum length"
-                        raise ValueError(msg)
-
-                    if len(val) > 256:
-                        msg = "Environment variable value exceeds maximum length"
-                        raise ValueError(msg)
-
-                    if not re.match(r"^[A-Z0-9_]+$", key):
-                        msg = f"Invalid characters in .env variable key: {key}"
-                        raise ValueError(msg)
-
-                    if not re.match(r"^[a-zA-Z0-9_./-]+$", val):
-                        msg = f"Invalid characters in .env variable value: {val}"
-                        raise ValueError(msg)
-
-                    # Add path traversal validation for values that look like paths
-                    if "/" in val or "\\" in val or ".." in val:
-                        if ".." in val:
-                            msg = f"Path traversal characters (..) are not allowed in .env values: {key}"
-                            raise ValueError(msg)
-
-                        # If it's an absolute path, verify it's within expected bounds
-                        if Path(val).is_absolute():
-                            resolved_val = Path(os.path.realpath(val))
-                            if not resolved_val.is_relative_to(expected_base):
-                                msg = (
-                                    f"Absolute paths in .env must be within the project root: {val}"
-                                )
-                                raise ValueError(msg)
+                    _validate_env_key(key)
+                    _validate_env_value(val)
 
         return values
 
     @field_validator("project_root", mode="before")
     @classmethod
     def convert_str_to_path(cls, v: str | Path) -> Path:
-        return Path(v)
+        p = Path(v)
+        if ".." in str(p):
+            msg = "Path traversal characters (..) are not allowed in project_root"
+            raise ValueError(msg)
+        if not p.is_absolute():
+            msg = "project_root must be an absolute path"
+            raise ValueError(msg)
+        return p.resolve(strict=True)
 
     system: SystemConfig
     dynamics: DynamicsConfig
@@ -387,8 +506,12 @@ class ProjectConfig(BaseSettings):
     def validate_project_root(cls, v: Path) -> Path:
         import os
 
-        # Canonicalize path and resolve symlinks
-        resolved_path = Path(os.path.realpath(v)).resolve(strict=True)
+        if ".." in str(v):
+            msg = "Path traversal sequences (..) are not allowed in project_root"
+            raise ValueError(msg)
+
+        # Canonicalize path and resolve symlinks securely without os.path.realpath
+        resolved_path = Path(v).resolve(strict=True)
 
         if not resolved_path.is_absolute():
             msg = f"Project root directory '{v}' must be an absolute path."
@@ -397,6 +520,14 @@ class ProjectConfig(BaseSettings):
         if not resolved_path.exists() or not resolved_path.is_dir():
             msg = f"Project root directory '{v}' does not exist or is not a directory."
             raise ValueError(msg)
+
+        # Security: forbid system directories
+        from src.domain_models.config import SystemConfig
+        restricted_prefixes = SystemConfig.model_fields["restricted_directories"].default_factory() # type: ignore
+        for restricted in restricted_prefixes:
+            if str(resolved_path).startswith(restricted):
+                msg = f"project_root cannot be a system directory: {restricted}"
+                raise ValueError(msg)
 
         # Content validation: verify it looks like a valid project root
         if (

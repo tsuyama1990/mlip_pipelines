@@ -90,6 +90,9 @@ def test_run_cycle(monkeypatch: pytest.MonkeyPatch, mock_project_config: Project
             work_dir = kwargs.get("work_dir")
             if work_dir:
                 work_dir.mkdir(parents=True, exist_ok=True)
+                dump_file = work_dir / "dummy_dump"
+                dump_file.touch()
+                return {"halted": True, "dump_file": str(dump_file)}
             return {"halted": True, "dump_file": "dummy_dump"}
 
         def extract_high_gamma_structures(self, *args: Any, **kwargs: Any) -> list[Any]:

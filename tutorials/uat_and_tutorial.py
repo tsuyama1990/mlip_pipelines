@@ -23,6 +23,7 @@ def __() -> tuple[Any, ...]:
     from src.core.orchestrator import Orchestrator
     from src.domain_models.config import (
         DynamicsConfig,
+        InterfaceTarget,
         OracleConfig,
         PolicyConfig,
         ProjectConfig,
@@ -65,64 +66,61 @@ def __() -> tuple[Any, ...]:
         orchestrator = Orchestrator(project_config)
 
         if project_config.use_mock:
-            # We mock the external subprocess calls on the REAL objects instead of fake ones
-            import unittest.mock
-
+            # Replace components natively using explicit Mock implementations via Dependency Injection
+            # avoiding brittle MagicMock method overwriting on existing instance boundaries.
             from ase.io import write
 
-            def mock_eon_run(potential: Any, work_dir: Path) -> dict[str, Any]:
-                work_dir.mkdir(parents=True, exist_ok=True)
-                dump_file = work_dir / "dump.extxyz"
-                write(str(dump_file), bulk("Fe", "bcc", a=2.86), format="extxyz")
-                return {"halted": True, "dump_file": dump_file, "is_kmc": True}
+            from src.dynamics.dynamics_engine import MDInterface
 
-            def mock_md_run(potential: Any, work_dir: Path) -> dict[str, Any]:
-                work_dir.mkdir(parents=True, exist_ok=True)
-                dump_file = work_dir / "dump.lammps"
-                dump_file.write_text("dummy")
-                return {"halted": True, "dump_file": dump_file}
+            class MockMD(MDInterface):
+                def run_exploration(self, potential: Path | None, work_dir: Path) -> dict[str, Any]:
+                    work_dir.mkdir(parents=True, exist_ok=True)
+                    dump_file = work_dir / "dump.lammps"
+                    dump_file.write_text("dummy")
+                    return {"halted": True, "dump_file": str(dump_file)}
 
-            # EON run
-            orchestrator.eon_engine.run_kmc = unittest.mock.MagicMock(side_effect=mock_eon_run)  # type: ignore
+                def extract_high_gamma_structures(self, *args: Any, **kwargs: Any) -> list[Any]:
+                    return [bulk("Fe", "bcc", a=2.86)] # type: ignore[no-untyped-call]
 
-            # MD run
-            orchestrator.md_engine.run_exploration = unittest.mock.MagicMock(  # type: ignore
-                side_effect=mock_md_run
-            )
+                def resume(self, potential: Path, restart_dir: Path, work_dir: Path) -> dict[str, Any]:
+                    return {"halted": False, "dump_file": None}
 
-            # Oracle
-            orchestrator.oracle.compute_batch = unittest.mock.MagicMock(side_effect=lambda s, d: s)  # type: ignore
+            class MockOracle(AbstractOracle):
+                def compute_batch(self, structures: list[Atoms], calc_dir: Path) -> list[Atoms]:
+                    return structures
 
-            def mock_train(dataset: Path, initial_potential: Path | None, output_dir: Path) -> Path:
-                output_dir.mkdir(parents=True, exist_ok=True)
-                out = output_dir / "output_potential.yace"
-                out.write_text("elements version b_functions")
-                return out
+            class MockTrainer(AbstractTrainer):
+                def train(self, dataset: Path, initial_potential: Path | None, output_dir: Path) -> Path:
+                    output_dir.mkdir(parents=True, exist_ok=True)
+                    out = output_dir / "output_potential.yace"
+                    out.write_text("elements version b_functions")
+                    return out
 
-            def mock_update(new_atoms: Any, dataset_path: Path) -> Path:
-                dataset_path.parent.mkdir(parents=True, exist_ok=True)
-                dataset_path.touch()
-                return dataset_path
+                def update_dataset(self, new_atoms_list: list[Atoms], dataset_path: Path) -> Path:
+                    dataset_path.parent.mkdir(parents=True, exist_ok=True)
+                    dataset_path.touch()
+                    return dataset_path
 
-            # Trainer
-            orchestrator.trainer.train = unittest.mock.MagicMock(side_effect=mock_train)  # type: ignore
-            orchestrator.trainer.update_dataset = unittest.mock.MagicMock(side_effect=mock_update)  # type: ignore
-            orchestrator.trainer.select_local_active_set = unittest.mock.MagicMock(  # type: ignore
-                side_effect=lambda c, a, n: c[:n]
-            )
+                def select_local_active_set(self, candidates: list[Atoms], anchor: Atoms, n: int = 5) -> list[Atoms]:
+                    return candidates[:n]
 
-            # Validator
-            orchestrator.validator.validate = unittest.mock.MagicMock(  # type: ignore
-                return_value=ValidationReport(
-                    passed=True,
-                    reason=None,
-                    energy_rmse=0.001,
-                    force_rmse=0.01,
-                    stress_rmse=0.05,
-                    phonon_stable=True,
-                    mechanically_stable=True,
-                )
-            )
+            class MockValidator:
+                def validate(self, new_pot_path: Path) -> ValidationReport:
+                    return ValidationReport(
+                        passed=True,
+                        reason=None,
+                        energy_rmse=0.001,
+                        force_rmse=0.01,
+                        stress_rmse=0.05,
+                        phonon_stable=True,
+                        mechanically_stable=True,
+                    )
+
+            # Inject the mock dependencies
+            orchestrator.md_engine = MockMD(dyn_config, sys_config)
+            orchestrator.oracle = MockOracle()
+            orchestrator.trainer = MockTrainer()
+            orchestrator.validator = MockValidator() # type: ignore[assignment]
 
         return orchestrator
 
@@ -137,6 +135,7 @@ def __() -> tuple[Any, ...]:
         ProjectConfig,
         SystemConfig,
         DynamicsConfig,
+        InterfaceTarget,
         OracleConfig,
         TrainerConfig,
         ValidatorConfig,
@@ -203,15 +202,21 @@ def __p1r(phase1_results: dict[str, Any]) -> None:
 
 
 @app.cell
-def __phase2(setup_orchestrator: Any) -> tuple[Any, dict[str, float]]:
+def __phase2(setup_orchestrator: Any, InterfaceTarget: Any) -> tuple[Any, dict[str, float]]:
     # ==========================================
     # Phase 2: The Aha! Moment (FePt/MgO Interface)
     # ==========================================
     # Here we simulate configuring the pipeline for an interface boundary calculation.
     orchestrator_interface = setup_orchestrator()
     orchestrator_interface.config.system.elements = ["Fe", "Pt", "Mg", "O"]
+    orchestrator_interface.config.system.interface_target = InterfaceTarget(
+        element1="FePt", element2="MgO", face1="Fe", face2="Mg"
+    )
 
     # In a real run, this would generate and relax an interface structure.
+    # We call run_cycle to actually trigger the interface generation and mock AL loop
+    orchestrator_interface.run_cycle()
+
     # For the mock tutorial, we present the final computed mock values.
     interface_energy = 0.85  # J/m^2
     fept_order_parameter = 0.92
