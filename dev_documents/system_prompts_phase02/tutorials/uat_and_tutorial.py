@@ -79,9 +79,11 @@ def __() -> tuple[Any, ...]:
                     return {"halted": True, "dump_file": str(dump_file)}
 
                 def extract_high_gamma_structures(self, *args: Any, **kwargs: Any) -> list[Any]:
-                    return [bulk("Fe", "bcc", a=2.86)] # type: ignore[no-untyped-call]
+                    return [bulk("Fe", "bcc", a=2.86)]  # type: ignore[no-untyped-call]
 
-                def resume(self, potential: Path, restart_dir: Path, work_dir: Path) -> dict[str, Any]:
+                def resume(
+                    self, potential: Path, restart_dir: Path, work_dir: Path
+                ) -> dict[str, Any]:
                     return {"halted": False, "dump_file": None}
 
             class MockOracle(AbstractOracle):
@@ -89,7 +91,9 @@ def __() -> tuple[Any, ...]:
                     return structures
 
             class MockTrainer(AbstractTrainer):
-                def train(self, dataset: Path, initial_potential: Path | None, output_dir: Path) -> Path:
+                def train(
+                    self, dataset: Path, initial_potential: Path | None, output_dir: Path
+                ) -> Path:
                     output_dir.mkdir(parents=True, exist_ok=True)
                     out = output_dir / "output_potential.yace"
                     out.write_text("elements version b_functions")
@@ -100,7 +104,9 @@ def __() -> tuple[Any, ...]:
                     dataset_path.touch()
                     return dataset_path
 
-                def select_local_active_set(self, candidates: list[Atoms], anchor: Atoms, n: int = 5) -> list[Atoms]:
+                def select_local_active_set(
+                    self, candidates: list[Atoms], anchor: Atoms, n: int = 5
+                ) -> list[Atoms]:
                     return candidates[:n]
 
             class MockValidator:
@@ -119,7 +125,7 @@ def __() -> tuple[Any, ...]:
             orchestrator.md_engine = MockMD(dyn_config, sys_config)
             orchestrator.oracle = MockOracle()
             orchestrator.trainer = MockTrainer()
-            orchestrator.validator = MockValidator() # type: ignore[assignment]
+            orchestrator.validator = MockValidator()  # type: ignore[assignment]
 
         return orchestrator
 

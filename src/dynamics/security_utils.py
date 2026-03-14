@@ -84,6 +84,7 @@ def validate_filename(filename: str, extra_allowed_chars: str = "") -> None:
         msg = f"Invalid characters in filename: {filename}"
         raise ValueError(msg)
 
+
 def _validate_env_key(key: str) -> None:
     if not key.startswith("MLIP_"):
         msg = f"Unauthorized environment variable injected via .env: {key}. Only MLIP_ prefixes are allowed."
@@ -97,11 +98,11 @@ def _validate_env_key(key: str) -> None:
 
 
 def _validate_env_value(val: str) -> None:
-    if len(val) > 256:
+    if len(val) > 1024:
         msg = "Environment variable value exceeds maximum length"
         raise ValueError(msg)
-    if not re.match(r"^[a-zA-Z0-9_-]+$", val):
-        msg = f"Invalid characters in .env variable value: {val}. Path separators are forbidden."
+    if ".." in val or ";" in val or "&" in val or "|" in val:
+        msg = f"Invalid characters or traversal sequences in .env variable value: {val}."
         raise ValueError(msg)
 
 

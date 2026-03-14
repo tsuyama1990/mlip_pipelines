@@ -63,29 +63,28 @@ class StructureGenerator(AbstractGenerator):
 
             # This is a simplified interface construction registry
             def _build_fept() -> Atoms:
-                mat = bulk("Fe", crystalstructure="fcc", a=3.8) # type: ignore[no-untyped-call]
+                mat = bulk("Fe", crystalstructure="fcc", a=3.8)  # type: ignore[no-untyped-call]
                 mat[0].symbol = "Pt"
                 return mat
 
             def _build_mgo() -> Atoms:
-                return bulk("MgO", crystalstructure="rocksalt", a=4.21, basis=[[0, 0, 0], [0.5, 0.5, 0.5]]) # type: ignore[no-untyped-call]
+                return bulk(
+                    "MgO", crystalstructure="rocksalt", a=4.21, basis=[[0, 0, 0], [0.5, 0.5, 0.5]]
+                )  # type: ignore[no-untyped-call]
 
-            builders = {
-                "FePt": _build_fept,
-                "MgO": _build_mgo
-            }
+            builders = {"FePt": _build_fept, "MgO": _build_mgo}
 
             def _build_generic(element: str) -> Atoms:
                 if element in builders:
                     return builders[element]()
-                return bulk(element) # type: ignore[no-untyped-call]
+                return bulk(element)  # type: ignore[no-untyped-call]
 
             mat1 = _build_generic(target.element1)
             mat2 = _build_generic(target.element2)
 
             # Adjust lattice parameters slightly to allow stacking without crashing
             # In a real scenario, this would use sophisticated mismatch analysis
-            mat2.set_cell(mat1.get_cell(), scale_atoms=True) # type: ignore[no-untyped-call]
+            mat2.set_cell(mat1.get_cell(), scale_atoms=True)  # type: ignore[no-untyped-call]
         except Exception as e:
             logging.exception("Failed to generate interface")
             msg = f"Interface generation failed: {e}"

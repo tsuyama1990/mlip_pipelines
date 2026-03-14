@@ -38,6 +38,39 @@ class Orchestrator:
         self.policy_engine = AdaptiveExplorationPolicyEngine(config.policy)
         self.structure_generator: AbstractGenerator = StructureGenerator(config.structure_generator)
         self.iteration = 0
+        self.resume_state()
+
+    def resume_state(self) -> None:
+        """Scans the potentials directory to find the highest completed iteration."""
+        import re
+        import shutil
+
+        pot_dir = self.config.project_root / "potentials"
+        if not pot_dir.exists():
+            self.iteration = 0
+            return
+
+        files = list(pot_dir.glob("generation_*.yace"))
+        if not files:
+            self.iteration = 0
+            return
+
+        max_iter = 0
+        for f in files:
+            match = re.search(r"generation_(\d+)\.yace", f.name)
+            if match:
+                max_iter = max(max_iter, int(match.group(1)))
+
+        self.iteration = max_iter
+        logging.info(f"Resumed state from generation_{self.iteration:03d}.yace")
+
+        # Clean up orphaned tmp directories
+        al_dir = self.config.project_root / "active_learning"
+        if al_dir.exists():
+            for tmp_dir in al_dir.glob("tmp*"):
+                if tmp_dir.is_dir():
+                    logging.info(f"Cleaning up orphaned temporary directory: {tmp_dir}")
+                    shutil.rmtree(tmp_dir, ignore_errors=True)
 
     def get_latest_potential(self) -> Path | None:
         """Finds the most recent valid generation potential."""
@@ -232,7 +265,9 @@ class Orchestrator:
             return False
         return True
 
-    def _secure_copy_potential(self, src_pot: Path, pot_dir: Path, iteration: int, tmp_work_dir: Path) -> Path:  # noqa: PLR0915, PLR0912
+    def _secure_copy_potential(
+        self, src_pot: Path, pot_dir: Path, iteration: int, tmp_work_dir: Path
+    ) -> Path:
         import hashlib
         import os
 
@@ -389,7 +424,10 @@ class Orchestrator:
             raise
 
     def _pre_generate_interface_target(self) -> str | None:
-        if not self.config.system.interface_target or self.iteration != self.config.system.interface_generation_iteration:
+        if (
+            not self.config.system.interface_target
+            or self.iteration != self.config.system.interface_generation_iteration
+        ):
             return None
 
         logging.info("Interface configuration detected. Pre-generating interface target.")
@@ -402,11 +440,18 @@ class Orchestrator:
                 )
                 from ase.io import write
 
-                work_dir_setup = self.config.project_root / "active_learning" / f"iter_{self.iteration:03d}" / "md_run"
+                work_dir_setup = (
+                    self.config.project_root
+                    / "active_learning"
+                    / f"iter_{self.iteration:03d}"
+                    / "md_run"
+                )
                 work_dir_setup.mkdir(parents=True, exist_ok=True)
                 target_file = work_dir_setup / "initial_structure.extxyz"
                 write(str(target_file), initial_struct, format="extxyz")
-                logging.info(f"Generated interface structure with {len(initial_struct)} atoms and saved to {target_file}")
+                logging.info(
+                    f"Generated interface structure with {len(initial_struct)} atoms and saved to {target_file}"
+                )
             else:
                 logging.warning("Structure generator does not support generate_interface")
         except Exception:
