@@ -86,7 +86,7 @@ def test_uat_02_03_oom_protection():
     # Moderately large object scaling
     mod_atoms = Atoms("Fe" * 2000, positions=[(0, 0, 0)] * 2000)
     mod_atoms.set_cell([10, 10, 10])
-    candidates = generator.generate_local_candidates(mod_atoms, n=200)
+    candidates = list(generator.generate_local_candidates(mod_atoms, n=200))
 
     # max(1, min(n, 100) // 10) = 10
     assert len(candidates) == 10

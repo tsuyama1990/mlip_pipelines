@@ -123,7 +123,7 @@ def test_exploration_generation_flow():
         assert len(initial_structure) > 4
 
         # 5. Simulate finding an uncertain structure and generating candidates
-        candidates = generator.generate_local_candidates(initial_structure, n=5)
+        candidates = list(generator.generate_local_candidates(initial_structure, n=5))
 
         assert len(candidates) == 5
         for cand in candidates:

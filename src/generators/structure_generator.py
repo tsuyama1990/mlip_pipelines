@@ -1,4 +1,5 @@
 import logging
+import typing
 
 from ase import Atoms
 from ase.build import bulk, stack
@@ -14,10 +15,9 @@ class StructureGenerator(AbstractGenerator):
     def __init__(self, config: StructureGeneratorConfig) -> None:
         self.config = config
 
-    def generate_local_candidates(self, s0: Atoms, n: int = 20) -> list[Atoms]:
+    def generate_local_candidates(self, s0: Atoms, n: int = 20) -> typing.Iterator[Atoms]:
         """Generates candidates via random rattling using streaming generation."""
         from collections.abc import Iterator
-
         if len(s0) > 10000:
             msg = "Structure is too large for rattling (OOM risk)."
             raise ValueError(msg)
@@ -34,7 +34,7 @@ class StructureGenerator(AbstractGenerator):
                 c.rattle(stdev=self.config.stdev, seed=self.config.seed_base + i)
                 yield c
 
-        return list(_generator())
+        return _generator()
 
     def _validate_interface_elements(self, elements: list[str], valid_targets: list[str]) -> None:
         for elem in elements:

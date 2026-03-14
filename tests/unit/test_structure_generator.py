@@ -41,8 +41,8 @@ def test_generate_local_candidates_scaling():
     mod_atoms = Atoms("Fe" * 2000, positions=[(0, 0, 0)] * 2000)
     mod_atoms.set_cell([10, 10, 10])
 
-    candidates = generator.generate_local_candidates(mod_atoms, n=50)
-    assert len(candidates) == 5
+    candidates = list(generator.generate_local_candidates(mod_atoms, n=50))
+    assert len(list(candidates)) == 5
 
 
 def test_generate_local_candidates_normal():
@@ -53,11 +53,11 @@ def test_generate_local_candidates_normal():
     atoms = Atoms("Fe", positions=[(0, 0, 0)])
     atoms.set_cell([10, 10, 10])
 
-    candidates = generator.generate_local_candidates(atoms, n=5)
-    assert len(candidates) == 5
+    candidates = list(generator.generate_local_candidates(atoms, n=5))
+    assert len(list(candidates)) == 5
 
     # Rattling should move the atom
-    for cand in candidates:
+    for cand in list(candidates):
         assert cand.positions[0][0] != 0.0 or cand.positions[0][1] != 0.0
 
 

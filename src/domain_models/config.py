@@ -202,14 +202,6 @@ class OracleConfig(BaseModel):
         description="Path to pseudopotentials directory (can be overridden by MLIP_PSEUDO_DIR env var)",
     )
 
-    @field_validator("kspacing")
-    @classmethod
-    def validate_kspacing(cls, v: float) -> float:
-        if v < 0.01 or v > 0.15:
-            msg = "kspacing must be within a reasonable range for typical DFT calculations (0.01 to 0.15)"
-            raise ValueError(msg)
-        return v
-
     max_retries: int = Field(default=3, ge=0, description="Max retries for SCF convergence failure")
     buffer_size: float = Field(
         default=4.0, ge=0.0, description="Buffer size in Angstroms for periodic embedding"
@@ -448,7 +440,7 @@ class ProjectConfig(BaseSettings):
 
     @model_validator(mode="before")
     @classmethod
-    def validate_env_content(cls, values: dict[str, Any]) -> dict[str, Any]:
+    def validate_env_content(cls, values: dict[str, Any]) -> dict[str, Any]:  # noqa: PLR0912
         expected_base = Path.cwd().resolve(strict=True)
         env_file = expected_base / ".env"
 
@@ -467,6 +459,12 @@ class ProjectConfig(BaseSettings):
             with Path.open(resolved_env, encoding="utf-8") as f:
                 content = f.read()
                 if "import " in content or "eval(" in content or "exec(" in content:
+                    msg = "Suspicious content detected in .env file."
+                    raise ValueError(msg)
+
+            with Path.open(resolved_env, encoding="utf-8") as f:
+                fc = f.read()
+                if "import " in fc or "eval(" in fc or "exec(" in fc:
                     msg = "Suspicious content detected in .env file."
                     raise ValueError(msg)
 
@@ -523,6 +521,9 @@ class ProjectConfig(BaseSettings):
     @field_validator("project_root")
     @classmethod
     def validate_project_root(cls, v: Path) -> Path:
+        if ".." in str(v):
+            msg = "Path traversal sequences (..) are not allowed in project_root"
+            raise ValueError(msg)
         if ".." in str(v):
             msg = "Path traversal sequences (..) are not allowed in project_root"
             raise ValueError(msg)

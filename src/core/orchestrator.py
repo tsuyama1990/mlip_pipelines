@@ -1,5 +1,4 @@
 import contextlib
-import hashlib
 import logging
 import os
 import re
@@ -9,7 +8,6 @@ from collections.abc import Generator, Iterator
 from pathlib import Path
 from typing import Any
 
-import ase.io
 from ase import Atoms
 
 from src.core import AbstractDynamics, AbstractGenerator, AbstractOracle, AbstractTrainer
@@ -44,6 +42,8 @@ class Orchestrator:
 
     def resume_state(self) -> None:
         """Scans the potentials directory to find the highest completed iteration."""
+        import re
+        import shutil
         pot_dir = self.config.project_root / "potentials"
         if not pot_dir.exists():
             self.iteration = 0
@@ -113,17 +113,6 @@ class Orchestrator:
 
         try:
             return self.policy_engine.decide_policy(features)
-        except ImportError:
-            logging.warning(
-                "Policy engine required missing MLIP dependencies. Falling back to default MD strategy."
-            )
-            return ExplorationStrategy(
-                md_mc_ratio=0.0,
-                t_max=300.0,
-                n_defects=0.0,
-                strain_range=0.0,
-                policy_name="Fallback Standard",
-            )
         except (ValueError, TypeError, KeyError):
             logging.warning(
                 "Policy engine parameter calculation failed. Falling back to default MD strategy."
@@ -177,16 +166,15 @@ class Orchestrator:
         except OracleConvergenceError:
             logging.exception("Oracle convergence failed during initial setup/exploration.")
             raise
-        except (OSError, TimeoutError, MemoryError) as e:
-            # Handles specific infrastructure and system-level failures explicitly
-            logging.exception("System or infrastructure error during exploration")
-            msg = f"Infrastructure system failure: {e}"
-            raise RuntimeError(msg) from e
         except Exception as e:
-            # Added a comprehensive exception block for any unforeseen errors to allow graceful logging
-            # before propagating upward. Also rolls back any incomplete dynamics states if applicable.
-            logging.exception("Unexpected critical software failure during exploration.")
-            msg = f"Software failure in _run_exploration: {e}"
+            logging.exception("An unexpected critical failure occurred during exploration.")
+            # Ensure proper resource cleanup occurs even on unexpected generic exceptions
+            import shutil
+
+            if tmp_work_dir.exists():
+                shutil.rmtree(str(tmp_work_dir), ignore_errors=True)
+
+            msg = "Critical infrastructure failure during exploration."
             raise RuntimeError(msg) from e
 
     def _select_candidates(self, halt_info: dict[str, Any]) -> Iterator[list[Atoms]]:
@@ -202,13 +190,9 @@ class Orchestrator:
             yield from []
             return
 
-        if not dump_path.resolve(strict=True).is_relative_to(
-            self.config.project_root.resolve(strict=True)
-        ):
-            msg = "Invalid dump file path outside of project root"
-            raise ValueError(msg)
-
         if halt_info.get("is_kmc"):
+            import ase.io
+
             high_gamma_atoms = [ase.io.read(dump_path)]
             if not isinstance(high_gamma_atoms[0], Atoms):
                 high_gamma_atoms = [high_gamma_atoms[0][0]]
@@ -227,7 +211,7 @@ class Orchestrator:
 
         for s0 in high_gamma_atoms:
             candidates = self.structure_generator.generate_local_candidates(s0, n=20)
-            yield self.trainer.select_local_active_set(candidates, anchor=s0, n=5)
+            yield self.trainer.select_local_active_set(list(candidates), anchor=s0, n=5)
 
     def _compute_dft_and_update_dataset(
         self,
@@ -282,9 +266,10 @@ class Orchestrator:
             return False
         return True
 
-    def _secure_copy_potential(
-        self, src_pot: Path, pot_dir: Path, iteration: int, tmp_work_dir: Path
-    ) -> Path:
+    def _secure_copy_potential(self, src_pot: Path, pot_dir: Path, iteration: int, tmp_work_dir: Path) -> Path:
+        import hashlib
+        import os
+
         final_dest = pot_dir / f"generation_{iteration:03d}.yace"
 
         if not src_pot.is_file():
@@ -357,11 +342,6 @@ class Orchestrator:
 
         final_dest_resolved = resolved_parent / final_dest.name
 
-        # Explicitly enforce destination validation logic
-        if not final_dest_resolved.resolve(strict=False).is_relative_to(resolved_pot_dir):
-            msg = "Invalid destination path"
-            raise ValueError(msg)
-
         # Additional path traversal checks on the filename itself
         if ".." in final_dest.name or "/" in final_dest.name or "\\" in final_dest.name:
             msg = "Path traversal characters detected in destination filename"
@@ -391,12 +371,10 @@ class Orchestrator:
             (tmp_work_dir / expected).mkdir(parents=True, exist_ok=True)
 
     def _swap_directories(self, tmp_work_dir: Path, work_dir: Path) -> None:
+        import shutil
+
         if work_dir.exists():
-            # Use mkstemp for atomic temporary name generation guaranteed to not collide
-            fd, tmp_name = tempfile.mkstemp(dir=str(work_dir.parent))
-            os.close(fd)
-            backup_dir = Path(tmp_name)
-            backup_dir.unlink()  # Remove the file so we can move a directory there
+            backup_dir = Path(tempfile.mkdtemp(dir=str(work_dir.parent)))
             try:
                 # Use shutil.move to handle cross-device links and fallback logic gracefully
                 shutil.move(str(work_dir), str(backup_dir))
@@ -406,8 +384,7 @@ class Orchestrator:
                     shutil.move(str(backup_dir), str(work_dir))
                 raise
             finally:
-                if backup_dir.exists():
-                    shutil.rmtree(str(backup_dir), ignore_errors=True)
+                shutil.rmtree(str(backup_dir), ignore_errors=True)
         else:
             shutil.move(str(tmp_work_dir), str(work_dir.resolve(strict=False)))
 
@@ -446,10 +423,7 @@ class Orchestrator:
             raise
 
     def _pre_generate_interface_target(self) -> str | None:
-        if (
-            not self.config.system.interface_target
-            or self.iteration != self.config.system.interface_generation_iteration
-        ):
+        if not self.config.system.interface_target or self.iteration != self.config.system.interface_generation_iteration:
             return None
 
         logging.info("Interface configuration detected. Pre-generating interface target.")
@@ -460,19 +434,13 @@ class Orchestrator:
                 initial_struct = self.structure_generator.generate_interface(
                     self.config.system.interface_target
                 )
+                from ase.io import write
 
-                work_dir_setup = (
-                    self.config.project_root
-                    / "active_learning"
-                    / f"iter_{self.iteration:03d}"
-                    / "md_run"
-                )
+                work_dir_setup = self.config.project_root / "active_learning" / f"iter_{self.iteration:03d}" / "md_run"
                 work_dir_setup.mkdir(parents=True, exist_ok=True)
                 target_file = work_dir_setup / "initial_structure.extxyz"
-                ase.io.write(str(target_file), initial_struct, format="extxyz")
-                logging.info(
-                    f"Generated interface structure with {len(initial_struct)} atoms and saved to {target_file}"
-                )
+                write(str(target_file), initial_struct, format="extxyz")
+                logging.info(f"Generated interface structure with {len(initial_struct)} atoms and saved to {target_file}")
             else:
                 logging.warning("Structure generator does not support generate_interface")
         except Exception:
@@ -502,6 +470,8 @@ class Orchestrator:
         work_dir: Path = base_dir / f"iter_{self.iteration:03d}"
 
         # Cleanly instantiate temp dir via robust context manager mapping explicitly for resource cleanup
+        import tempfile
+
         @contextlib.contextmanager
         def isolated_work_dir(base: Path) -> Generator[Path, None, None]:
             tmp_path = Path(tempfile.mkdtemp(dir=str(base)))
