@@ -166,6 +166,12 @@ class Orchestrator:
         except OracleConvergenceError:
             logging.exception("Oracle convergence failed during initial setup/exploration.")
             raise
+        except Exception as e:
+            # Added a comprehensive exception block for any unforeseen errors to allow graceful logging
+            # before propagating upward. Also rolls back any incomplete dynamics states if applicable.
+            logging.exception("Unexpected critical infrastructure failure during exploration.")
+            msg = f"Infrastructure failure in _run_exploration: {e}"
+            raise RuntimeError(msg) from e
 
     def _select_candidates(self, halt_info: dict[str, Any]) -> Iterator[list[Atoms]]:
         dump_file = halt_info.get("dump_file")

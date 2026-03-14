@@ -48,12 +48,13 @@ def _secure_resolve_and_validate_dir(path_str: str, check_exists: bool = True) -
 
     if check_exists:
         st = resolved.stat()
-        if bool(st.st_mode & stat.S_IWOTH):
-            msg = f"Directory {path_str} is world-writable, which is insecure."
+        # Strict ownership verification is required first
+        if st.st_uid != os.getuid():
+            msg = f"Directory {path_str} is not owned by the current user (uid={os.getuid()}). This is insecure."
             raise ValueError(msg)
 
-        if st.st_uid != os.getuid():
-            msg = f"Directory {path_str} is not owned by the current user. This is insecure."
+        if bool(st.st_mode & stat.S_IWOTH):
+            msg = f"Directory {path_str} is world-writable, which is insecure."
             raise ValueError(msg)
 
     return str(resolved)
@@ -481,6 +482,21 @@ class ProjectConfig(BaseSettings):
 
                     cls._validate_env_key(key)
                     cls._validate_env_value(val)
+
+                    # Strict type parsing based on expected model fields
+                    # We inject the parsed and type-checked values directly into the configuration dict
+                    if val.lower() in ("true", "1", "yes"):
+                        values[key.replace("MLIP_", "").lower()] = True
+                    elif val.lower() in ("false", "0", "no"):
+                        values[key.replace("MLIP_", "").lower()] = False
+                    else:
+                        try:
+                            if "." in val:
+                                values[key.replace("MLIP_", "").lower()] = float(val)
+                            else:
+                                values[key.replace("MLIP_", "").lower()] = int(val)
+                        except ValueError:
+                            values[key.replace("MLIP_", "").lower()] = val
 
         return values
 

@@ -26,15 +26,15 @@ class FeatureExtractor:
                 raise ValueError(msg)
 
         try:
-            self._try_load_mlip()
-        except (ImportError, NotImplementedError):
+            return self._try_load_mlip(elements)
+        except ImportError:
             logging.info("matgl/chgnet not available or not used. Using rule-based fallback.")
             return self._mock_extraction(elements)
 
         # Normally wouldn't reach here in UAT mode
         return self._mock_extraction(elements)
 
-    def _try_load_mlip(self) -> None:
+    def _try_load_mlip(self, elements: list[str]) -> MaterialFeatures:
         import importlib.util
 
         if (
