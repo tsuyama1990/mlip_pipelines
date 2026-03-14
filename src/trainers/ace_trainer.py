@@ -91,13 +91,33 @@ class PacemakerWrapper(AbstractTrainer):
     def _resolve_absolute_binary(
         self, binary_setting: str, binary_name: str, trusted_dirs: list[str]
     ) -> str:
+        import os
+
         if ".." in binary_setting:
             msg = f"Invalid absolute binary path: {binary_setting}"
             raise ValueError(msg)
         resolved_bin = Path(binary_setting).resolve(strict=True)
-        if ".." in os.path.realpath(str(resolved_bin)):
-            msg = "Resolved binary path contains traversal sequences."
+
+        # Security: TOCTOU and symlink evasion prevention
+        bin_stat = os.lstat(str(resolved_bin))
+        in_trusted_dir = False
+        for td in trusted_dirs:
+            try:
+                td_path = Path(td).resolve(strict=True)
+                td_stat = os.lstat(str(td_path))
+                if (
+                    os.path.commonpath([str(td_path), str(resolved_bin)]) == str(td_path)
+                    and bin_stat.st_dev == td_stat.st_dev
+                ):  # Ensure no malicious mount point crossing
+                    in_trusted_dir = True
+                    break
+            except (OSError, ValueError):
+                continue
+
+        if not in_trusted_dir:
+            msg = "Resolved binary path is not securely within trusted directories."
             raise ValueError(msg)
+
         self._validate_binary_properties(resolved_bin, binary_name, trusted_dirs)
         self._verify_hash(resolved_bin, binary_name)
         return str(resolved_bin)
@@ -105,6 +125,8 @@ class PacemakerWrapper(AbstractTrainer):
     def _resolve_relative_binary(
         self, binary_setting: str, binary_name: str, trusted_dirs: list[str]
     ) -> str:
+        import os
+
         if not re.match(r"^[-a-zA-Z0-9_.]+$", binary_setting):
             msg = f"Invalid binary name: {binary_setting}"
             raise ValueError(msg)
@@ -112,9 +134,26 @@ class PacemakerWrapper(AbstractTrainer):
         if resolved_which is None:
             return binary_setting
         resolved_bin = Path(resolved_which).resolve(strict=True)
-        if ".." in os.path.realpath(str(resolved_bin)):
-            msg = "Resolved binary path contains traversal sequences."
+
+        bin_stat = os.lstat(str(resolved_bin))
+        in_trusted_dir = False
+        for td in trusted_dirs:
+            try:
+                td_path = Path(td).resolve(strict=True)
+                td_stat = os.lstat(str(td_path))
+                if (
+                    os.path.commonpath([str(td_path), str(resolved_bin)]) == str(td_path)
+                    and bin_stat.st_dev == td_stat.st_dev
+                ):
+                    in_trusted_dir = True
+                    break
+            except (OSError, ValueError):
+                continue
+
+        if not in_trusted_dir:
+            msg = "Resolved binary path is not securely within trusted directories."
             raise ValueError(msg)
+
         self._validate_binary_properties(resolved_bin, binary_name, trusted_dirs)
         self._verify_hash(resolved_bin, binary_name)
         return str(resolved_bin)
@@ -199,20 +238,18 @@ class PacemakerWrapper(AbstractTrainer):
             raise RuntimeError(msg)
 
     def _validate_train_directories(self, dataset: Path, output_dir: Path) -> tuple[Path, Path]:
+        import os
         import stat
 
+        # Security: Atomic path validation using O_NOFOLLOW
         try:
-            st_info = os.lstat(dataset)
-            if stat.S_ISLNK(st_info.st_mode):
-                msg = f"Dataset path cannot be a symlink: {dataset}"
-                raise ValueError(msg)
-        except FileNotFoundError:
-            pass
+            fd = os.open(str(dataset), os.O_RDONLY | os.O_NOFOLLOW)
+            os.close(fd)
+        except OSError as e:
+            msg = f"Failed to securely open dataset (possibly a symlink or missing): {dataset}"
+            raise FileNotFoundError(msg) from e
 
         resolved_dataset: Path = dataset.resolve(strict=True)
-        if not resolved_dataset.exists():
-            msg = f"Dataset not found: {resolved_dataset}"
-            raise FileNotFoundError(msg)
 
         # Verify it's an extxyz file
         if resolved_dataset.suffix != ".extxyz":

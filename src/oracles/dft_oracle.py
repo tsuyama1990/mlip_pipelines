@@ -171,19 +171,15 @@ class DFTManager(AbstractOracle):
             msg = f"Failed to securely open pseudopotential (possibly a symlink): {upf_name}"
             raise FileNotFoundError(msg) from e
 
-        try:
-            # After opening, we verify the file's final canonical path is still inside pseudo_dir_path
-            # by getting the path via /proc/self/fd on linux or standard resolving otherwise.
-            # We can use os.path.realpath securely now since the descriptor is locked for read
-            fd_path = (
-                Path(os.path.realpath(f"/proc/self/fd/{fd}"))
-                if os.path.exists(f"/proc/self/fd/{fd}")
-                else upf_path.resolve(strict=True)
-            )
-            if not str(fd_path).startswith(str(pseudo_dir_path.resolve(strict=True))):
-                msg = f"Path traversal detected for pseudopotential file after open: {upf_name}"
+        def _check_stat() -> None:
+            st = os.fstat(fd)
+            expected_stat = os.lstat(str(upf_path.resolve(strict=True)))
+            if st.st_dev != expected_stat.st_dev or st.st_ino != expected_stat.st_ino:
+                msg = f"Symlink swap detected for pseudopotential file after open: {upf_name}"
                 raise ValueError(msg)
 
+        try:
+            _check_stat()
             self._check_upf_stat_and_content(fd, upf_name)
         except UnicodeDecodeError as e:
             msg = f"File is corrupted or not utf-8 text: {upf_name}"
@@ -279,16 +275,24 @@ class DFTManager(AbstractOracle):
         if hasattr(self.config, "project_root"):
             allowed_bases.append(str(Path(self.config.project_root).resolve(strict=True)))
 
-        for safe_base in allowed_bases:
-            try:
-                if os.path.commonpath([safe_base, str(canonical_work_dir)]) == safe_base:
-                    is_safe = True
-                    break
-            except ValueError:
-                pass
+        try:
+            st = os.lstat(canonical_work_dir)
+            for safe_base in allowed_bases:
+                base_st = os.lstat(safe_base)
+                try:
+                    if (
+                        os.path.commonpath([safe_base, str(canonical_work_dir)]) == safe_base
+                        and st.st_dev == base_st.st_dev
+                    ):  # Additional mount point check
+                        is_safe = True
+                        break
+                except ValueError:
+                    pass
+        except OSError:
+            pass
 
         if not is_safe:
-            msg = f"Work directory {canonical_work_dir} is not within trusted boundaries."
+            msg = f"Work directory {canonical_work_dir} is not within trusted boundaries or device mismatch."
             raise ValueError(msg)
 
         symbols: set[str] = set(atoms.get_chemical_symbols())  # type: ignore[no-untyped-call]

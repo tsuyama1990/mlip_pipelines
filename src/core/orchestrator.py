@@ -275,13 +275,25 @@ class Orchestrator:
 
         final_dest = pot_dir / f"generation_{iteration:03d}.yace"
 
-        if not src_pot.is_file():
-            msg = "Source potential file missing or invalid"
-            raise FileNotFoundError(msg)
+        # Secure file check using O_NOFOLLOW
+        try:
+            fd_src = os.open(str(src_pot), os.O_RDONLY | os.O_NOFOLLOW)
+        except OSError as e:
+            msg = f"Source potential file missing, invalid, or is a symlink: {src_pot}"
+            raise FileNotFoundError(msg) from e
 
-        if not src_pot.resolve(strict=True).is_relative_to(tmp_work_dir.resolve(strict=True)):
-            msg = "Path traversal detected"
-            raise ValueError(msg)
+        try:
+            st = os.fstat(fd_src)
+            expected_stat = os.lstat(str(src_pot.resolve(strict=True)))
+            if st.st_dev != expected_stat.st_dev or st.st_ino != expected_stat.st_ino:
+                msg = "Symlink or TOCTOU detected on source potential"
+                raise ValueError(msg)
+
+            if not src_pot.resolve(strict=True).is_relative_to(tmp_work_dir.resolve(strict=True)):
+                msg = "Path traversal detected"
+                raise ValueError(msg)
+        finally:
+            os.close(fd_src)
 
         # Ensure purely safe alphanumeric filename without any special characters
         if not re.match(r"^[a-zA-Z0-9_-]+\.yace$", src_pot.name):
@@ -335,7 +347,7 @@ class Orchestrator:
 
         missing_headers = required_headers - headers_found
         if missing_headers:
-            os.remove(temp_dest)
+            Path(temp_dest).unlink(missing_ok=True)
             msg = f"Source potential file {src_pot} is missing required YACE headers: {missing_headers}"
             raise ValueError(msg)
 
@@ -361,13 +373,13 @@ class Orchestrator:
 
         # Additional path traversal checks on the filename itself
         if ".." in final_dest.name or "/" in final_dest.name or "\\" in final_dest.name:
-            os.remove(temp_dest)
+            Path(temp_dest).unlink(missing_ok=True)
             msg = "Path traversal characters detected in destination filename"
             raise ValueError(msg)
 
         try:
             # Atomic replace
-            os.rename(temp_dest, str(final_dest_resolved))
+            Path(temp_dest).rename(final_dest_resolved)
         except Exception:
             Path(temp_dest).unlink(missing_ok=True)
             raise
@@ -399,79 +411,34 @@ class Orchestrator:
                     pass
 
     def _swap_directories(self, tmp_work_dir: Path, work_dir: Path) -> None:
-        import hashlib
-        import os
         import shutil
 
-        def compute_dir_hash(directory: Path) -> str:
-            if not directory.exists() or not directory.is_dir():
-                return ""
-            h = hashlib.sha256()
-            for root, dirs, files in os.walk(directory):
-                # Sorting to ensure deterministic hashing
-                dirs.sort()
-                files.sort()
-                for file in files:
-                    filepath = Path(root) / file
-                    if filepath.is_file():
-                        try:
-                            # Using os.fstat for secure atomic read is too heavy for recursive directory hashing.
-                            # Just read the content to generate a checksum
-                            with open(filepath, "rb") as f:
-                                while chunk := f.read(8192):
-                                    h.update(chunk)
-                        except Exception:
-                            continue
-            return h.hexdigest()
+        # To prevent race conditions and cross-filesystem issues, we will just use a direct copytree
+        # onto a temporary resolved destination, then perform an atomic rename.
+        # This completely avoids hashes over changing filesystems.
+        final_dest = work_dir.resolve(strict=False)
+        temp_swap = Path(tempfile.mkdtemp(dir=str(final_dest.parent)))
 
-        if work_dir.exists():
-            # Backup work dir
-            backup_dir = Path(tempfile.mkdtemp(dir=str(work_dir.parent)))
+        try:
+            # Secure copy into the isolated temp dir
+            shutil.copytree(str(tmp_work_dir), str(temp_swap / "new_work"))
 
-            # Record state before moves
-            orig_tmp_hash = compute_dir_hash(tmp_work_dir)
-            compute_dir_hash(work_dir)
-
-            try:
+            # Atomic swap
+            if final_dest.exists():
+                backup_dest = temp_swap / "backup"
+                Path(final_dest).rename(backup_dest)
                 try:
-                    os.rename(str(work_dir), str(backup_dir / "backup"))
-                except OSError:
-                    shutil.copytree(str(work_dir), str(backup_dir / "backup"))
-                    shutil.rmtree(str(work_dir))
-
-                try:
-                    os.rename(str(tmp_work_dir), str(work_dir.resolve(strict=False)))
-                except OSError:
-                    shutil.copytree(str(tmp_work_dir), str(work_dir.resolve(strict=False)))
-                    shutil.rmtree(str(tmp_work_dir))
-
-                # Verify state after moves to detect tampering during swap
-                if compute_dir_hash(work_dir) != orig_tmp_hash:
-                    msg = "Checksum mismatch: tmp_work_dir was tampered with during the swap."
-                    raise RuntimeError(msg)
-            except Exception:
-                # Rollback
-                if (backup_dir / "backup").exists():
-                    if work_dir.exists():
-                        shutil.rmtree(str(work_dir))
-                    try:
-                        os.rename(str(backup_dir / "backup"), str(work_dir))
-                    except OSError:
-                        shutil.copytree(str(backup_dir / "backup"), str(work_dir))
-                        shutil.rmtree(str(backup_dir / "backup"))
-                raise
-            finally:
-                shutil.rmtree(str(backup_dir), ignore_errors=True)
-        else:
-            orig_tmp_hash = compute_dir_hash(tmp_work_dir)
-            try:
-                os.rename(str(tmp_work_dir), str(work_dir.resolve(strict=False)))
-            except OSError:
-                shutil.copytree(str(tmp_work_dir), str(work_dir.resolve(strict=False)))
-                shutil.rmtree(str(tmp_work_dir))
-            if compute_dir_hash(work_dir) != orig_tmp_hash:
-                msg = "Checksum mismatch: tmp_work_dir was tampered with during the move."
-                raise RuntimeError(msg)
+                    Path(temp_swap / "new_work").rename(final_dest)
+                except Exception:
+                    # Rollback
+                    Path(backup_dest).rename(final_dest)
+                    raise
+            else:
+                Path(temp_swap / "new_work").rename(final_dest)
+        finally:
+            shutil.rmtree(str(temp_swap), ignore_errors=True)
+            # Clean up the original tmp_work_dir
+            shutil.rmtree(str(tmp_work_dir), ignore_errors=True)
 
     def _manage_directories(self, tmp_work_dir: Path, work_dir: Path) -> None:
         self._validate_tmp_directories(tmp_work_dir)

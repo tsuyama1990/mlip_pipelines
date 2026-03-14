@@ -23,12 +23,12 @@ def _check_allowed_base_dirs(resolved_str: str, path_str: str) -> None:
     home_dir = str(Path.home().resolve(strict=True))
     tmp_dir = str(Path(tempfile.gettempdir()).resolve(strict=True))
 
-    # If the environment is CI / containerized, often /app is the project root.
-    # To be secure, allow current working dir explicitly if it's not a root dir.
-    cwd_dir = str(Path.cwd().resolve(strict=True))
+    # For CI and containerized environments, explicitly mapping /app
+    # instead of cwd ensures working directories cannot be manipulated maliciously
+    app_dir = "/app"
 
     is_safe = False
-    for safe_base in [home_dir, tmp_dir, cwd_dir]:
+    for safe_base in [home_dir, tmp_dir, app_dir]:
         try:
             if os.path.commonpath([safe_base, resolved_str]) == safe_base:
                 is_safe = True
@@ -37,7 +37,7 @@ def _check_allowed_base_dirs(resolved_str: str, path_str: str) -> None:
             pass
 
     if not is_safe:
-        msg = f"Directory {path_str} must reside securely within an allowed base directory (home, tmp, or cwd)."
+        msg = f"Directory {path_str} must reside securely within an allowed base directory (home, tmp, or /app)."
         raise ValueError(msg)
 
     restricted_prefixes = ["/etc", "/bin", "/usr", "/sbin", "/var", "/lib", "/boot", "/root"]
@@ -82,14 +82,14 @@ def _secure_resolve_and_validate_dir(path_str: str, check_exists: bool = True) -
         msg = f"Failed to resolve path: {path_str}"
         raise ValueError(msg) from e
 
-    if ".." in os.path.realpath(str(resolved)):
-        msg = "Resolved path contains traversal sequences."
-        raise ValueError(msg)
-
     if check_exists:
         try:
-            st_info = os.lstat(resolved)
+            st_info = os.lstat(path)
             if stat.S_ISLNK(st_info.st_mode):
+                msg = f"Directory {path_str} cannot be a symlink."
+                raise ValueError(msg)
+            resolved_stat = os.lstat(resolved)
+            if st_info.st_ino != resolved_stat.st_ino or st_info.st_dev != resolved_stat.st_dev:
                 msg = f"Directory {path_str} cannot be a symlink."
                 raise ValueError(msg)
         except FileNotFoundError as e:
@@ -99,6 +99,10 @@ def _secure_resolve_and_validate_dir(path_str: str, check_exists: bool = True) -
         if not resolved.is_dir():
             msg = f"Path must be a directory: {path_str}"
             raise ValueError(msg)
+
+    if ".." in str(resolved):
+        msg = "Resolved path contains traversal sequences."
+        raise ValueError(msg)
 
     _check_allowed_base_dirs(str(resolved), path_str)
 
@@ -495,8 +499,8 @@ def _validate_env_value(val: str) -> None:
         raise ValueError(msg)
 
     # Strictly whitelist allowed characters to prevent shell/JSON injection
-    # Allows alphanumerics, underscores, dots, hyphens, plus, equals, and basic path separators.
-    if not re.match(r"^[-a-zA-Z0-9_.+/=\\]*$", val):
+    # Allows only alphanumerics, underscores, dots, and hyphens. Removes /, +, =, \ to prevent injection vectors
+    if not re.match(r"^[-a-zA-Z0-9_.]*$", val):
         msg = "Invalid characters detected in .env variable value."
         raise ValueError(msg)
 
@@ -520,13 +524,9 @@ def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
         msg = ".env file must not be a symlink."
         raise ValueError(msg)
 
-    # First ensure the unresolved path sits inside the base directory
-    if env_file.parent.resolve(strict=True) != expected_base.resolve(strict=True):
-        msg = f".env file must reside directly in the allowed base directory: {expected_base}"
-        raise ValueError(msg)
-
     resolved_env = env_file.resolve(strict=True)
 
+    # Verify the canonicalized path sits directly in the base directory
     if resolved_env.parent != expected_base.resolve(strict=True):
         msg = f".env file must reside directly in the allowed base directory: {expected_base}"
         raise ValueError(msg)

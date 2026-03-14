@@ -127,7 +127,7 @@ def test_project_config_env_value() -> None:
 
     with pytest.raises(ValueError, match=".*Invalid characters detected.*"):
         _validate_env_value("value; rm -rf")
-    with pytest.raises(ValueError, match=".*Invalid characters or traversal sequences.*"):
+    with pytest.raises(ValueError, match=".*Invalid characters detected.*"):
         _validate_env_value("../secret")
 
 
