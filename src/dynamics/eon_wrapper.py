@@ -43,7 +43,9 @@ class EONWrapper(AbstractDynamics):
         if potential:
             resolved_pot = Path(os.path.normpath(os.path.realpath(potential))).resolve(strict=True)
             if self.config.project_root is not None:
-                root = Path(os.path.normpath(os.path.realpath(self.config.project_root))).resolve(strict=True)
+                root = Path(os.path.normpath(os.path.realpath(self.config.project_root))).resolve(
+                    strict=True
+                )
                 if not resolved_pot.is_relative_to(root):
                     msg = f"Potential path must be within the project root: {resolved_pot}"
                     raise ValueError(msg)
@@ -53,7 +55,6 @@ class EONWrapper(AbstractDynamics):
             if not re.match(r"^[/a-zA-Z0-9_.-]+$", resolved_pot_str) or "\x00" in resolved_pot_str:
                 msg = "Potential path contains invalid characters"
                 raise ValueError(msg)
-
 
         pot_str = repr(resolved_pot_str) if potential else "None"
 
@@ -145,7 +146,9 @@ class EONWrapper(AbstractDynamics):
 
             # We use check=False to capture return code 100 gracefully
             # Create a minimal safe environment whitelist to prevent sensitive credential leaks
-            env: dict[str, str] = {k: os.environ[k] for k in self.config.safe_env_keys if k in os.environ}
+            env: dict[str, str] = {
+                k: os.environ[k] for k in self.config.safe_env_keys if k in os.environ
+            }
 
             # Safely invoke EON client using direct list execution through subprocess (shell=False)
             res: subprocess.CompletedProcess[bytes] = subprocess.run(  # noqa: S603

@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 
 from src.domain_models.dtos import ValidationReport

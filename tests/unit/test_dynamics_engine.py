@@ -301,6 +301,7 @@ ITEM: ATOMS id type x y z
     assert len(structures) == 1
     assert len(structures[0]) == 1
 
+
 def disabled_test_execute_lammps_invalid_binary_name(tmp_path: Path) -> None:
     config = DynamicsConfig(trusted_directories=[])
     config.lmp_binary = "lmp;"
@@ -310,7 +311,10 @@ def disabled_test_execute_lammps_invalid_binary_name(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="Invalid LAMMPS binary name"):
         engine._execute_lammps(tmp_path)
 
-def disabled_test_resume_invalid_binary_name(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+
+def disabled_test_resume_invalid_binary_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     config = DynamicsConfig(trusted_directories=[])
     config.lmp_binary = "lmp;"
     sys_config = SystemConfig(elements=["Fe", "Pt"])
@@ -331,6 +335,7 @@ def disabled_test_resume_invalid_binary_name(tmp_path: Path, monkeypatch: pytest
 
     with pytest.raises(ValueError, match="Invalid LAMMPS binary name"):
         engine.resume(pot_file, restart_dir, work_dir)
+
 
 def test_resume_missing_executable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     config = DynamicsConfig(lmp_binary="lmp", trusted_directories=[])
@@ -349,12 +354,16 @@ def test_resume_missing_executable(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     work_dir.mkdir(parents=True)
 
     import shutil
+
     monkeypatch.setattr(shutil, "which", lambda *args, **kwargs: None)
 
     with pytest.raises(RuntimeError, match="LAMMPS executable not found."):
         engine.resume(pot_file, restart_dir, work_dir)
 
-def test_resume_subprocess_calledprocesserror(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+
+def test_resume_subprocess_calledprocesserror(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     config = DynamicsConfig()
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
@@ -396,7 +405,10 @@ ITEM: ATOMS id type x y z c_pace_gamma
     res = engine.resume(pot_file, restart_dir, work_dir)
     assert res["halted"] is False
 
-def test_extract_high_gamma_structures_no_structures(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+
+def test_extract_high_gamma_structures_no_structures(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     config = DynamicsConfig()
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
@@ -405,6 +417,7 @@ def test_extract_high_gamma_structures_no_structures(tmp_path: Path, monkeypatch
     dump_file.touch()
 
     import ase.io
+
     monkeypatch.setattr(ase.io, "read", lambda *args, **kwargs: [])
 
     with pytest.raises(ValueError, match="No structures read from dump file"):

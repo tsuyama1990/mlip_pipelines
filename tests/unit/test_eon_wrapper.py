@@ -67,6 +67,7 @@ def test_eon_wrapper_run_kmc_no_halt(
     with pytest.raises(RuntimeError, match="EON client executable not found"):
         wrapper.run_kmc(None, tmp_path)
 
+
 def test_write_config_ini_invalid_eon_job(tmp_path: Path) -> None:
     config = DynamicsConfig()
     config.eon_job = "job;"
@@ -74,6 +75,7 @@ def test_write_config_ini_invalid_eon_job(tmp_path: Path) -> None:
     engine = EONWrapper(config, sys_config)
     with pytest.raises(ValueError, match="Invalid characters in filename:"):
         engine._write_config_ini(tmp_path)
+
 
 def test_write_config_ini_invalid_min_mode_method(tmp_path: Path) -> None:
     config = DynamicsConfig()
@@ -83,8 +85,16 @@ def test_write_config_ini_invalid_min_mode_method(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="Invalid characters in filename:"):
         engine._write_config_ini(tmp_path)
 
+
 def test_write_pace_driver_invalid_potential(tmp_path: Path) -> None:
-    config = DynamicsConfig(project_root=str(tmp_path), eon_binary="eonclient", trusted_directories=[], safe_env_keys=["PATH"], eon_job="dummy", eon_min_mode_method="dummy")
+    config = DynamicsConfig(
+        project_root=str(tmp_path),
+        eon_binary="eonclient",
+        trusted_directories=[],
+        safe_env_keys=["PATH"],
+        eon_job="dummy",
+        eon_min_mode_method="dummy",
+    )
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = EONWrapper(config, sys_config)
 
@@ -96,19 +106,31 @@ def test_write_pace_driver_invalid_potential(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="Potential path must be within the project root"):
         engine._write_pace_driver(tmp_path, pot_path)
 
-def test_write_pace_driver_invalid_python_executable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+
+def test_write_pace_driver_invalid_python_executable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     config = DynamicsConfig()
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = EONWrapper(config, sys_config)
 
     import sys
+
     monkeypatch.setattr(sys, "executable", "python;")
 
     with pytest.raises(ValueError, match="Invalid python executable path"):
         engine._write_pace_driver(tmp_path, None)
 
+
 def test_run_kmc_invalid_work_dir(tmp_path: Path) -> None:
-    config = DynamicsConfig(project_root=str(tmp_path), eon_binary="eonclient", trusted_directories=[], safe_env_keys=["PATH"], eon_job="dummy", eon_min_mode_method="dummy")
+    config = DynamicsConfig(
+        project_root=str(tmp_path),
+        eon_binary="eonclient",
+        trusted_directories=[],
+        safe_env_keys=["PATH"],
+        eon_job="dummy",
+        eon_min_mode_method="dummy",
+    )
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = EONWrapper(config, sys_config)
 
@@ -116,8 +138,16 @@ def test_run_kmc_invalid_work_dir(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="is outside the allowed project root"):
         engine.run_kmc(None, work_dir)
 
+
 def test_run_kmc_subprocess_fail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    config = DynamicsConfig(project_root=str(tmp_path), eon_binary="eonclient", trusted_directories=[str(tmp_path / "bin")], safe_env_keys=["PATH"], eon_job="dummy", eon_min_mode_method="dummy")
+    config = DynamicsConfig(
+        project_root=str(tmp_path),
+        eon_binary="eonclient",
+        trusted_directories=[str(tmp_path / "bin")],
+        safe_env_keys=["PATH"],
+        eon_job="dummy",
+        eon_min_mode_method="dummy",
+    )
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = EONWrapper(config, sys_config)
 
@@ -127,12 +157,14 @@ def test_run_kmc_subprocess_fail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     dummy.chmod(0o755)
 
     import shutil
+
     monkeypatch.setattr(shutil, "which", lambda *args, **kwargs: str(dummy))
 
     class MockRes:
         returncode = 1
 
     import subprocess
+
     monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: MockRes())
 
     work_dir = tmp_path / "work"
@@ -141,8 +173,16 @@ def test_run_kmc_subprocess_fail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     with pytest.raises(RuntimeError, match="EON client failed with return code"):
         engine.run_kmc(None, work_dir)
 
+
 def test_run_kmc_subprocess_halted(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    config = DynamicsConfig(project_root=str(tmp_path), eon_binary="eonclient", trusted_directories=[str(tmp_path / "bin")], safe_env_keys=["PATH"], eon_job="dummy", eon_min_mode_method="dummy")
+    config = DynamicsConfig(
+        project_root=str(tmp_path),
+        eon_binary="eonclient",
+        trusted_directories=[str(tmp_path / "bin")],
+        safe_env_keys=["PATH"],
+        eon_job="dummy",
+        eon_min_mode_method="dummy",
+    )
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = EONWrapper(config, sys_config)
 
@@ -152,12 +192,14 @@ def test_run_kmc_subprocess_halted(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     dummy.chmod(0o755)
 
     import shutil
+
     monkeypatch.setattr(shutil, "which", lambda *args, **kwargs: str(dummy))
 
     class MockRes:
         returncode = 100
 
     import subprocess
+
     monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: MockRes())
 
     work_dir = tmp_path / "work"
@@ -167,14 +209,23 @@ def test_run_kmc_subprocess_halted(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     assert res["halted"] is True
     assert res["is_kmc"] is True
 
+
 def test_run_kmc_missing_executable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    config = DynamicsConfig(project_root=str(tmp_path), eon_binary="eonclient", trusted_directories=[], safe_env_keys=["PATH"], eon_job="dummy", eon_min_mode_method="dummy")
+    config = DynamicsConfig(
+        project_root=str(tmp_path),
+        eon_binary="eonclient",
+        trusted_directories=[],
+        safe_env_keys=["PATH"],
+        eon_job="dummy",
+        eon_min_mode_method="dummy",
+    )
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = EONWrapper(config, sys_config)
 
     from typing import Any
 
     import src.dynamics.security_utils
+
     def mock_val(*args: Any, **kwargs: Any) -> str:
         msg = "EON client executable not found."
         raise RuntimeError(msg)

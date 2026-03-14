@@ -186,30 +186,42 @@ def test_resource_exhaustion_protections() -> None:
     huge_atoms = Atoms("Fe" * 1001, positions=[(0, 0, 0)] * 1001)
     calc = MockStableCalculator()
 
-    with pytest.raises(ValueError, match="Structure too large for phonon stability check: 1001 atoms > 1000 limit."):
+    with pytest.raises(
+        ValueError, match="Structure too large for phonon stability check: 1001 atoms > 1000 limit."
+    ):
         check_phonopy_stability(huge_atoms, calc)
 
-    with pytest.raises(ValueError, match="Structure too large for mechanical stability check: 1001 atoms > 1000 limit."):
+    with pytest.raises(
+        ValueError,
+        match="Structure too large for mechanical stability check: 1001 atoms > 1000 limit.",
+    ):
         check_mechanical_stability(huge_atoms, calc)
 
 
 def test_mechanical_stability_runtime_error() -> None:
     from ase.build import bulk
+
     from src.validators.stability_tests import check_mechanical_stability
 
     class FailingCalculator(MockStableCalculator):
         def calculate(self, *args: Any, **kwargs: Any) -> None:
-            raise Exception("Force failed")
+            msg = "Force failed"
+            raise RuntimeError(msg)
 
     atoms = bulk("Fe", "bcc", a=3.5)
     calc = FailingCalculator()
 
-    with pytest.raises(RuntimeError, match="Calculator failed to compute potential energy on the base structure"):
+    with pytest.raises(
+        RuntimeError, match="Calculator failed to compute potential energy on the base structure"
+    ):
         check_mechanical_stability(atoms, calc)
+
 
 def test_phonopy_import_error(monkeypatch: pytest.MonkeyPatch) -> None:
     import sys
+
     from ase.build import bulk
+
     from src.validators.stability_tests import check_phonopy_stability
 
     # Hide phonopy module
@@ -221,8 +233,10 @@ def test_phonopy_import_error(monkeypatch: pytest.MonkeyPatch) -> None:
     # Check that it gracefully falls back and returns True
     assert check_phonopy_stability(atoms, calc) is True
 
+
 def test_compute_phonopy_forces() -> None:
     from ase.build import bulk
+
     from src.validators.stability_tests import _compute_phonopy_forces
 
     atoms = bulk("Fe", "bcc", a=3.5)
@@ -233,6 +247,7 @@ def test_compute_phonopy_forces() -> None:
 
     # Test with valid supercells
     from ase.build import make_supercell
+
     sc1 = make_supercell(atoms, [[2, 0, 0], [0, 2, 0], [0, 0, 2]])
 
     forces = _compute_phonopy_forces(atoms, calc, [None, sc1])

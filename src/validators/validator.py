@@ -24,6 +24,7 @@ class Validator:
     def _check_dependencies(self) -> None:
         # Attempt to import dependencies for strict runtime safety
         import os
+
         use_mock = os.environ.get("USE_MOCK", "False") == "True"
 
         if not use_mock:

@@ -1,4 +1,3 @@
-
 import shutil
 from pathlib import Path
 
@@ -17,6 +16,7 @@ def test_valid_trusted_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
     res = validate_executable_path("lmp", [str(tmp_path)])
     assert res == str(dummy_bin.resolve(strict=True))
 
+
 def test_symlink_rejected(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     link_path = tmp_path / "lmp_link"
     target_path = tmp_path / "lmp"
@@ -29,6 +29,7 @@ def test_symlink_rejected(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> No
     with pytest.raises(ValueError, match="Binary cannot be a symlink"):
         validate_executable_path("lmp", [str(tmp_path)])
 
+
 def test_untrusted_path_rejected(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     dummy_bin = tmp_path / "lmp"
     dummy_bin.touch()
@@ -39,6 +40,7 @@ def test_untrusted_path_rejected(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     with pytest.raises(ValueError, match="Resolved binary must reside in a trusted directory"):
         # tmp_path is not in the empty trusted directories list
         validate_executable_path("lmp", [])
+
 
 def test_missing_executable(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(shutil, "which", lambda *args, **kwargs: None)
