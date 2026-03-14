@@ -17,13 +17,8 @@ def __() -> tuple[Any, ...]:
     import os
     import numpy as np
 
-    # Ensure src is importable during standard execution
-    sys.path.insert(0, str(Path.cwd()))
-
     from ase import Atoms
     from ase.build import bulk
-
-    USE_MOCK = os.environ.get("USE_MOCK", "False") == "True"
 
     from src.core import AbstractDynamics, AbstractOracle, AbstractTrainer
     from src.core.orchestrator import Orchestrator
@@ -58,6 +53,7 @@ def __() -> tuple[Any, ...]:
 
         project_config = ProjectConfig(
             project_root=Path.cwd(),
+            use_mock=os.environ.get("USE_MOCK", "False") == "True",
             system=sys_config,
             dynamics=dyn_config,
             oracle=oracle_config,
@@ -67,7 +63,7 @@ def __() -> tuple[Any, ...]:
 
         orchestrator = Orchestrator(project_config)
 
-        if USE_MOCK:
+        if project_config.use_mock:
             # We mock the external subprocess calls on the REAL objects instead of fake ones
             import unittest.mock
 
@@ -124,7 +120,7 @@ def __() -> tuple[Any, ...]:
         return orchestrator
 
     return (
-        plt, np, Path, sys, logging, Atoms, bulk, ProjectConfig, SystemConfig, DynamicsConfig, OracleConfig, TrainerConfig, ValidatorConfig, StructureGeneratorConfig, PolicyConfig, Orchestrator, AbstractDynamics, AbstractOracle, AbstractTrainer, Validator, Reporter, StructureGenerator, USE_MOCK, ValidationReport, setup_orchestrator, os
+        plt, np, Path, sys, logging, Atoms, bulk, ProjectConfig, SystemConfig, DynamicsConfig, OracleConfig, TrainerConfig, ValidatorConfig, StructureGeneratorConfig, PolicyConfig, Orchestrator, AbstractDynamics, AbstractOracle, AbstractTrainer, Validator, Reporter, StructureGenerator, ValidationReport, setup_orchestrator, os
     )
 
 

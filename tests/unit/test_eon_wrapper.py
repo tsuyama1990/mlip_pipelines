@@ -117,7 +117,7 @@ def test_run_kmc_invalid_work_dir(tmp_path: Path) -> None:
         engine.run_kmc(None, work_dir)
 
 def test_run_kmc_subprocess_fail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    config = DynamicsConfig(project_root=str(tmp_path), eon_binary="eonclient", trusted_directories=[], safe_env_keys=["PATH"], eon_job="dummy", eon_min_mode_method="dummy")
+    config = DynamicsConfig(project_root=str(tmp_path), eon_binary="eonclient", trusted_directories=[str(tmp_path / "bin")], safe_env_keys=["PATH"], eon_job="dummy", eon_min_mode_method="dummy")
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = EONWrapper(config, sys_config)
 
@@ -142,7 +142,7 @@ def test_run_kmc_subprocess_fail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
         engine.run_kmc(None, work_dir)
 
 def test_run_kmc_subprocess_halted(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    config = DynamicsConfig(project_root=str(tmp_path), eon_binary="eonclient", trusted_directories=[], safe_env_keys=["PATH"], eon_job="dummy", eon_min_mode_method="dummy")
+    config = DynamicsConfig(project_root=str(tmp_path), eon_binary="eonclient", trusted_directories=[str(tmp_path / "bin")], safe_env_keys=["PATH"], eon_job="dummy", eon_min_mode_method="dummy")
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = EONWrapper(config, sys_config)
 

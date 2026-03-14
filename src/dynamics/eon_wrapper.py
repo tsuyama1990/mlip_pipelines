@@ -120,14 +120,22 @@ class EONWrapper(AbstractDynamics):
             if not os.access(eon_bin_path, os.X_OK):
                 msg = "EON binary is not executable."
                 raise ValueError(msg)
-            if not re.match(r"^[/a-zA-Z0-9_.-]+$", str(eon_bin_path)):
-                msg = "EON binary path contains unsafe characters."
+
+            # Verify the binary is within trusted directories
+            is_trusted = False
+            for td in self.config.trusted_directories:
+                td_path = Path(os.path.realpath(td)).resolve(strict=False)
+                if eon_bin_path.is_relative_to(td_path):
+                    is_trusted = True
+                    break
+
+            if not is_trusted:
+                msg = "EON binary is not within trusted directories."
                 raise ValueError(msg)
 
             # We use check=False to capture return code 100 gracefully
             # Create a minimal safe environment whitelist to prevent sensitive credential leaks
-            safe_env_keys = self.config.safe_env_keys
-            env: dict[str, str] = {k: os.environ[k] for k in safe_env_keys if k in os.environ}
+            env: dict[str, str] = {k: os.environ[k] for k in self.config.safe_env_keys if k in os.environ}
 
             # Safely invoke EON client using direct list execution through subprocess (shell=False)
             res: subprocess.CompletedProcess[bytes] = subprocess.run(  # noqa: S603
