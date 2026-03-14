@@ -1,5 +1,11 @@
 import logging
+import os
+import re
+import shlex
+import shutil
 import subprocess
+import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -22,8 +28,6 @@ class MDInterface(AbstractDynamics):
         return " ".join(str(atomic_numbers.get(el, 1)) for el in self.system_config.elements)
 
     def _write_cold_start_input(self, tmp_in_file: Any, dump_name: str, work_dir: Path) -> None:
-        import re
-
         if not re.match(r"^[a-zA-Z0-9_]+(\.lammps)?$", dump_name):
             msg = "Dump file name contains invalid characters"
             raise ValueError(msg)
@@ -40,8 +44,6 @@ class MDInterface(AbstractDynamics):
         if not re.match(r"^[/a-zA-Z0-9_.-]+$", work_dir_str) or ".." in work_dir_str:
             msg = "Invalid characters in work_dir"
             raise ValueError(msg)
-
-        import shlex
 
         template = self.config.lammps_cold_start_template
         script = template.format(
@@ -63,24 +65,19 @@ class MDInterface(AbstractDynamics):
         resolved_pot = potential.resolve(strict=True)
         pot_path_str = str(resolved_pot)
 
+        if not re.match(r"^[a-zA-Z0-9_]+\.yace$", potential.name):
+            msg = "Potential path must be a valid .yace file"
+            raise ValueError(msg)
+
+        resolved_pot = potential.resolve(strict=True)
+        pot_path_str = str(resolved_pot)
+
         # Verify the potential path is within the project root to prevent path traversal
         if hasattr(self.config, "project_root"):
-            import os
-
             root = Path(os.path.realpath(self.config.project_root)).resolve(strict=True)
             if not resolved_pot.is_relative_to(root):
                 msg = f"Potential path must be within the project root: {resolved_pot}"
                 raise ValueError(msg)
-
-        if not pot_path_str.endswith(".yace"):
-            msg = "Potential path must end with .yace"
-            raise ValueError(msg)
-
-        import re
-
-        if not re.match(r"^[a-zA-Z0-9_]+\.yace$", Path(pot_path_str).name):
-            msg = "Potential path contains invalid characters for LAMMPS"
-            raise ValueError(msg)
 
         if not re.match(r"^[a-zA-Z0-9_]+(\.lammps)?$", dump_name):
             msg = "Dump file name contains invalid characters"
@@ -100,8 +97,6 @@ class MDInterface(AbstractDynamics):
             msg = "Invalid characters in work_dir"
             raise ValueError(msg)
 
-        import shlex
-
         script = template.format(
             lattice_type=lattice_type,
             lattice_size=float(self.config.lattice_size),
@@ -117,12 +112,7 @@ class MDInterface(AbstractDynamics):
         )
         tmp_in_file.write(script)
 
-    def _execute_lammps(self, work_dir: Path) -> None:  # noqa: C901, PLR0912, PLR0915
-        import os
-        import re
-        import shutil
-        import sys
-
+    def _execute_lammps(self, work_dir: Path) -> None:  # noqa: C901, PLR0912
         # Secure input file definition by hardcoding it completely
         in_file_name = "in.lammps"
         resolved_in_file = Path(os.path.realpath(work_dir / in_file_name)).resolve(strict=False)
@@ -203,9 +193,6 @@ class MDInterface(AbstractDynamics):
             raise FileNotFoundError(msg)
 
         in_file = work_dir / "in.lammps"
-
-        import os
-        import tempfile
 
         fd, tmp_path = tempfile.mkstemp(dir=work_dir, text=True)
         try:
@@ -295,15 +282,11 @@ write_data {work_dir.resolve()}/data.lammps
             trusted_dirs.append(str(Path(self.config.project_root) / "bin"))
 
         # Sanitize in_file.name against injection using a strict alphanumeric + underscore + period pattern
-        if not re.match(r"^[a-zA-Z0-9_]+\.lammps$", in_file.name) and not re.match(
-            r"^[a-zA-Z0-9_]+$", in_file.name
-        ):
+        if not re.match(r"^[a-zA-Z0-9_]+(\.lammps)?$", in_file.name):
             msg = f"Invalid input file name: {in_file.name}"
             raise ValueError(msg)
 
         lmp_binary = self.config.lmp_binary
-
-        import os
 
         if not re.match(r"^[a-zA-Z0-9_-]+$", lmp_binary):
             msg = f"Invalid LAMMPS binary name: {lmp_binary}"

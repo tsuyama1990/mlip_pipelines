@@ -1,4 +1,9 @@
+import os
+import re
+import shlex
+import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -14,7 +19,6 @@ class EONWrapper(AbstractDynamics):
         self.system_config = system_config
 
     def _write_config_ini(self, work_dir: Path) -> None:
-        import re
         if not re.match(r"^[a-zA-Z0-9_-]+$", self.config.eon_job):
             msg = f"Invalid EON job string: {self.config.eon_job}"
             raise ValueError(msg)
@@ -23,9 +27,9 @@ class EONWrapper(AbstractDynamics):
             raise ValueError(msg)
 
         ini_content = self.config.eon_config_template.format(
-            eon_job=self.config.eon_job,
+            eon_job=shlex.quote(self.config.eon_job),
             temperature=self.config.temperature,
-            eon_min_mode_method=self.config.eon_min_mode_method,
+            eon_min_mode_method=shlex.quote(self.config.eon_min_mode_method),
         )
         with Path.open(work_dir / "config.ini", "w") as f:
             f.write(ini_content)
@@ -41,8 +45,6 @@ class EONWrapper(AbstractDynamics):
 
         resolved_pot_str = ""
         if potential:
-            import os
-
             resolved_pot = Path(os.path.realpath(potential)).resolve(strict=True)
             if hasattr(self.config, "project_root"):
                 root = Path(os.path.realpath(self.config.project_root)).resolve(strict=True)
@@ -92,10 +94,6 @@ class EONWrapper(AbstractDynamics):
 
         try:
             # We execute 'eonclient'. If it's missing, subprocess raises FileNotFoundError.
-            import re
-            import shutil
-            import sys
-
             eon_binary: str = self.config.eon_binary
 
             if not re.match(r"^[a-zA-Z0-9_-]+$", eon_binary):
@@ -111,8 +109,6 @@ class EONWrapper(AbstractDynamics):
             if resolved_which is None:
                 msg = "EON client executable not found."
                 raise RuntimeError(msg)
-
-            import os
 
             eon_path: Path = Path(os.path.realpath(resolved_which)).resolve(strict=True)
             if eon_path.is_symlink():
@@ -142,11 +138,9 @@ class EONWrapper(AbstractDynamics):
 
             eon_bin = str(eon_path.absolute())
 
-            cmd: list[str] = [eon_bin]
+            cmd: list[str] = [shlex.quote(eon_bin)]
 
             # We use check=False to capture return code 100 gracefully
-            import os
-
             env: dict[str, str] = os.environ.copy()
             # Clear sensitive/potentially hazardous env vars
             for k in ["LD_PRELOAD", "LD_LIBRARY_PATH", "PYTHONPATH"]:

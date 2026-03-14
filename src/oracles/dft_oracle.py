@@ -43,7 +43,7 @@ class DFTManager(AbstractOracle):
         lengths = max_pos - min_pos + 2 * buffer
 
         # Validate reasonable cell size to prevent memory exhaustion (buffer overflow defense)
-        if any(L > 100.0 for L in lengths):
+        if any(L > 1000.0 for L in lengths):
             msg = "Calculated cell dimensions are too large, potential memory exhaustion."
             raise ValueError(msg)
 
@@ -93,9 +93,9 @@ class DFTManager(AbstractOracle):
             upf_name = f"{el}.upf"
 
             # Additional layer of security: Ensure the resolved path strictly resides within the intended directory
-            upf_path = (pseudo_dir_path / upf_name).resolve(strict=False)
+            upf_path = (pseudo_dir_path / upf_name)
 
-            if not upf_path.is_relative_to(pseudo_dir_path):
+            if not upf_path.resolve(strict=False).is_relative_to(pseudo_dir_path):
                 msg = f"Path traversal detected for pseudopotential: {upf_name}"
                 raise ValueError(msg)
 

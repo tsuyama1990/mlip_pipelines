@@ -1,6 +1,10 @@
+import contextlib
 import logging
+import os
+import re
 import shutil
-from collections.abc import Iterator
+import tempfile
+from collections.abc import Generator, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -153,6 +157,9 @@ class Orchestrator:
     ) -> bool:
         has_new_data = False
         for i, batch in enumerate(candidate_generator):
+            if i >= 100:
+                logging.warning("Maximum batch limit reached. Stopping generator to prevent resource exhaustion.")
+                break
             batch_calc_dir = tmp_work_dir / f"dft_calc_batch_{i}"
             new_data = self.oracle.compute_batch(batch, batch_calc_dir)
             if new_data:
@@ -199,10 +206,6 @@ class Orchestrator:
         return True
 
     def _copy_potential(self, tmp_work_dir: Path, pot_dir: Path, iteration: int) -> Path:
-        import os
-        import shutil
-        import tempfile
-
         final_dest = pot_dir / f"generation_{iteration:03d}.yace"
         src_pot = tmp_work_dir / "training" / "output_potential.yace"
 
@@ -210,10 +213,12 @@ class Orchestrator:
             msg = "Source potential file missing or invalid"
             raise FileNotFoundError(msg)
 
-        assert src_pot.resolve(strict=True).is_relative_to(tmp_work_dir.resolve(strict=True)), "Path traversal detected"  # noqa: S101
+        if not src_pot.resolve(strict=True).is_relative_to(tmp_work_dir.resolve(strict=True)):
+            msg = "Path traversal detected"
+            raise ValueError(msg)
 
-        if not src_pot.name.endswith(".yace"):
-            msg = "Source potential file must have .yace extension"
+        if not re.match(r"^[a-zA-Z0-9_-]+\.yace$", src_pot.name):
+            msg = "Source potential file must have a valid .yace filename format"
             raise ValueError(msg)
 
         with Path.open(src_pot) as f:
@@ -248,9 +253,6 @@ class Orchestrator:
         return final_dest
 
     def _manage_directories(self, tmp_work_dir: Path, work_dir: Path) -> None:
-        import shutil
-        import tempfile
-
         expected_dirs = ["training"]
         if not (tmp_work_dir / "md_run").exists() and not (tmp_work_dir / "kmc_run").exists():
             msg = "Missing required exploration directory (md_run or kmc_run)"
@@ -287,6 +289,10 @@ class Orchestrator:
             )
 
     def _validate_and_deploy(self, new_pot_path: Path, tmp_work_dir: Path, work_dir: Path) -> str:
+        if not new_pot_path.exists() or not new_pot_path.is_file():
+            msg = f"New potential path is invalid or missing: {new_pot_path}"
+            raise FileNotFoundError(msg)
+
         if not self._validate_potential(new_pot_path):
             return "VALIDATION_FAILED"
 
@@ -316,10 +322,8 @@ class Orchestrator:
         work_dir: Path = base_dir / f"iter_{self.iteration:03d}"
 
         # Cleanly instantiate temp dir via robust context manager mapping explicitly for resource cleanup
-        import contextlib
         import os
         import tempfile
-        from collections.abc import Generator
 
         @contextlib.contextmanager
         def isolated_work_dir(base: Path) -> Generator[Path, None, None]:

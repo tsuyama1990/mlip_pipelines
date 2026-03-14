@@ -1,5 +1,9 @@
+import os
 import re
+import shutil
 import subprocess
+import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -41,7 +45,6 @@ class PacemakerWrapper(AbstractTrainer):
         self, candidates: list[Atoms], anchor: Atoms, n: int = 5
     ) -> list[Atoms]:
         """Local D-Optimality selection of candidates."""
-        import tempfile
 
         from ase.io import read
 
@@ -89,7 +92,15 @@ class PacemakerWrapper(AbstractTrainer):
                     )
                     raise ValueError(msg)
 
-                if not any(str(resolved_bin).startswith(td) for td in trusted_dirs):
+                is_trusted = False
+                for trusted_path in trusted_dirs:
+                    try:
+                        if resolved_bin.is_relative_to(Path(trusted_path).resolve(strict=True)):
+                            is_trusted = True
+                            break
+                    except OSError:
+                        continue
+                if not is_trusted:
                     msg = f"Binary must reside in a trusted directory: {binary_setting}"
                     raise ValueError(msg)
                 pace_activeset_bin = str(resolved_bin)
@@ -111,7 +122,15 @@ class PacemakerWrapper(AbstractTrainer):
                         msg = f"Resolved binary name must be 'pace_activeset', got '{resolved_bin.name}'"
                         raise ValueError(msg)
 
-                    if not any(str(resolved_bin).startswith(td) for td in trusted_dirs):
+                    is_trusted = False
+                    for trusted_path in trusted_dirs:
+                        try:
+                            if resolved_bin.is_relative_to(Path(trusted_path).resolve(strict=True)):
+                                is_trusted = True
+                                break
+                        except OSError:
+                            continue
+                    if not is_trusted:
                         msg = f"Resolved binary must reside in a trusted directory: {resolved_bin}"
                         raise ValueError(msg)
                     pace_activeset_bin = str(resolved_bin)
@@ -179,7 +198,6 @@ class PacemakerWrapper(AbstractTrainer):
         resolved_output_dir = Path(output_dir).resolve(strict=False)
 
         # Validation for directory traversal out of expected bounds
-        import os
         import tempfile
 
         if hasattr(self.config, "project_root"):
@@ -204,8 +222,6 @@ class PacemakerWrapper(AbstractTrainer):
             msg = "Invalid regularization format"
             raise ValueError(msg)
 
-        import shutil
-        import sys
 
         train_binary_setting = self.config.pace_train_binary
         trusted_dirs = [
@@ -231,7 +247,15 @@ class PacemakerWrapper(AbstractTrainer):
                 msg = f"Resolved binary name must be 'pace_train', got '{resolved_bin.name}'"
                 raise ValueError(msg)
 
-            if not any(str(resolved_bin).startswith(td) for td in trusted_dirs):
+            is_trusted = False
+            for td in trusted_dirs:
+                try:
+                    if resolved_bin.is_relative_to(Path(td).resolve(strict=True)):
+                        is_trusted = True
+                        break
+                except OSError:
+                    continue
+            if not is_trusted:
                 msg = f"Binary must reside in a trusted directory: {train_binary_setting}"
                 raise ValueError(msg)
             pace_train_bin = str(resolved_bin)
@@ -253,7 +277,15 @@ class PacemakerWrapper(AbstractTrainer):
                     msg = f"Resolved binary name must be 'pace_train', got '{resolved_bin.name}'"
                     raise ValueError(msg)
 
-                if not any(str(resolved_bin).startswith(td) for td in trusted_dirs):
+                is_trusted = False
+                for td in trusted_dirs:
+                    try:
+                        if resolved_bin.is_relative_to(Path(td).resolve(strict=True)):
+                            is_trusted = True
+                            break
+                    except OSError:
+                        continue
+                if not is_trusted:
                     msg = f"Resolved binary must reside in a trusted directory: {resolved_bin}"
                     raise ValueError(msg)
                 pace_train_bin = str(resolved_bin)
