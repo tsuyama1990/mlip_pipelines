@@ -41,6 +41,18 @@ class MDInterface(AbstractDynamics):
             msg = "Invalid lattice_type"
             raise ValueError(msg)
 
+        if not isinstance(self.config.lattice_size, (float, int)) or self.config.lattice_size <= 0:
+            msg = "Invalid lattice_size"
+            raise ValueError(msg)
+
+        if not all(isinstance(dim, int) and dim > 0 for dim in (box_x, box_y, box_z)):
+            msg = "Invalid box sizes"
+            raise ValueError(msg)
+
+        if not isinstance(self.config.md_steps, int) or self.config.md_steps <= 0:
+            msg = "Invalid md_steps"
+            raise ValueError(msg)
+
         work_dir_str = str(work_dir.resolve(strict=True))
         if not re.match(r"^[/a-zA-Z0-9_.-]+$", work_dir_str) or ".." in work_dir_str:
             msg = "Invalid characters in work_dir"
@@ -65,9 +77,7 @@ class MDInterface(AbstractDynamics):
         )
         tmp_in_file.write(script)
 
-    def _write_potential_input(
-        self, tmp_in_file: Any, potential: Path, dump_name: str, work_dir: Path
-    ) -> None:
+    def _validate_potential_path(self, potential: Path) -> str:
         if not re.match(r"^[a-zA-Z0-9_]+\.yace$", potential.name):
             msg = "Potential path must be a valid .yace file"
             raise ValueError(msg)
@@ -81,7 +91,12 @@ class MDInterface(AbstractDynamics):
                 msg = f"Potential path must be within the project root: {resolved_pot}"
                 raise ValueError(msg)
 
-        pot_path_str = str(resolved_pot)
+        return str(resolved_pot)
+
+    def _write_potential_input(
+        self, tmp_in_file: Any, potential: Path, dump_name: str, work_dir: Path
+    ) -> None:
+        pot_path_str = self._validate_potential_path(potential)
 
         base_dump_name = Path(dump_name).name
         if not re.match(r"^[a-zA-Z0-9_.-]+$", base_dump_name) or base_dump_name != dump_name:
@@ -96,6 +111,22 @@ class MDInterface(AbstractDynamics):
         if not re.match(r"^[a-zA-Z0-9]+$", lattice_type):
             msg = "Invalid lattice_type"
             raise ValueError(msg)
+
+        if not isinstance(self.config.lattice_size, (float, int)) or self.config.lattice_size <= 0:
+            msg = "Invalid lattice_size"
+            raise ValueError(msg)
+
+        if not all(isinstance(dim, int) and dim > 0 for dim in (box_x, box_y, box_z)):
+            msg = "Invalid box sizes"
+            raise ValueError(msg)
+
+        if not isinstance(self.config.md_steps, int) or self.config.md_steps <= 0:
+            msg = "Invalid md_steps"
+            raise ValueError(msg)
+
+        if not isinstance(self.config.uncertainty_threshold, (float, int)):
+            msg = "Invalid uncertainty_threshold"
+            raise TypeError(msg)
 
         work_dir_str = str(work_dir.resolve(strict=True))
         if not re.match(r"^[/a-zA-Z0-9_.-]+$", work_dir_str) or ".." in work_dir_str:
@@ -142,6 +173,10 @@ class MDInterface(AbstractDynamics):
         except RuntimeError as e:
             msg = "LAMMPS executable not found."
             raise RuntimeError(msg) from e
+
+        if not re.match(r"^[/a-zA-Z0-9_.-]+$", lmp_bin):
+            msg = "Invalid characters in resolved LAMMPS binary path"
+            raise ValueError(msg)
 
         cmd: list[str] = [lmp_bin, "-in", in_file_name]
 
@@ -274,6 +309,10 @@ write_data {work_dir.resolve()}/data.lammps
         except RuntimeError as e:
             msg = "LAMMPS executable not found."
             raise RuntimeError(msg) from e
+
+        if not re.match(r"^[/a-zA-Z0-9_.-]+$", lmp_bin):
+            msg = "Invalid characters in resolved LAMMPS binary path"
+            raise ValueError(msg)
 
         cmd = [lmp_bin, "-in", in_file.name]
 

@@ -130,7 +130,33 @@ write_data {work_dir}/data.lammps
         import os
 
         resolved = Path(os.path.realpath(v)).resolve(strict=True)
+        if not resolved.is_absolute():
+            msg = "project_root must be absolute"
+            raise ValueError(msg)
+        if not resolved.exists() or not resolved.is_dir():
+            msg = "project_root must be an existing directory"
+            raise ValueError(msg)
         return str(resolved)
+
+    @field_validator("trusted_directories")
+    @classmethod
+    def validate_trusted_directories(cls, v: list[str]) -> list[str]:
+        import os
+        validated = []
+        for path in v:
+            try:
+                resolved = Path(os.path.realpath(path)).resolve(strict=True)
+            except FileNotFoundError:
+                # Same as TrainerConfig, skip safe missing defaults
+                continue
+            if not resolved.is_absolute():
+                msg = f"trusted_directory must be absolute: {path}"
+                raise ValueError(msg)
+            if not resolved.exists() or not resolved.is_dir():
+                msg = f"trusted_directory must exist and be a directory: {path}"
+                raise ValueError(msg)
+            validated.append(str(resolved))
+        return validated
 
     @field_validator("safe_env_keys")
     @classmethod
@@ -292,9 +318,31 @@ class TrainerConfig(BaseModel):
         pattern=r"^[a-zA-Z0-9_-]+$",
     )
     trusted_directories: list[str] = Field(
-        default=["/usr/bin", "/usr/local/bin", "/opt/homebrew/bin"],
+        default=["/usr/bin", "/usr/local/bin", "/opt/homebrew/bin", "/bin"],
         description="List of trusted directories for executables",
     )
+
+    @field_validator("trusted_directories")
+    @classmethod
+    def validate_trusted_directories(cls, v: list[str]) -> list[str]:
+        import os
+        validated = []
+        for path in v:
+            try:
+                resolved = Path(os.path.realpath(path)).resolve(strict=True)
+            except FileNotFoundError:
+                # In config models it is common for some default directories to not exist on all systems.
+                # We skip missing default directories safely.
+                continue
+
+            if not resolved.is_absolute():
+                msg = f"trusted_directory must be absolute: {path}"
+                raise ValueError(msg)
+            if not resolved.is_dir():
+                msg = f"trusted_directory must be a directory: {path}"
+                raise ValueError(msg)
+            validated.append(str(resolved))
+        return validated
     pace_train_args_template: list[str] = Field(
         default=[
             "--dataset",
