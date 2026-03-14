@@ -87,9 +87,8 @@ class DynamicsConfig(BaseModel):
         if not v:
             msg = "project_root cannot be empty"
             raise ValueError(msg)
-        import os
 
-        resolved = Path(os.path.realpath(v)).resolve(strict=True)
+        resolved = Path(v).resolve(strict=True)
         if not resolved.is_absolute():
             msg = "project_root must be absolute"
             raise ValueError(msg)
@@ -121,7 +120,7 @@ class DynamicsConfig(BaseModel):
                     msg = f"trusted_directory {path} cannot be a symlink."
                     raise ValueError(msg)
 
-                resolved = Path(os.path.realpath(path)).resolve(strict=True)
+                resolved = Path(path).resolve(strict=True)
             except FileNotFoundError:
                 logging.warning(f"Trusted directory skipped as it does not exist: {path}")
                 continue
@@ -260,7 +259,7 @@ class TrainerConfig(BaseModel):
                     msg = f"trusted_directory {path} cannot be a symlink."
                     raise ValueError(msg)
 
-                resolved = Path(os.path.realpath(path)).resolve(strict=True)
+                resolved = Path(path).resolve(strict=True)
             except FileNotFoundError:
                 logging.warning(f"Trusted directory skipped as it does not exist: {path}")
                 continue
@@ -441,7 +440,7 @@ class ProjectConfig(BaseSettings):
 
                         # If it's an absolute path, verify it's within expected bounds
                         if Path(val).is_absolute():
-                            resolved_val = Path(os.path.realpath(val))
+                            resolved_val = Path(val).resolve(strict=True)
                             if not resolved_val.is_relative_to(expected_base):
                                 msg = (
                                     f"Absolute paths in .env must be within the project root: {val}"
@@ -475,8 +474,8 @@ class ProjectConfig(BaseSettings):
     def validate_project_root(cls, v: Path) -> Path:
         import os
 
-        # Canonicalize path and resolve symlinks
-        resolved_path = Path(os.path.realpath(v)).resolve(strict=True)
+        # Canonicalize path and resolve symlinks securely without os.path.realpath
+        resolved_path = Path(v).resolve(strict=True)
 
         if not resolved_path.is_absolute():
             msg = f"Project root directory '{v}' must be an absolute path."

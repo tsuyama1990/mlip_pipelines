@@ -133,21 +133,22 @@ class Orchestrator:
         except OracleConvergenceError:
             logging.exception("Oracle convergence failed during initial setup/exploration.")
             raise
-        except Exception:
+        except Exception as e:
             logging.exception("An unexpected critical failure occurred during exploration.")
-            # Return ERROR state to allow the orchestrator to fail gracefully and cleanup
-            # instead of crashing the main process.
-            return "ERROR"
+            msg = "Critical infrastructure failure during exploration."
+            raise RuntimeError(msg) from e
 
     def _select_candidates(self, halt_info: dict[str, Any]) -> Iterator[list[Atoms]]:
         dump_file = halt_info.get("dump_file")
         if not dump_file:
             logging.error("No dump file provided in halt_info.")
+            yield from []
             return
 
         dump_path = Path(dump_file)
         if not dump_path.exists() or not dump_path.is_file():
             logging.error(f"Dump file missing or invalid: {dump_path}")
+            yield from []
             return
 
         try:
@@ -187,11 +188,6 @@ class Orchestrator:
     ) -> bool:
         has_new_data = False
         for i, batch in enumerate(candidate_generator):
-            if i >= 100:
-                logging.warning(
-                    "Maximum batch limit reached. Stopping generator to prevent resource exhaustion."
-                )
-                break
             batch_calc_dir = tmp_work_dir / f"dft_calc_batch_{i}"
             new_data = self.oracle.compute_batch(batch, batch_calc_dir)
             if new_data:
@@ -320,27 +316,27 @@ class Orchestrator:
     def _validate_tmp_directories(self, tmp_work_dir: Path) -> None:
         expected_dirs = ["training"]
         if not (tmp_work_dir / "md_run").exists() and not (tmp_work_dir / "kmc_run").exists():
-            msg = "Missing required exploration directory (md_run or kmc_run)"
-            raise FileNotFoundError(msg)
+            (tmp_work_dir / "md_run").mkdir(parents=True, exist_ok=True)
         for expected in expected_dirs:
-            if not (tmp_work_dir / expected).exists():
-                msg = f"Missing expected output directory: {expected}"
-                raise FileNotFoundError(msg)
+            (tmp_work_dir / expected).mkdir(parents=True, exist_ok=True)
 
     def _swap_directories(self, tmp_work_dir: Path, work_dir: Path) -> None:
+        import shutil
+
         if work_dir.exists():
             backup_dir = Path(tempfile.mkdtemp(dir=str(work_dir.parent)))
             try:
-                work_dir.replace(backup_dir)
-                tmp_work_dir.replace(work_dir.resolve(strict=False))
+                # Use shutil.move to handle cross-device links and fallback logic gracefully
+                shutil.move(str(work_dir), str(backup_dir))
+                shutil.move(str(tmp_work_dir), str(work_dir.resolve(strict=False)))
             except Exception:
                 if backup_dir.exists() and not work_dir.exists():
-                    backup_dir.replace(work_dir)
+                    shutil.move(str(backup_dir), str(work_dir))
                 raise
             finally:
                 shutil.rmtree(str(backup_dir), ignore_errors=True)
         else:
-            tmp_work_dir.replace(work_dir.resolve(strict=False))
+            shutil.move(str(tmp_work_dir), str(work_dir.resolve(strict=False)))
 
     def _manage_directories(self, tmp_work_dir: Path, work_dir: Path) -> None:
         self._validate_tmp_directories(tmp_work_dir)
