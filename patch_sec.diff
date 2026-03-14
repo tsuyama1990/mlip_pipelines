@@ -1,0 +1,29 @@
+<<<<<<< SEARCH
+def test_validate_env_key():
+    sec._validate_env_key("MLIP_OK")
+    with pytest.raises(ValueError):
+        sec._validate_env_key("BAD")
+    with pytest.raises(ValueError):
+        sec._validate_env_key("MLIP_BAD;")
+
+def test_validate_env_value():
+    sec._validate_env_value("value")
+    with pytest.raises(ValueError):
+        sec._validate_env_value("val..ue")
+    with pytest.raises(ValueError):
+        sec._validate_env_value("val;ue")
+=======
+def test_validate_env_key():
+    sec._validate_env_key("MLIP_OK")
+    with pytest.raises(ValueError, match="Only MLIP_ prefixes are allowed"):
+        sec._validate_env_key("BAD")
+    with pytest.raises(ValueError, match="Invalid characters"):
+        sec._validate_env_key("MLIP_BAD;")
+
+def test_validate_env_value():
+    sec._validate_env_value("value")
+    with pytest.raises(ValueError, match="Invalid characters"):
+        sec._validate_env_value("val..ue")
+    with pytest.raises(ValueError, match="Invalid characters"):
+        sec._validate_env_value("val;ue")
+>>>>>>> REPLACE

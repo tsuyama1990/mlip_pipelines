@@ -1,0 +1,5 @@
+<<<<<<< SEARCH
+            f"fix watchdog all halt 10 v_max_gamma > {float(self.config.uncertainty_threshold)} error soft",
+=======
+            f"fix watchdog all halt {self.config.md_steps // 100 if self.config.md_steps >= 1000 else 10} v_max_gamma > {float(self.config.uncertainty_threshold)} error soft",
+>>>>>>> REPLACE

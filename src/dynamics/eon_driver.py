@@ -54,7 +54,7 @@ def read_coordinates_from_stdin(default_element: str, default_cell: float) -> "A
 def write_bad_structure(path: str, atoms: "Atoms") -> None:
     # Security: path validation
     base_name = Path(path).name
-    if not re.match(r"^[a-zA-Z0-9_.-]+$", base_name) or base_name != path:
+    if not re.match(r"^[a-zA-Z0-9_.-]+$", base_name) or ".." in path:
         sys.stderr.write(f"Invalid path for writing bad structure: {path}\n")
         sys.exit(100)
 

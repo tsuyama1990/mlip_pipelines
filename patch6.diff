@@ -1,0 +1,7 @@
+<<<<<<< SEARCH
+    with pytest.raises(ValueError):
+        engine._validate_work_dir(tmp_path / "../outside")
+=======
+    with pytest.raises(ValueError, match="is outside the allowed project root"):
+        engine._validate_work_dir(tmp_path / "../outside")
+>>>>>>> REPLACE

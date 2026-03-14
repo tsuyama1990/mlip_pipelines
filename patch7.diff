@@ -1,0 +1,40 @@
+<<<<<<< SEARCH
+    # mock sys.modules to simulate pyacemaker import
+    class DummyCalc:
+        def __init__(self, *args, **kwargs):
+            pass
+    import sys
+    class MockPyacemakerModule:
+        pyacemaker = DummyCalc
+    sys.modules['pyacemaker'] = MockPyacemakerModule()
+    sys.modules['pyacemaker.calculator'] = MockPyacemakerModule()
+
+    # Need to patch Atoms.get_potential_energy
+    from ase import Atoms
+    monkeypatch.setattr(Atoms, "get_potential_energy", lambda *args, **kwargs: -100.0)
+    monkeypatch.setattr(Atoms, "get_forces", lambda *args, **kwargs: [[1.0, 2.0, 3.0]])
+
+    try:
+        eon_driver.main()
+    except SystemExit as e:
+        assert e.code is None or e.code == 0
+=======
+    # mock sys.modules to simulate pyacemaker import
+    class DummyCalc:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            pass
+    import sys
+    class MockPyacemakerModule:
+        pyacemaker = DummyCalc
+    sys.modules['pyacemaker'] = MockPyacemakerModule()
+    sys.modules['pyacemaker.calculator'] = MockPyacemakerModule()
+
+    # Need to patch Atoms.get_potential_energy
+    from ase import Atoms
+    monkeypatch.setattr(Atoms, "get_potential_energy", lambda *args, **kwargs: -100.0)
+    monkeypatch.setattr(Atoms, "get_forces", lambda *args, **kwargs: [[1.0, 2.0, 3.0]])
+
+    with pytest.raises(SystemExit) as e:
+        eon_driver.main()
+    assert getattr(e.value, "code", None) in (None, 0)
+>>>>>>> REPLACE

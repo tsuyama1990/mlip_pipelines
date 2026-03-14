@@ -205,32 +205,40 @@ sys.exit(res.returncode)
 
             cmd: list[str] = [str(eon_bin_path)]
 
-            # We use check=False to capture return code 100 gracefully
             # Create a minimal safe environment whitelist to prevent sensitive credential leaks
             env = self._build_safe_env()
 
-            # Safely invoke EON client using direct list execution through subprocess (shell=False)
-            res: subprocess.CompletedProcess[bytes] = subprocess.run(  # noqa: S603
+            # Execute via Popen to properly manage the process lifecycle
+
+            with subprocess.Popen(  # noqa: S603
                 cmd,
                 cwd=str(resolved_work_dir.absolute()),
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 shell=False,
                 env=env,
-                check=False,
-            )
+            ) as proc:
+                try:
+                    out, err = proc.communicate(timeout=3600)  # Maximum 1 hour timeout
+                    returncode = proc.returncode
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.communicate()  # ensure pipes are closed
+                    msg = "EON client execution timed out."
+                    raise RuntimeError(msg) from None
 
-            if res.returncode == 100:
+            if returncode == 100:
                 return {
                     "halted": True,
                     "dump_file": resolved_work_dir / "bad_structure.cfg",
                     "is_kmc": True,
                 }
-            if res.returncode != 0:
+            if returncode != 0:
                 # Other error
                 import logging
 
-                logging.error(f"EON client failed with return code {res.returncode}")
-                msg = f"EON client failed with return code {res.returncode}"
+                logging.error(f"EON client failed with return code {returncode}")
+                msg = f"EON client failed with return code {returncode}"
                 raise RuntimeError(msg)
 
         except FileNotFoundError as e:
