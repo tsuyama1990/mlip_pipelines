@@ -203,7 +203,7 @@ def __fig(fig: Any) -> None:
 
 @app.cell
 def __p1r(phase1_results: dict[str, Any]) -> None:
-    print(f"Phase 1 Completed. Generated potential at: {phase1_results['final_potential']}")
+    pass
 
 
 @app.cell
@@ -236,12 +236,7 @@ def __phase2(setup_orchestrator: Any, InterfaceTarget: Any) -> tuple[Any, dict[s
 
 @app.cell
 def __aha(aha_results: dict[str, float]) -> None:
-    print("==========================================")
-    print("Phase 2: The Aha! Moment (FePt/MgO Interface)")
-    print("==========================================")
-    print("Successfully resolved the interface boundary.")
-    print(f"Calculated Interface Energy: {aha_results['interface_energy']} J/m^2")
-    print(f"Calculated FePt Order Parameter: {aha_results['fept_order_parameter']}")
+    pass
 
 
 if __name__ == "__main__":

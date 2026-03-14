@@ -1,4 +1,3 @@
-import logging
 import os
 import re
 import stat
@@ -18,6 +17,29 @@ class InterfaceTarget(BaseModel):
 
 
 def _check_allowed_base_dirs(resolved_str: str, path_str: str) -> None:
+    import tempfile
+
+    # Use resolve(strict=True) on allowed bases
+    home_dir = str(Path.home().resolve(strict=True))
+    tmp_dir = str(Path(tempfile.gettempdir()).resolve(strict=True))
+
+    # If the environment is CI / containerized, often /app is the project root.
+    # To be secure, allow current working dir explicitly if it's not a root dir.
+    cwd_dir = str(Path.cwd().resolve(strict=True))
+
+    is_safe = False
+    for safe_base in [home_dir, tmp_dir, cwd_dir]:
+        try:
+            if os.path.commonpath([safe_base, resolved_str]) == safe_base:
+                is_safe = True
+                break
+        except ValueError:
+            pass
+
+    if not is_safe:
+        msg = f"Directory {path_str} must reside securely within an allowed base directory (home, tmp, or cwd)."
+        raise ValueError(msg)
+
     restricted_prefixes = ["/etc", "/bin", "/usr", "/sbin", "/var", "/lib", "/boot", "/root"]
     for restricted in restricted_prefixes:
         try:
@@ -40,7 +62,7 @@ def _check_ownership_and_perms(resolved: Path, path_str: str) -> None:
         raise ValueError(msg)
 
 
-def _secure_resolve_and_validate_dir(path_str: str, check_exists: bool = True) -> str | None:
+def _secure_resolve_and_validate_dir(path_str: str, check_exists: bool = True) -> str:
     path = Path(path_str)
 
     if not path.is_absolute():
@@ -53,12 +75,16 @@ def _secure_resolve_and_validate_dir(path_str: str, check_exists: bool = True) -
 
     try:
         resolved = path.resolve(strict=check_exists)
-    except FileNotFoundError:
-        logging.warning(f"Directory skipped as it does not exist: {path_str}")
-        return None
+    except FileNotFoundError as e:
+        msg = f"Directory does not exist: {path_str}"
+        raise ValueError(msg) from e
     except Exception as e:
         msg = f"Failed to resolve path: {path_str}"
         raise ValueError(msg) from e
+
+    if ".." in os.path.realpath(str(resolved)):
+        msg = "Resolved path contains traversal sequences."
+        raise ValueError(msg)
 
     if check_exists:
         try:
@@ -66,9 +92,9 @@ def _secure_resolve_and_validate_dir(path_str: str, check_exists: bool = True) -
             if stat.S_ISLNK(st_info.st_mode):
                 msg = f"Directory {path_str} cannot be a symlink."
                 raise ValueError(msg)
-        except FileNotFoundError:
-            logging.warning(f"Directory skipped as it does not exist: {path_str}")
-            return None
+        except FileNotFoundError as e:
+            msg = f"Directory does not exist: {path_str}"
+            raise ValueError(msg) from e
 
         if not resolved.is_dir():
             msg = f"Path must be a directory: {path_str}"
@@ -467,8 +493,24 @@ def _validate_env_value(val: str) -> None:
     if len(val) > 1024:
         msg = "Environment variable value exceeds maximum length"
         raise ValueError(msg)
-    if ".." in val or ";" in val or "&" in val or "|" in val:
-        msg = f"Invalid characters or traversal sequences in .env variable value: {val}."
+
+    # Strictly whitelist allowed characters to prevent shell/JSON injection
+    # Allows alphanumerics, underscores, dots, hyphens, plus, equals, and basic path separators.
+    if not re.match(r"^[-a-zA-Z0-9_.+/=\\]*$", val):
+        msg = "Invalid characters detected in .env variable value."
+        raise ValueError(msg)
+
+    if (
+        ".." in val
+        or ";" in val
+        or "&" in val
+        or "|" in val
+        or "$" in val
+        or "`" in val
+        or "{" in val
+        or "}" in val
+    ):
+        msg = "Invalid characters or traversal sequences in .env variable value."
         raise ValueError(msg)
 
 
@@ -476,6 +518,11 @@ def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
     st = os.lstat(env_file)
     if stat.S_ISLNK(st.st_mode):
         msg = ".env file must not be a symlink."
+        raise ValueError(msg)
+
+    # First ensure the unresolved path sits inside the base directory
+    if env_file.parent.resolve(strict=True) != expected_base.resolve(strict=True):
+        msg = f".env file must reside directly in the allowed base directory: {expected_base}"
         raise ValueError(msg)
 
     resolved_env = env_file.resolve(strict=True)
@@ -497,6 +544,35 @@ def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
     if bool(st.st_mode & stat.S_IRWXO) or bool(st.st_mode & stat.S_IRWXG):
         msg = ".env file has insecure permissions. It must not be group or world readable/writable."
         raise ValueError(msg)
+
+    # Content validation for malicious patterns before parsing
+    with Path.open(resolved_env, "r", encoding="utf-8") as f:
+        for line in f:
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+
+            # Simple check to see if the key starts with MLIP_ and lacks injection symbols
+            if "=" in stripped:
+                key, val = stripped.split("=", 1)
+                key = key.strip()
+                if not key.startswith("MLIP_"):
+                    msg = f"All .env file keys must start with 'MLIP_'. Found invalid key: {key}"
+                    raise ValueError(msg)
+
+                val = val.strip()
+                if (
+                    ".." in val
+                    or ";" in val
+                    or "&" in val
+                    or "|" in val
+                    or "$" in val
+                    or "`" in val
+                    or "{" in val
+                    or "}" in val
+                ):
+                    msg = f"Invalid characters or traversal sequences in .env file content: {val}"
+                    raise ValueError(msg)
 
     return resolved_env
 

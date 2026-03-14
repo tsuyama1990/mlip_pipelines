@@ -99,10 +99,21 @@ class DFTManager(AbstractOracle):
             pseudo_dir_path = raw_pseudo_dir.resolve(strict=True)
 
             # Directory traversal prevention
-            restricted_prefixes = ["/etc", "/bin", "/usr", "/sbin", "/var", "/lib", "/boot", "/root"]
+            restricted_prefixes = [
+                "/etc",
+                "/bin",
+                "/usr",
+                "/sbin",
+                "/var",
+                "/lib",
+                "/boot",
+                "/root",
+            ]
             for restricted in restricted_prefixes:
                 try:
-                    is_restricted = os.path.commonpath([restricted, str(pseudo_dir_path)]) == restricted
+                    is_restricted = (
+                        os.path.commonpath([restricted, str(pseudo_dir_path)]) == restricted
+                    )
                 except ValueError:
                     continue
                 if is_restricted:
@@ -150,16 +161,29 @@ class DFTManager(AbstractOracle):
                 f"Invalid UPF format for pseudopotential: {upf_name}. Missing required closing tags."
             )
 
-    def _validate_upf_content(self, upf_path: Path, upf_name: str) -> None:
+    def _validate_upf_content(self, upf_path: Path, upf_name: str, pseudo_dir_path: Path) -> None:
         import os
 
         try:
+            # Avoid TOCTOU: open the unresolved path with O_NOFOLLOW
             fd = os.open(str(upf_path), os.O_RDONLY | os.O_NOFOLLOW)
         except OSError as e:
             msg = f"Failed to securely open pseudopotential (possibly a symlink): {upf_name}"
             raise FileNotFoundError(msg) from e
 
         try:
+            # After opening, we verify the file's final canonical path is still inside pseudo_dir_path
+            # by getting the path via /proc/self/fd on linux or standard resolving otherwise.
+            # We can use os.path.realpath securely now since the descriptor is locked for read
+            fd_path = (
+                Path(os.path.realpath(f"/proc/self/fd/{fd}"))
+                if os.path.exists(f"/proc/self/fd/{fd}")
+                else upf_path.resolve(strict=True)
+            )
+            if not str(fd_path).startswith(str(pseudo_dir_path.resolve(strict=True))):
+                msg = f"Path traversal detected for pseudopotential file after open: {upf_name}"
+                raise ValueError(msg)
+
             self._check_upf_stat_and_content(fd, upf_name)
         except UnicodeDecodeError as e:
             msg = f"File is corrupted or not utf-8 text: {upf_name}"
@@ -208,7 +232,7 @@ class DFTManager(AbstractOracle):
                 msg = f"Path traversal detected: {upf_name}"
                 raise ValueError(msg)
 
-            self._validate_upf_content(upf_path, upf_name)
+            self._validate_upf_content(upf_path, upf_name, pseudo_dir_path)
 
             pseudos[el] = upf_name
         return pseudos
@@ -243,6 +267,30 @@ class DFTManager(AbstractOracle):
 
     def _get_calculator(self, atoms: Atoms, work_dir: Path) -> Espresso:
         """Creates the ESPRESSO calculator with self-healing parameters."""
+        import os
+        import tempfile
+
+        # Security: Canonicalize work_dir and check its boundaries
+        canonical_work_dir = work_dir.resolve(strict=True)
+        is_safe = False
+        allowed_bases = [
+            str(Path(tempfile.gettempdir()).resolve(strict=True)),
+        ]
+        if hasattr(self.config, "project_root"):
+            allowed_bases.append(str(Path(self.config.project_root).resolve(strict=True)))
+
+        for safe_base in allowed_bases:
+            try:
+                if os.path.commonpath([safe_base, str(canonical_work_dir)]) == safe_base:
+                    is_safe = True
+                    break
+            except ValueError:
+                pass
+
+        if not is_safe:
+            msg = f"Work directory {canonical_work_dir} is not within trusted boundaries."
+            raise ValueError(msg)
+
         symbols: set[str] = set(atoms.get_chemical_symbols())  # type: ignore[no-untyped-call]
 
         try:

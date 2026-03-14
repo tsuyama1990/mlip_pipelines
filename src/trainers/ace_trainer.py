@@ -94,7 +94,10 @@ class PacemakerWrapper(AbstractTrainer):
         if ".." in binary_setting:
             msg = f"Invalid absolute binary path: {binary_setting}"
             raise ValueError(msg)
-        resolved_bin = Path(os.path.realpath(binary_setting)).resolve(strict=True)
+        resolved_bin = Path(binary_setting).resolve(strict=True)
+        if ".." in os.path.realpath(str(resolved_bin)):
+            msg = "Resolved binary path contains traversal sequences."
+            raise ValueError(msg)
         self._validate_binary_properties(resolved_bin, binary_name, trusted_dirs)
         self._verify_hash(resolved_bin, binary_name)
         return str(resolved_bin)
@@ -108,7 +111,10 @@ class PacemakerWrapper(AbstractTrainer):
         resolved_which = shutil.which(binary_setting)
         if resolved_which is None:
             return binary_setting
-        resolved_bin = Path(os.path.realpath(resolved_which)).resolve(strict=True)
+        resolved_bin = Path(resolved_which).resolve(strict=True)
+        if ".." in os.path.realpath(str(resolved_bin)):
+            msg = "Resolved binary path contains traversal sequences."
+            raise ValueError(msg)
         self._validate_binary_properties(resolved_bin, binary_name, trusted_dirs)
         self._verify_hash(resolved_bin, binary_name)
         return str(resolved_bin)
@@ -193,6 +199,16 @@ class PacemakerWrapper(AbstractTrainer):
             raise RuntimeError(msg)
 
     def _validate_train_directories(self, dataset: Path, output_dir: Path) -> tuple[Path, Path]:
+        import stat
+
+        try:
+            st_info = os.lstat(dataset)
+            if stat.S_ISLNK(st_info.st_mode):
+                msg = f"Dataset path cannot be a symlink: {dataset}"
+                raise ValueError(msg)
+        except FileNotFoundError:
+            pass
+
         resolved_dataset: Path = dataset.resolve(strict=True)
         if not resolved_dataset.exists():
             msg = f"Dataset not found: {resolved_dataset}"
@@ -209,8 +225,17 @@ class PacemakerWrapper(AbstractTrainer):
                 msg = "Dataset does not appear to be a valid XYZ format (first line must be atom count)."
                 raise ValueError(msg)
 
+        try:
+            st_info_out = os.lstat(output_dir)
+            if stat.S_ISLNK(st_info_out.st_mode):
+                msg = f"Output directory path cannot be a symlink: {output_dir}"
+                raise ValueError(msg)
+        except FileNotFoundError:
+            pass
+
         # Force directory existence to allow strict resolution
         Path(output_dir).mkdir(parents=True, exist_ok=True)
+        Path(output_dir).chmod(0o700)
         resolved_output_dir: Path = Path(output_dir).resolve(strict=True)
 
         if hasattr(self.config, "project_root"):

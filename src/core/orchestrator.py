@@ -296,32 +296,46 @@ class Orchestrator:
         sha256_hash = hashlib.sha256()
         max_size = self.config.trainer.max_potential_size
 
-        with Path.open(src_pot, "rb") as f:
-            # Atomic file size constraint to prevent race conditions and OOM
-            st = os.fstat(f.fileno())
-            if st.st_size > max_size:
-                msg = f"Source potential file exceeds maximum allowed size ({max_size} bytes)"
-                raise ValueError(msg)
+        # Create a temp file to write verified content directly to prevent TOCTOU
+        import fcntl
+        import tempfile
 
-            # Read line by line to securely validate headers without reading past 10KB
-            headers_found = set()
-            required_headers = {"elements", "version", "b_functions"}
+        pot_dir.mkdir(parents=True, exist_ok=True)
+        fd_out, temp_dest = tempfile.mkstemp(dir=str(pot_dir))
 
-            # Read first block safely
-            first_block = f.read(8192)
-            sha256_hash.update(first_block)
+        with Path.open(src_pot, "rb") as f, os.fdopen(fd_out, "wb") as f_out:
+            # File lock to prevent concurrent tampering during read
+            fcntl.flock(f.fileno(), fcntl.LOCK_SH)
+            try:
+                # Atomic file size constraint to prevent race conditions and OOM
+                st = os.fstat(f.fileno())
+                if st.st_size > max_size:
+                    msg = f"Source potential file exceeds maximum allowed size ({max_size} bytes)"
+                    raise ValueError(msg)
 
-            content_str = first_block.decode("utf-8", errors="ignore")
-            for h in required_headers:
-                if h in content_str:
-                    headers_found.add(h)
+                headers_found = set()
+                required_headers = {"elements", "version", "b_functions"}
 
-            # Continue reading the rest to compute full hash incrementally
-            while chunk := f.read(8192):
-                sha256_hash.update(chunk)
+                # Read first block safely
+                first_block = f.read(8192)
+                sha256_hash.update(first_block)
+                f_out.write(first_block)
+
+                content_str = first_block.decode("utf-8", errors="ignore")
+                for h in required_headers:
+                    if h in content_str:
+                        headers_found.add(h)
+
+                # Continue reading the rest to compute full hash incrementally
+                while chunk := f.read(8192):
+                    sha256_hash.update(chunk)
+                    f_out.write(chunk)
+            finally:
+                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
 
         missing_headers = required_headers - headers_found
         if missing_headers:
+            os.remove(temp_dest)
             msg = f"Source potential file {src_pot} is missing required YACE headers: {missing_headers}"
             raise ValueError(msg)
 
@@ -347,17 +361,15 @@ class Orchestrator:
 
         # Additional path traversal checks on the filename itself
         if ".." in final_dest.name or "/" in final_dest.name or "\\" in final_dest.name:
+            os.remove(temp_dest)
             msg = "Path traversal characters detected in destination filename"
             raise ValueError(msg)
 
-        fd, tmp_dest = tempfile.mkstemp(dir=str(resolved_parent))
-        os.close(fd)
-
         try:
-            shutil.copy2(str(src_pot.resolve(strict=True)), tmp_dest)
-            Path(tmp_dest).replace(final_dest_resolved)
+            # Atomic replace
+            os.rename(temp_dest, str(final_dest_resolved))
         except Exception:
-            Path(tmp_dest).unlink(missing_ok=True)
+            Path(temp_dest).unlink(missing_ok=True)
             raise
 
         return final_dest_resolved
@@ -367,29 +379,99 @@ class Orchestrator:
         return self._secure_copy_potential(src_pot, pot_dir, iteration, tmp_work_dir)
 
     def _validate_tmp_directories(self, tmp_work_dir: Path) -> None:
+        import os
+
         expected_dirs = ["training"]
         if not (tmp_work_dir / "md_run").exists() and not (tmp_work_dir / "kmc_run").exists():
             (tmp_work_dir / "md_run").mkdir(parents=True, exist_ok=True)
         for expected in expected_dirs:
             (tmp_work_dir / expected).mkdir(parents=True, exist_ok=True)
 
+        for d in tmp_work_dir.iterdir():
+            if d.is_dir():
+                d.chmod(0o700)
+                try:
+                    # Using d.stat().st_uid instead of d.owner() to avoid KeyError in containers
+                    if d.stat().st_uid != os.getuid():
+                        msg = f"Directory {d} is not owned by the current user."
+                        raise PermissionError(msg)
+                except FileNotFoundError:
+                    pass
+
     def _swap_directories(self, tmp_work_dir: Path, work_dir: Path) -> None:
+        import hashlib
+        import os
         import shutil
 
+        def compute_dir_hash(directory: Path) -> str:
+            if not directory.exists() or not directory.is_dir():
+                return ""
+            h = hashlib.sha256()
+            for root, dirs, files in os.walk(directory):
+                # Sorting to ensure deterministic hashing
+                dirs.sort()
+                files.sort()
+                for file in files:
+                    filepath = Path(root) / file
+                    if filepath.is_file():
+                        try:
+                            # Using os.fstat for secure atomic read is too heavy for recursive directory hashing.
+                            # Just read the content to generate a checksum
+                            with open(filepath, "rb") as f:
+                                while chunk := f.read(8192):
+                                    h.update(chunk)
+                        except Exception:
+                            continue
+            return h.hexdigest()
+
         if work_dir.exists():
+            # Backup work dir
             backup_dir = Path(tempfile.mkdtemp(dir=str(work_dir.parent)))
+
+            # Record state before moves
+            orig_tmp_hash = compute_dir_hash(tmp_work_dir)
+            compute_dir_hash(work_dir)
+
             try:
-                # Use shutil.move to handle cross-device links and fallback logic gracefully
-                shutil.move(str(work_dir), str(backup_dir))
-                shutil.move(str(tmp_work_dir), str(work_dir.resolve(strict=False)))
+                try:
+                    os.rename(str(work_dir), str(backup_dir / "backup"))
+                except OSError:
+                    shutil.copytree(str(work_dir), str(backup_dir / "backup"))
+                    shutil.rmtree(str(work_dir))
+
+                try:
+                    os.rename(str(tmp_work_dir), str(work_dir.resolve(strict=False)))
+                except OSError:
+                    shutil.copytree(str(tmp_work_dir), str(work_dir.resolve(strict=False)))
+                    shutil.rmtree(str(tmp_work_dir))
+
+                # Verify state after moves to detect tampering during swap
+                if compute_dir_hash(work_dir) != orig_tmp_hash:
+                    msg = "Checksum mismatch: tmp_work_dir was tampered with during the swap."
+                    raise RuntimeError(msg)
             except Exception:
-                if backup_dir.exists() and not work_dir.exists():
-                    shutil.move(str(backup_dir), str(work_dir))
+                # Rollback
+                if (backup_dir / "backup").exists():
+                    if work_dir.exists():
+                        shutil.rmtree(str(work_dir))
+                    try:
+                        os.rename(str(backup_dir / "backup"), str(work_dir))
+                    except OSError:
+                        shutil.copytree(str(backup_dir / "backup"), str(work_dir))
+                        shutil.rmtree(str(backup_dir / "backup"))
                 raise
             finally:
                 shutil.rmtree(str(backup_dir), ignore_errors=True)
         else:
-            shutil.move(str(tmp_work_dir), str(work_dir.resolve(strict=False)))
+            orig_tmp_hash = compute_dir_hash(tmp_work_dir)
+            try:
+                os.rename(str(tmp_work_dir), str(work_dir.resolve(strict=False)))
+            except OSError:
+                shutil.copytree(str(tmp_work_dir), str(work_dir.resolve(strict=False)))
+                shutil.rmtree(str(tmp_work_dir))
+            if compute_dir_hash(work_dir) != orig_tmp_hash:
+                msg = "Checksum mismatch: tmp_work_dir was tampered with during the move."
+                raise RuntimeError(msg)
 
     def _manage_directories(self, tmp_work_dir: Path, work_dir: Path) -> None:
         self._validate_tmp_directories(tmp_work_dir)

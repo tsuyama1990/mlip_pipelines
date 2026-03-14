@@ -91,7 +91,8 @@ def test_validate_single_trusted_dir_not_exist(tmp_path: Path) -> None:
         _secure_resolve_and_validate_dir as _validate_single_trusted_dir,
     )
 
-    assert _validate_single_trusted_dir(str(d), check_exists=True) is None
+    with pytest.raises(ValueError, match="Directory does not exist"):
+        _validate_single_trusted_dir(str(d), check_exists=True)
 
 
 def test_validate_single_trusted_dir_not_dir(tmp_path: Path) -> None:
@@ -124,7 +125,7 @@ def test_project_config_env_key() -> None:
 def test_project_config_env_value() -> None:
     from src.domain_models.config import _validate_env_value
 
-    with pytest.raises(ValueError, match=".*Invalid characters or traversal sequences.*"):
+    with pytest.raises(ValueError, match=".*Invalid characters detected.*"):
         _validate_env_value("value; rm -rf")
     with pytest.raises(ValueError, match=".*Invalid characters or traversal sequences.*"):
         _validate_env_value("../secret")
