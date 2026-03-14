@@ -80,15 +80,15 @@ def __() -> tuple[Any, ...]:
                 return {"halted": True, "dump_file": dump_file}
 
             # EON run
-            orchestrator.eon_engine.run_kmc = unittest.mock.MagicMock(side_effect=mock_eon_run)  # type: ignore[attr-defined]
+            orchestrator.eon_engine.run_kmc = unittest.mock.MagicMock(side_effect=mock_eon_run)  # type: ignore
 
             # MD run
-            orchestrator.md_engine.run_exploration = unittest.mock.MagicMock(
+            orchestrator.md_engine.run_exploration = unittest.mock.MagicMock(  # type: ignore
                 side_effect=mock_md_run
-            )  # type: ignore[method-assign]
+            )
 
             # Oracle
-            orchestrator.oracle.compute_batch = unittest.mock.MagicMock(side_effect=lambda s, d: s)  # type: ignore[method-assign]
+            orchestrator.oracle.compute_batch = unittest.mock.MagicMock(side_effect=lambda s, d: s)  # type: ignore
 
             def mock_train(dataset: Path, initial_potential: Path | None, output_dir: Path) -> Path:
                 output_dir.mkdir(parents=True, exist_ok=True)
@@ -102,15 +102,15 @@ def __() -> tuple[Any, ...]:
                 return dataset_path
 
             # Trainer
-            orchestrator.trainer.train = unittest.mock.MagicMock(side_effect=mock_train)  # type: ignore[method-assign]
-            orchestrator.trainer.update_dataset = unittest.mock.MagicMock(side_effect=mock_update)  # type: ignore[method-assign]
-            orchestrator.trainer.select_local_active_set = unittest.mock.MagicMock(
+            orchestrator.trainer.train = unittest.mock.MagicMock(side_effect=mock_train)  # type: ignore
+            orchestrator.trainer.update_dataset = unittest.mock.MagicMock(side_effect=mock_update)  # type: ignore
+            orchestrator.trainer.select_local_active_set = unittest.mock.MagicMock(  # type: ignore
                 side_effect=lambda c, a, n: c[:n]
-            )  # type: ignore[method-assign]
+            )
 
             # Validator
-            orchestrator.validator.validate = unittest.mock.MagicMock(
-                return_value=ValidationReport(  # type: ignore[method-assign]
+            orchestrator.validator.validate = unittest.mock.MagicMock(  # type: ignore
+                return_value=ValidationReport(
                     passed=True,
                     reason=None,
                     energy_rmse=0.001,

@@ -42,7 +42,7 @@ class EONWrapper(AbstractDynamics):
         resolved_pot_str = ""
         if potential:
             resolved_pot = Path(os.path.normpath(os.path.realpath(potential))).resolve(strict=True)
-            if self.config.project_root is not None:
+            if self.config.project_root:
                 root = Path(os.path.normpath(os.path.realpath(self.config.project_root))).resolve(
                     strict=True
                 )
@@ -89,7 +89,7 @@ class EONWrapper(AbstractDynamics):
         resolved_work_dir = work_dir.resolve(strict=True)
 
         # Verify that the resolved working directory is within the project root to prevent traversal
-        if self.config.project_root is not None:
+        if self.config.project_root:
             proj_root = Path(self.config.project_root).resolve(strict=True)
             if not resolved_work_dir.is_relative_to(proj_root):
                 msg = f"Working directory {resolved_work_dir} is outside the allowed project root."
@@ -132,6 +132,28 @@ class EONWrapper(AbstractDynamics):
 
         return eon_bin_path
 
+    def _build_safe_env(self) -> dict[str, str]:
+        env: dict[str, str] = {}
+        for k in self.config.safe_env_keys:
+            if k in os.environ:
+                val = os.environ[k]
+                if k == "PATH":
+                    # Validate PATH to ensure it only contains allowed characters and paths
+                    paths = val.split(os.pathsep)
+                    safe_paths = []
+                    for raw_p in paths:
+                        clean_p = raw_p.strip()
+                        if not clean_p:
+                            continue
+                        p_obj = Path(clean_p).resolve(strict=False)
+                        # Only allow existing absolute paths
+                        if p_obj.is_absolute() and p_obj.is_dir():
+                            safe_paths.append(str(p_obj))
+                    env[k] = os.pathsep.join(safe_paths)
+                elif re.match(r"^[/a-zA-Z0-9_.-]+$", val):
+                    env[k] = val
+        return env
+
     def run_kmc(self, potential: Path | None, work_dir: Path) -> dict[str, Any]:
         """Runs EON client in the specified working directory."""
         resolved_work_dir = self._validate_work_dir(work_dir)
@@ -146,9 +168,7 @@ class EONWrapper(AbstractDynamics):
 
             # We use check=False to capture return code 100 gracefully
             # Create a minimal safe environment whitelist to prevent sensitive credential leaks
-            env: dict[str, str] = {
-                k: os.environ[k] for k in self.config.safe_env_keys if k in os.environ
-            }
+            env = self._build_safe_env()
 
             # Safely invoke EON client using direct list execution through subprocess (shell=False)
             res: subprocess.CompletedProcess[bytes] = subprocess.run(  # noqa: S603

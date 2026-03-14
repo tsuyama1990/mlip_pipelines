@@ -112,13 +112,36 @@ write_data {work_dir}/data.lammps
     eon_min_mode_method: str = Field(
         default="dimer", description="EON Process Search configuration parameter"
     )
-    project_root: str | None = Field(
-        default=None, description="Project root directory for resolving binary paths"
+    project_root: str = Field(
+        default="",
+        description="Project root directory for resolving binary paths. Required to be set via initialization.",
     )
     safe_env_keys: list[str] = Field(
         default=["PATH"],
         description="Whitelist of safe environment variables to pass to subprocesses",
     )
+
+    @field_validator("project_root")
+    @classmethod
+    def validate_project_root_str(cls, v: str) -> str:
+        if not v:
+            return v
+        import os
+
+        resolved = Path(os.path.realpath(v)).resolve(strict=True)
+        return str(resolved)
+
+    @field_validator("safe_env_keys")
+    @classmethod
+    def validate_safe_env_keys(cls, v: list[str]) -> list[str]:
+        import re
+
+        for key in v:
+            if not re.match(r"^[A-Z0-9_]+$", key):
+                msg = f"Invalid characters in safe_env_keys element: {key}"
+                raise ValueError(msg)
+        return v
+
     eon_config_template: str = Field(
         default="""[Main]
 job = {eon_job}
@@ -366,14 +389,18 @@ class ProjectConfig(BaseSettings):
         from pathlib import Path
 
         # Secure the env loading process to verify the file resolves inside the CWD/project root
-        env_file = Path(".env")
+        # Force .env file to be specifically in CWD
+        expected_base = Path.cwd().resolve(strict=True)
+        env_file = expected_base / ".env"
+
         if env_file.exists():
             # Basic validation of .env file size and canonical location to prevent loading external malicious envs
             resolved_env = env_file.resolve(strict=True)
-            expected_base = Path.cwd().resolve(strict=True)
 
-            if not resolved_env.is_relative_to(expected_base):
-                msg = f".env file must reside within the allowed base directory: {expected_base}"
+            if resolved_env.parent != expected_base:
+                msg = (
+                    f".env file must reside directly in the allowed base directory: {expected_base}"
+                )
                 raise ValueError(msg)
 
             if resolved_env.stat().st_size > 10 * 1024:

@@ -28,7 +28,7 @@ class MDInterface(AbstractDynamics):
         return " ".join(str(atomic_numbers.get(el, 1)) for el in self.system_config.elements)
 
     def _write_cold_start_input(self, tmp_in_file: Any, dump_name: str, work_dir: Path) -> None:
-        if not re.match(r"^[a-zA-Z0-9_]+(\.lammps)?$", dump_name):
+        if not re.match(r"^[a-zA-Z0-9_.-]+$", dump_name) or ".." in dump_name:
             msg = "Dump file name contains invalid characters"
             raise ValueError(msg)
 
@@ -45,6 +45,11 @@ class MDInterface(AbstractDynamics):
             msg = "Invalid characters in work_dir"
             raise ValueError(msg)
 
+        zbl_mapping = self._get_zbl_mapping()
+        if not re.match(r"^[0-9 ]+$", zbl_mapping):
+            msg = "Invalid characters in zbl_mapping"
+            raise ValueError(msg)
+
         template = self.config.lammps_cold_start_template
         script = template.format(
             lattice_type=lattice_type,
@@ -52,7 +57,7 @@ class MDInterface(AbstractDynamics):
             box_x=int(box_x),
             box_y=int(box_y),
             box_z=int(box_z),
-            zbl_mapping=self._get_zbl_mapping(),
+            zbl_mapping=zbl_mapping,
             dump_name=shlex.quote(dump_name),
             md_steps=int(min(self.config.md_steps, 1000)),
             work_dir=shlex.quote(work_dir_str),
@@ -68,7 +73,7 @@ class MDInterface(AbstractDynamics):
 
         resolved_pot = potential.resolve(strict=True)
 
-        if self.config.project_root is not None:
+        if self.config.project_root:
             project_root_str = str(self.config.project_root)
             root = Path(os.path.realpath(project_root_str)).resolve(strict=True)
             if not resolved_pot.is_relative_to(root):
@@ -77,7 +82,7 @@ class MDInterface(AbstractDynamics):
 
         pot_path_str = str(resolved_pot)
 
-        if not re.match(r"^[a-zA-Z0-9_]+(\.lammps)?$", dump_name):
+        if not re.match(r"^[a-zA-Z0-9_.-]+$", dump_name) or ".." in dump_name:
             msg = "Dump file name contains invalid characters"
             raise ValueError(msg)
 
@@ -95,6 +100,11 @@ class MDInterface(AbstractDynamics):
             msg = "Invalid characters in work_dir"
             raise ValueError(msg)
 
+        zbl_mapping = self._get_zbl_mapping()
+        if not re.match(r"^[0-9 ]+$", zbl_mapping):
+            msg = "Invalid characters in zbl_mapping"
+            raise ValueError(msg)
+
         script = template.format(
             lattice_type=lattice_type,
             lattice_size=float(self.config.lattice_size),
@@ -102,7 +112,7 @@ class MDInterface(AbstractDynamics):
             box_y=int(box_y),
             box_z=int(box_z),
             pot_path=shlex.quote(pot_path_str),
-            zbl_mapping=self._get_zbl_mapping(),
+            zbl_mapping=zbl_mapping,
             threshold=float(self.config.uncertainty_threshold),
             dump_name=shlex.quote(dump_name),
             md_steps=int(self.config.md_steps),
@@ -133,10 +143,18 @@ class MDInterface(AbstractDynamics):
 
         cmd: list[str] = [lmp_bin, "-in", in_file_name]
 
+        for arg in cmd:
+            if not isinstance(arg, str):
+                msg = f"Invalid command argument type: {type(arg)}"
+                raise TypeError(msg)
+            if not re.match(r"^[/a-zA-Z0-9_.-]+$", arg):
+                msg = f"Invalid characters in command argument: {arg}"
+                raise ValueError(msg)
+
         try:
             _res: subprocess.CompletedProcess[bytes] = subprocess.run(  # noqa: S603
                 cmd,
-                cwd=work_dir,
+                cwd=str(work_dir.resolve(strict=True)),
                 check=True,
                 capture_output=True,
                 shell=False,
@@ -238,7 +256,7 @@ write_data {work_dir.resolve()}/data.lammps
 
         trusted_dirs = self.config.trusted_directories.copy()
         trusted_dirs.append(str(Path(sys.prefix) / "bin"))
-        if self.config.project_root is not None:
+        if self.config.project_root:
             project_root_str = str(self.config.project_root)
             trusted_dirs.append(str(Path(project_root_str) / "bin"))
 
@@ -257,10 +275,18 @@ write_data {work_dir.resolve()}/data.lammps
 
         cmd = [lmp_bin, "-in", in_file.name]
 
+        for arg in cmd:
+            if not isinstance(arg, str):
+                msg = f"Invalid command argument type: {type(arg)}"
+                raise TypeError(msg)
+            if not re.match(r"^[/a-zA-Z0-9_.-]+$", arg):
+                msg = f"Invalid characters in command argument: {arg}"
+                raise ValueError(msg)
+
         try:
             subprocess.run(  # noqa: S603
                 cmd,
-                cwd=work_dir,
+                cwd=str(work_dir.resolve(strict=True)),
                 check=True,
                 capture_output=True,
                 shell=False,

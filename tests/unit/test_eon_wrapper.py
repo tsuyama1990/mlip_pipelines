@@ -7,7 +7,7 @@ from src.dynamics.eon_wrapper import EONWrapper
 
 
 @pytest.fixture
-def config() -> DynamicsConfig:
+def config(tmp_path: Path) -> DynamicsConfig:
     return DynamicsConfig(
         uncertainty_threshold=5.0,
         md_steps=100,
