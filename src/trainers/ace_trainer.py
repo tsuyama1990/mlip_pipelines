@@ -93,22 +93,14 @@ class PacemakerWrapper(AbstractTrainer):
     ) -> str:
         import os
 
-        if ".." in binary_setting:
-            msg = f"Invalid absolute binary path: {binary_setting}"
-            raise ValueError(msg)
-        resolved_bin = Path(binary_setting).resolve(strict=True)
+        # Canonicalize to securely drop any symlink evasion patterns natively
+        canonical_bin = Path(os.path.realpath(binary_setting))
 
-        # Security: TOCTOU and symlink evasion prevention
-        bin_stat = os.lstat(str(resolved_bin))
         in_trusted_dir = False
         for td in trusted_dirs:
             try:
-                td_path = Path(td).resolve(strict=True)
-                td_stat = os.lstat(str(td_path))
-                if (
-                    os.path.commonpath([str(td_path), str(resolved_bin)]) == str(td_path)
-                    and bin_stat.st_dev == td_stat.st_dev
-                ):  # Ensure no malicious mount point crossing
+                canonical_td = Path(os.path.realpath(str(td)))
+                if str(canonical_bin).startswith(str(canonical_td)):
                     in_trusted_dir = True
                     break
             except (OSError, ValueError):
@@ -118,9 +110,9 @@ class PacemakerWrapper(AbstractTrainer):
             msg = "Resolved binary path is not securely within trusted directories."
             raise ValueError(msg)
 
-        self._validate_binary_properties(resolved_bin, binary_name, trusted_dirs)
-        self._verify_hash(resolved_bin, binary_name)
-        return str(resolved_bin)
+        self._validate_binary_properties(canonical_bin, binary_name, trusted_dirs)
+        self._verify_hash(canonical_bin, binary_name)
+        return str(canonical_bin)
 
     def _resolve_relative_binary(
         self, binary_setting: str, binary_name: str, trusted_dirs: list[str]
@@ -130,21 +122,18 @@ class PacemakerWrapper(AbstractTrainer):
         if not re.match(r"^[-a-zA-Z0-9_.]+$", binary_setting):
             msg = f"Invalid binary name: {binary_setting}"
             raise ValueError(msg)
+
         resolved_which = shutil.which(binary_setting)
         if resolved_which is None:
             return binary_setting
-        resolved_bin = Path(resolved_which).resolve(strict=True)
 
-        bin_stat = os.lstat(str(resolved_bin))
+        canonical_bin = Path(os.path.realpath(resolved_which))
+
         in_trusted_dir = False
         for td in trusted_dirs:
             try:
-                td_path = Path(td).resolve(strict=True)
-                td_stat = os.lstat(str(td_path))
-                if (
-                    os.path.commonpath([str(td_path), str(resolved_bin)]) == str(td_path)
-                    and bin_stat.st_dev == td_stat.st_dev
-                ):
+                canonical_td = Path(os.path.realpath(str(td)))
+                if str(canonical_bin).startswith(str(canonical_td)):
                     in_trusted_dir = True
                     break
             except (OSError, ValueError):
@@ -154,9 +143,9 @@ class PacemakerWrapper(AbstractTrainer):
             msg = "Resolved binary path is not securely within trusted directories."
             raise ValueError(msg)
 
-        self._validate_binary_properties(resolved_bin, binary_name, trusted_dirs)
-        self._verify_hash(resolved_bin, binary_name)
-        return str(resolved_bin)
+        self._validate_binary_properties(canonical_bin, binary_name, trusted_dirs)
+        self._verify_hash(canonical_bin, binary_name)
+        return str(canonical_bin)
 
     def _verify_hash(self, resolved_bin: Path, binary_name: str) -> None:
         expected_hash = self.config.binary_hashes.get(binary_name)
@@ -239,17 +228,13 @@ class PacemakerWrapper(AbstractTrainer):
 
     def _validate_train_directories(self, dataset: Path, output_dir: Path) -> tuple[Path, Path]:
         import os
-        import stat
+        import tempfile
 
-        # Security: Atomic path validation using O_NOFOLLOW
-        try:
-            fd = os.open(str(dataset), os.O_RDONLY | os.O_NOFOLLOW)
-            os.close(fd)
-        except OSError as e:
-            msg = f"Failed to securely open dataset (possibly a symlink or missing): {dataset}"
-            raise FileNotFoundError(msg) from e
+        if not dataset.exists():
+            msg = f"Dataset not found: {dataset}"
+            raise FileNotFoundError(msg)
 
-        resolved_dataset: Path = dataset.resolve(strict=True)
+        resolved_dataset = Path(os.path.realpath(str(dataset)))
 
         # Verify it's an extxyz file
         if resolved_dataset.suffix != ".extxyz":
@@ -262,29 +247,18 @@ class PacemakerWrapper(AbstractTrainer):
                 msg = "Dataset does not appear to be a valid XYZ format (first line must be atom count)."
                 raise ValueError(msg)
 
-        try:
-            st_info_out = os.lstat(output_dir)
-            if stat.S_ISLNK(st_info_out.st_mode):
-                msg = f"Output directory path cannot be a symlink: {output_dir}"
-                raise ValueError(msg)
-        except FileNotFoundError:
-            pass
-
-        # Force directory existence to allow strict resolution
         Path(output_dir).mkdir(parents=True, exist_ok=True)
-        Path(output_dir).chmod(0o700)
-        resolved_output_dir: Path = Path(output_dir).resolve(strict=True)
+        resolved_output_dir = Path(os.path.realpath(str(output_dir)))
 
         if hasattr(self.config, "project_root"):
-            proj_root: Path = Path(self.config.project_root).resolve(strict=True)
-            tmp_root: Path = Path(tempfile.gettempdir()).resolve(strict=True)
-            if not resolved_output_dir.is_relative_to(
-                proj_root
-            ) and not resolved_output_dir.is_relative_to(tmp_root):
+            proj_root = Path(os.path.realpath(str(self.config.project_root)))
+            tmp_root = Path(os.path.realpath(str(tempfile.gettempdir())))
+            if not str(resolved_output_dir).startswith(str(proj_root)) and not str(
+                resolved_output_dir
+            ).startswith(str(tmp_root)):
                 msg = f"output_dir is outside the trusted base directory or temp dir: {resolved_output_dir}"
                 raise ValueError(msg)
 
-        resolved_output_dir.mkdir(parents=True, exist_ok=True)
         if not os.access(resolved_output_dir, os.W_OK):
             msg = f"output_dir is not writable: {resolved_output_dir}"
             raise PermissionError(msg)

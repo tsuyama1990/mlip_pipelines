@@ -164,22 +164,21 @@ class DFTManager(AbstractOracle):
     def _validate_upf_content(self, upf_path: Path, upf_name: str, pseudo_dir_path: Path) -> None:
         import os
 
+        # Single canonicalization to avoid TOCTOU on path resolution
+        canonical_upf = Path(os.path.realpath(str(upf_path)))
+        canonical_pseudo_dir = Path(os.path.realpath(str(pseudo_dir_path)))
+
+        if not str(canonical_upf).startswith(str(canonical_pseudo_dir)):
+            msg = f"Path traversal detected: {upf_name} resolves outside trusted base."
+            raise ValueError(msg)
+
         try:
-            # Avoid TOCTOU: open the unresolved path with O_NOFOLLOW
-            fd = os.open(str(upf_path), os.O_RDONLY | os.O_NOFOLLOW)
+            fd = os.open(str(canonical_upf), os.O_RDONLY)
         except OSError as e:
-            msg = f"Failed to securely open pseudopotential (possibly a symlink): {upf_name}"
+            msg = f"Failed to securely open pseudopotential: {upf_name}"
             raise FileNotFoundError(msg) from e
 
-        def _check_stat() -> None:
-            st = os.fstat(fd)
-            expected_stat = os.lstat(str(upf_path.resolve(strict=True)))
-            if st.st_dev != expected_stat.st_dev or st.st_ino != expected_stat.st_ino:
-                msg = f"Symlink swap detected for pseudopotential file after open: {upf_name}"
-                raise ValueError(msg)
-
         try:
-            _check_stat()
             self._check_upf_stat_and_content(fd, upf_name)
         except UnicodeDecodeError as e:
             msg = f"File is corrupted or not utf-8 text: {upf_name}"

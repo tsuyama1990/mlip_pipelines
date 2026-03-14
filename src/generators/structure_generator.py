@@ -37,17 +37,32 @@ class StructureGenerator(AbstractGenerator):
 
         return _generator()
 
-    def _validate_interface_elements(self, elements: list[str], valid_targets: list[str]) -> None:
-        for elem in elements:
-            if elem not in valid_targets and elem not in chemical_symbols:
-                msg = f"Invalid or unsupported element target for interface generation: {elem}"
+    def _validate_interface_elements(self, elements: list[str]) -> None:
+        """Helper to ensure we only process chemically valid materials."""
+        import re
+
+        for el in elements:
+            # First ensure only basic letters are used in naming
+            if not re.match(r"^[A-Za-z]+$", el):
+                msg = f"Invalid format for element name: {el}"
                 raise ValueError(msg)
+
+            # Prevent arbitrary massive strings passing Regex
+            if len(el) > 20:
+                msg = f"Element name exceeds limits: {el}"
+                raise ValueError(msg)
+
+            # If the user passes a compound like "FePt", we break it into symbols
+            parsed_symbols = re.findall(r"[A-Z][a-z]*", el)
+            for symbol in parsed_symbols:
+                if symbol not in chemical_symbols:
+                    msg = f"Unsupported or disallowed interface element: {symbol}"
+                    raise ValueError(msg)
 
     def generate_interface(self, target: InterfaceTarget) -> Atoms:
         """Generates an interface structure based on an InterfaceTarget config."""
         # Security: validate elements before passing to ASE
-        valid_targets = self.config.valid_interface_targets
-        self._validate_interface_elements([target.element1, target.element2], valid_targets)
+        self._validate_interface_elements([target.element1, target.element2])
 
         logging.info(
             f"Generating interface between {target.element1} (face {target.face1}) "

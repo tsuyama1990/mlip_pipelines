@@ -69,7 +69,7 @@ def test_generate_interface_invalid():
     target = InterfaceTarget(element1="Unobtainium", element2="Fe")
     import pytest
 
-    with pytest.raises(ValueError, match="Invalid or unsupported element target"):
+    with pytest.raises(ValueError, match="Unsupported or disallowed interface element"):
         generator.generate_interface(target)
 
 

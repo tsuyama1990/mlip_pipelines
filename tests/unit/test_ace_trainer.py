@@ -118,7 +118,7 @@ class TestACETrainer:
     def test_train_dataset_not_found_2(self, ace_trainer, tmp_path):
         bad_dataset = tmp_path / "not_found.extxyz"
         out_dir = tmp_path / "out"
-        with pytest.raises(FileNotFoundError, match="possibly a symlink or missing"):
+        with pytest.raises(FileNotFoundError, match="Dataset not found"):
             ace_trainer.train(bad_dataset, None, out_dir)
 
     def test_train_dataset_invalid_suffix_2(self, ace_trainer, tmp_path):

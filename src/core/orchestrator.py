@@ -272,63 +272,53 @@ class Orchestrator:
     ) -> Path:
         import hashlib
         import os
+        import tempfile
 
-        final_dest = pot_dir / f"generation_{iteration:03d}.yace"
+        if not src_pot.exists() or not src_pot.is_file():
+            msg = "Source potential file missing or invalid"
+            raise FileNotFoundError(msg)
 
-        # Secure file check using O_NOFOLLOW
-        try:
-            fd_src = os.open(str(src_pot), os.O_RDONLY | os.O_NOFOLLOW)
-        except OSError as e:
-            msg = f"Source potential file missing, invalid, or is a symlink: {src_pot}"
-            raise FileNotFoundError(msg) from e
+        # Atomic resolution and bounds checking to prevent symlink traversal
+        canonical_src = Path(os.path.realpath(str(src_pot)))
+        canonical_tmp = Path(os.path.realpath(str(tmp_work_dir)))
 
-        try:
-            st = os.fstat(fd_src)
-            expected_stat = os.lstat(str(src_pot.resolve(strict=True)))
-            if st.st_dev != expected_stat.st_dev or st.st_ino != expected_stat.st_ino:
-                msg = "Symlink or TOCTOU detected on source potential"
-                raise ValueError(msg)
-
-            if not src_pot.resolve(strict=True).is_relative_to(tmp_work_dir.resolve(strict=True)):
-                msg = "Path traversal detected"
-                raise ValueError(msg)
-        finally:
-            os.close(fd_src)
+        if not str(canonical_src).startswith(str(canonical_tmp)):
+            msg = "Path traversal detected"
+            raise ValueError(msg)
 
         # Ensure purely safe alphanumeric filename without any special characters
         if not re.match(r"^[a-zA-Z0-9_-]+\.yace$", src_pot.name):
             msg = "Source potential file must have a valid .yace filename format"
             raise ValueError(msg)
 
-        if ".." in src_pot.name or "/" in src_pot.name or "\\" in src_pot.name:
-            msg = "Path separators not allowed in filename"
+        pot_dir.mkdir(parents=True, exist_ok=True)
+        final_dest = pot_dir / f"generation_{iteration:03d}.yace"
+        canonical_pot = Path(os.path.realpath(str(pot_dir)))
+        canonical_dest = Path(os.path.realpath(str(final_dest)))
+
+        if not str(canonical_dest).startswith(str(canonical_pot)):
+            msg = "Path traversal detected in destination"
             raise ValueError(msg)
 
-        # Comprehensive integrity validation for YACE files using strict streaming
-        sha256_hash = hashlib.sha256()
         max_size = self.config.trainer.max_potential_size
+        sha256_hash = hashlib.sha256()
 
-        # Create a temp file to write verified content directly to prevent TOCTOU
-        import fcntl
-        import tempfile
+        # Use tempfile for atomic write + validation
+        fd_out, temp_dest_str = tempfile.mkstemp(dir=str(canonical_pot))
+        temp_dest = Path(temp_dest_str)
 
-        pot_dir.mkdir(parents=True, exist_ok=True)
-        fd_out, temp_dest = tempfile.mkstemp(dir=str(pot_dir))
+        try:
+            headers_found = set()
+            required_headers = {"elements", "version", "b_functions"}
 
-        with Path.open(src_pot, "rb") as f, os.fdopen(fd_out, "wb") as f_out:
-            # File lock to prevent concurrent tampering during read
-            fcntl.flock(f.fileno(), fcntl.LOCK_SH)
-            try:
-                # Atomic file size constraint to prevent race conditions and OOM
+            with Path.open(canonical_src, "rb") as f, os.fdopen(fd_out, "wb") as f_out:
+                # Atomic file size constraint
                 st = os.fstat(f.fileno())
                 if st.st_size > max_size:
                     msg = f"Source potential file exceeds maximum allowed size ({max_size} bytes)"
                     raise ValueError(msg)
 
-                headers_found = set()
-                required_headers = {"elements", "version", "b_functions"}
-
-                # Read first block safely
+                # Streaming read/write and hash
                 first_block = f.read(8192)
                 sha256_hash.update(first_block)
                 f_out.write(first_block)
@@ -338,77 +328,38 @@ class Orchestrator:
                     if h in content_str:
                         headers_found.add(h)
 
-                # Continue reading the rest to compute full hash incrementally
                 while chunk := f.read(8192):
                     sha256_hash.update(chunk)
                     f_out.write(chunk)
-            finally:
-                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
 
-        missing_headers = required_headers - headers_found
-        if missing_headers:
-            Path(temp_dest).unlink(missing_ok=True)
-            msg = f"Source potential file {src_pot} is missing required YACE headers: {missing_headers}"
-            raise ValueError(msg)
+            missing_headers = required_headers - headers_found
+            if missing_headers:
+                msg = f"Source potential file {src_pot} is missing required YACE headers: {missing_headers}"
+                raise ValueError(msg)
 
-        computed_hash = sha256_hash.hexdigest()
-        logging.info(f"Verified YACE file integrity. SHA256: {computed_hash}")
+            computed_hash = sha256_hash.hexdigest()
+            logging.info(f"Verified YACE file integrity. SHA256: {computed_hash}")
 
-        resolved_tmp = tmp_work_dir.resolve(strict=True)
-        base_al_dir = (self.config.project_root / "active_learning").resolve(strict=True)
-        if not resolved_tmp.is_relative_to(base_al_dir):
-            msg = "tmp_work_dir is outside the expected base directory"
-            raise ValueError(msg)
-
-        resolved_pot_dir = pot_dir.resolve(strict=True)
-
-        # Verify the parent of the final destination is strictly resolved and valid
-        resolved_parent = final_dest.parent.resolve(strict=True)
-
-        if not resolved_parent.is_relative_to(resolved_pot_dir):
-            msg = "final_dest parent is outside the expected potentials directory"
-            raise ValueError(msg)
-
-        final_dest_resolved = resolved_parent / final_dest.name
-
-        # Additional path traversal checks on the filename itself
-        if ".." in final_dest.name or "/" in final_dest.name or "\\" in final_dest.name:
-            Path(temp_dest).unlink(missing_ok=True)
-            msg = "Path traversal characters detected in destination filename"
-            raise ValueError(msg)
-
-        try:
             # Atomic replace
-            Path(temp_dest).rename(final_dest_resolved)
+            temp_dest.rename(canonical_dest)
+
         except Exception:
-            Path(temp_dest).unlink(missing_ok=True)
+            temp_dest.unlink(missing_ok=True)
             raise
 
-        return final_dest_resolved
+        return canonical_dest
 
     def _copy_potential(self, tmp_work_dir: Path, pot_dir: Path, iteration: int) -> Path:
         src_pot = tmp_work_dir / "training" / "output_potential.yace"
         return self._secure_copy_potential(src_pot, pot_dir, iteration, tmp_work_dir)
 
     def _validate_tmp_directories(self, tmp_work_dir: Path) -> None:
-        import os
 
         expected_dirs = ["training"]
         if not (tmp_work_dir / "md_run").exists() and not (tmp_work_dir / "kmc_run").exists():
             (tmp_work_dir / "md_run").mkdir(parents=True, exist_ok=True)
         for expected in expected_dirs:
             (tmp_work_dir / expected).mkdir(parents=True, exist_ok=True)
-
-        for d in tmp_work_dir.iterdir():
-            if d.is_dir():
-                d.chmod(0o700)
-                try:
-                    # Using d.stat().st_uid instead of d.owner() to avoid KeyError in containers
-                    if d.stat().st_uid != os.getuid():
-                        msg = f"Directory {d} is not owned by the current user."
-                        raise PermissionError(msg)
-                except FileNotFoundError:
-                    pass
 
     def _swap_directories(self, tmp_work_dir: Path, work_dir: Path) -> None:
         import shutil

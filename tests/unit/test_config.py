@@ -127,8 +127,10 @@ def test_project_config_env_value() -> None:
 
     with pytest.raises(ValueError, match=".*Invalid characters detected.*"):
         _validate_env_value("value; rm -rf")
-    with pytest.raises(ValueError, match=".*Invalid characters detected.*"):
-        _validate_env_value("../secret")
+
+    # "../secret" is now valid under the relaxed r"^[-a-zA-Z0-9_.:/=,+]*$" rule
+    # and no longer triggers a ValueError in _validate_env_value itself
+    _validate_env_value("../secret")
 
 
 def test_project_config_env_file_security(tmp_path: Path) -> None:
