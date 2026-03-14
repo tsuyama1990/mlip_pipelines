@@ -1,7 +1,6 @@
 import os
 import re
 import shlex
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -57,7 +56,6 @@ class EONWrapper(AbstractDynamics):
 
         # Ensure executable doesn't break python logic
         import re
-        import sys
 
         executable = sys.executable
         if not re.match(r"^[/a-zA-Z0-9_.-]+$", executable):
@@ -77,7 +75,7 @@ class EONWrapper(AbstractDynamics):
         """Runs MD or KMC exploration until a halt condition or completion."""
         return self.run_kmc(potential, work_dir)
 
-    def run_kmc(self, potential: Path | None, work_dir: Path) -> dict[str, Any]:  # noqa: C901, PLR0912, PLR0915
+    def run_kmc(self, potential: Path | None, work_dir: Path) -> dict[str, Any]:
         """Runs EON client in the specified working directory."""
         resolved_work_dir = work_dir.resolve(strict=False)
 
@@ -94,49 +92,18 @@ class EONWrapper(AbstractDynamics):
 
         try:
             # We execute 'eonclient'. If it's missing, subprocess raises FileNotFoundError.
-            eon_binary: str = self.config.eon_binary
+            from src.dynamics.security_utils import validate_executable_path
 
-            if not re.match(r"^[a-zA-Z0-9_-]+$", eon_binary):
-                msg = f"Invalid EON binary name: {eon_binary}"
-                raise ValueError(msg)
-
-            trusted_dirs: list[str] = self.config.trusted_directories.copy()
-            trusted_dirs.append(str(Path(sys.prefix) / "bin"))
-            if hasattr(self.config, "project_root"):
-                trusted_dirs.append(str(Path(self.config.project_root) / "bin"))
-
-            resolved_which: str | None = shutil.which(eon_binary)
-            if resolved_which is None:
+            project_root = getattr(self.config, "project_root", None)
+            try:
+                eon_bin = validate_executable_path(
+                    self.config.eon_binary,
+                    self.config.trusted_directories,
+                    project_root=str(project_root) if project_root else None,
+                )
+            except RuntimeError as e:
                 msg = "EON client executable not found."
-                raise RuntimeError(msg)
-
-            eon_path: Path = Path(os.path.realpath(resolved_which)).resolve(strict=True)
-            if eon_path.is_symlink():
-                msg = "EON binary cannot be a symlink."
-                raise ValueError(msg)
-
-            if not eon_path.is_file() or not os.access(eon_path, os.X_OK):
-                msg = f"EON binary is not an executable file: {eon_path}"
-                raise ValueError(msg)
-
-            if eon_path.name != "eonclient":
-                msg = f"Resolved EON binary name must be 'eonclient', got '{eon_path.name}'"
-                raise ValueError(msg)
-
-            is_trusted = False
-            for td in trusted_dirs:
-                try:
-                    if eon_path.is_relative_to(Path(td).resolve(strict=True)):
-                        is_trusted = True
-                        break
-                except OSError:
-                    continue
-
-            if not is_trusted:
-                msg = f"Resolved EON binary must reside in a trusted directory: {eon_path}"
-                raise ValueError(msg)
-
-            eon_bin = str(eon_path.absolute())
+                raise RuntimeError(msg) from e
 
             cmd: list[str] = [shlex.quote(eon_bin)]
 
