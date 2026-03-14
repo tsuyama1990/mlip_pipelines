@@ -44,7 +44,7 @@ def __() -> tuple[Any, ...]:
         # Avoid running full MLIP dependencies like eonclient by providing fallbacks
         # in the UAT execution while preserving real core code for tests
         sys_config = SystemConfig(elements=["Fe", "Pt", "Mg", "O"])
-        dyn_config = DynamicsConfig(md_steps=100, project_root=str(Path.cwd()), safe_env_keys=["PATH"])
+        dyn_config = DynamicsConfig(md_steps=100, project_root=str(Path.cwd()))
         oracle_config = OracleConfig()
         trainer_config = TrainerConfig(max_epochs=2)
         val_config = ValidatorConfig()

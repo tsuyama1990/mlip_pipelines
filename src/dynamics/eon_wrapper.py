@@ -39,7 +39,7 @@ class EONWrapper(AbstractDynamics):
 
         # Security: strictly validate the potential string before formatting it into the python template
 
-        resolved_pot_str = ""
+        resolved_pot_str = "None"
         if potential:
             resolved_pot = Path(os.path.normpath(os.path.realpath(potential))).resolve(strict=True)
             if self.config.project_root:
@@ -55,8 +55,6 @@ class EONWrapper(AbstractDynamics):
             if not re.match(r"^[/a-zA-Z0-9_.-]+$", resolved_pot_str) or "\x00" in resolved_pot_str or ".." in resolved_pot_str:
                 msg = "Potential path contains invalid characters"
                 raise ValueError(msg)
-
-        pot_str = repr(resolved_pot_str) if potential else "None"
 
         # Ensure executable doesn't break python logic
 
@@ -74,11 +72,32 @@ class EONWrapper(AbstractDynamics):
             msg = "Invalid threshold type"
             raise TypeError(msg)
 
-        driver_content = self.config.eon_driver_template.format(
-            executable=shlex.quote(executable),
-            threshold=float(self.config.uncertainty_threshold),
-            pot_str=pot_str,
-        )
+        # Build a safe shell script wrapper that calls our static python module.
+        # This completely removes the need to generate executable python code from templates.
+
+        # We find the static driver location dynamically to make sure it's correct
+        static_driver = Path(__file__).parent / "eon_driver.py"
+        static_driver = static_driver.resolve(strict=True)
+
+        driver_content = f"""#!{executable}
+import subprocess
+import sys
+import os
+
+cmd = [
+    {executable!r},
+    {str(static_driver)!r},
+    "--threshold", {str(self.config.uncertainty_threshold)!r},
+    "--potential", {resolved_pot_str!r}
+]
+
+env = os.environ.copy()
+# EON sends atoms via stdin, which we must pipe exactly
+res = subprocess.run(cmd, input=sys.stdin.read(), text=True, capture_output=True, env=env)
+sys.stdout.write(res.stdout)
+sys.stderr.write(res.stderr)
+sys.exit(res.returncode)
+"""
         with Path.open(driver_path, "w") as f:
             f.write(driver_content)
         driver_path.chmod(0o755)
@@ -108,6 +127,7 @@ class EONWrapper(AbstractDynamics):
                 self.config.eon_binary,
                 self.config.trusted_directories,
                 project_root=str(project_root) if project_root else None,
+                expected_hash=self.config.binary_hashes.get(self.config.eon_binary),
             )
         except RuntimeError as e:
             msg = "EON client executable not found."
@@ -138,11 +158,12 @@ class EONWrapper(AbstractDynamics):
 
     def _build_safe_env(self) -> dict[str, str]:
         env: dict[str, str] = {}
-        for k in self.config.safe_env_keys:
+        safe_keys = ("PATH", "LD_LIBRARY_PATH", "OMP_NUM_THREADS")
+        for k in safe_keys:
             if k in os.environ:
                 val = os.environ[k]
-                if k == "PATH":
-                    # Validate PATH to ensure it only contains allowed characters and paths
+                if k in ("PATH", "LD_LIBRARY_PATH"):
+                    # Validate PATH-like variables to ensure they only contain allowed characters and paths
                     paths = val.split(os.pathsep)
                     safe_paths = []
                     for raw_p in paths:

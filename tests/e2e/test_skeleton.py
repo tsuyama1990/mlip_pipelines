@@ -25,7 +25,7 @@ def test_full_pipeline_skeleton(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
 
     config = ProjectConfig(
         system=SystemConfig(elements=["Fe", "Pt"], baseline_potential="zbl"),
-        dynamics=DynamicsConfig(uncertainty_threshold=5.0, md_steps=100, project_root=str(tmp_path), safe_env_keys=["PATH"]),
+        dynamics=DynamicsConfig(uncertainty_threshold=5.0, md_steps=100, project_root=str(tmp_path)),
         oracle=OracleConfig(kspacing=0.1, smearing_width=0.02, pseudo_dir=str(tmp_path)),
         trainer=TrainerConfig(max_epochs=2, active_set_size=10),
         validator=ValidatorConfig(energy_rmse_threshold=0.05),

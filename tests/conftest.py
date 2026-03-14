@@ -26,7 +26,7 @@ def mock_project_config(mock_system_config: SystemConfig, tmp_path: Path) -> Pro
     return ProjectConfig(
         project_root=tmp_path,
         system=mock_system_config,
-        dynamics=DynamicsConfig(project_root=str(tmp_path), safe_env_keys=["PATH"]),
+        dynamics=DynamicsConfig(project_root=str(tmp_path)),
         oracle=OracleConfig(),
         trainer=TrainerConfig(),
         validator=ValidatorConfig(),

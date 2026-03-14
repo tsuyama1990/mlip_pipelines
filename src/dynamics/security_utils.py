@@ -5,10 +5,38 @@ import sys
 from pathlib import Path
 
 
+def _check_trusted_location(resolved_bin: Path, all_trusted: list[str]) -> None:
+    is_trusted = False
+    for td in all_trusted:
+        try:
+            td_resolved = Path(os.path.realpath(td)).resolve(strict=True)
+            if resolved_bin.is_relative_to(td_resolved):
+                is_trusted = True
+                break
+        except OSError:
+            continue
+
+    if not is_trusted:
+        msg = f"Resolved binary must reside in a trusted directory: {resolved_bin}"
+        raise ValueError(msg)
+
+
+def _verify_executable_hash(resolved_bin: Path, expected_hash: str) -> None:
+    import hashlib
+    h = hashlib.sha256()
+    with Path.open(resolved_bin, "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            h.update(chunk)
+    if h.hexdigest() != expected_hash:
+        msg = f"Executable hash mismatch for {resolved_bin}"
+        raise ValueError(msg)
+
+
 def validate_executable_path(
     executable_name: str,
     trusted_directories: list[str],
     project_root: str | None = None,
+    expected_hash: str | None = None,
 ) -> str:
     """
     Validates that an executable path is safe to use.
@@ -40,19 +68,10 @@ def validate_executable_path(
     if project_root:
         all_trusted.append(str(Path(project_root) / "bin"))
 
-    is_trusted = False
-    for td in all_trusted:
-        try:
-            td_resolved = Path(os.path.realpath(td)).resolve(strict=True)
-            if resolved_bin.is_relative_to(td_resolved):
-                is_trusted = True
-                break
-        except OSError:
-            continue
+    _check_trusted_location(resolved_bin, all_trusted)
 
-    if not is_trusted:
-        msg = f"Resolved binary must reside in a trusted directory: {resolved_bin}"
-        raise ValueError(msg)
+    if expected_hash:
+        _verify_executable_hash(resolved_bin, expected_hash)
 
     return str(resolved_bin.absolute())
 

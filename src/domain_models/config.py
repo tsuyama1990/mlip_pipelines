@@ -35,6 +35,10 @@ class DynamicsConfig(BaseModel):
         default=["/usr/bin", "/usr/local/bin", "/opt/homebrew/bin"],
         description="List of trusted directories for executables",
     )
+    binary_hashes: dict[str, str] = Field(
+        default={},
+        description="Optional dict mapping binary names to SHA256 hashes for strict validation"
+    )
     pace_train_args_template: list[str] = Field(
         default=[
             "--dataset",
@@ -52,57 +56,6 @@ class DynamicsConfig(BaseModel):
         ],
         description="Template for building pace_train arguments",
     )
-    pace_activeset_args_template: list[str] = Field(
-        default=["--input", "{input}", "--output", "{output}", "--n", "{n}"],
-        description="Template for building pace_activeset arguments",
-    )
-    lammps_script_template: str = Field(
-        default="""units metal
-boundary p p p
-atom_style atomic
-
-lattice {lattice_type} {lattice_size}
-region box block 0 {box_x} 0 {box_y} 0 {box_z}
-create_box 2 box
-create_atoms 1 box
-
-pair_style hybrid/overlay pace zbl 1.0 2.0
-pair_coeff * * pace {pot_path}
-pair_coeff * * zbl {zbl_mapping}
-
-compute pace_gamma all pace gamma_mode=1
-variable max_gamma equal max(c_pace_gamma)
-fix watchdog all halt 10 v_max_gamma > {threshold} error soft
-
-dump 1 all custom 10 {dump_name} id type x y z c_pace_gamma
-run {md_steps}
-write_restart {work_dir}/restart.lammps
-write_data {work_dir}/data.lammps
-""",
-        description="Custom LAMMPS template for normal exploration using python str.format syntax",
-    )
-    lammps_cold_start_template: str = Field(
-        default="""units metal
-boundary p p p
-atom_style atomic
-
-lattice {lattice_type} {lattice_size}
-region box block 0 {box_x} 0 {box_y} 0 {box_z}
-create_box 2 box
-create_atoms 1 box
-
-# Cold start: using only ZBL
-pair_style zbl 1.0 2.0
-pair_coeff * * {zbl_mapping}
-
-# Force dump to extract structures for initial training
-dump 1 all custom 10 {dump_name} id type x y z
-run {md_steps}
-write_restart {work_dir}/restart.lammps
-write_data {work_dir}/data.lammps
-""",
-        description="Custom LAMMPS template for cold start exploration using python str.format syntax",
-    )
     box_size: list[int] = Field(default=[2, 2, 2], description="Supercell dimensions [x, y, z]")
     lattice_size: float = Field(default=3.5, gt=0.0, description="Lattice parameter constant")
     lattice_type: str = Field(default="fcc", description="Lattice system type string")
@@ -115,10 +68,6 @@ write_data {work_dir}/data.lammps
     project_root: str = Field(
         ...,
         description="Project root directory for resolving binary paths. Required.",
-    )
-    safe_env_keys: list[str] = Field(
-        ...,
-        description="Whitelist of safe environment variables to pass to subprocesses. Required.",
     )
 
     @field_validator("project_root")
@@ -158,17 +107,6 @@ write_data {work_dir}/data.lammps
             validated.append(str(resolved))
         return validated
 
-    @field_validator("safe_env_keys")
-    @classmethod
-    def validate_safe_env_keys(cls, v: list[str]) -> list[str]:
-        import re
-
-        for key in v:
-            if not re.match(r"^[A-Z0-9_]+$", key):
-                msg = f"Invalid characters in safe_env_keys element: {key}"
-                raise ValueError(msg)
-        return v
-
     eon_config_template: str = Field(
         default="""[Main]
 job = {eon_job}
@@ -182,69 +120,6 @@ script_path = ./potentials/pace_driver.py
 min_mode_method = {eon_min_mode_method}
 """,
         description="Configuration INI template for EON runs",
-    )
-    eon_driver_template: str = Field(
-        default="""#!{executable}
-import sys
-import numpy as np
-
-try:
-    from pyacemaker.calculator import pyacemaker
-except ImportError:
-    sys.stderr.write("pyacemaker is not available.\\n")
-    sys.exit(100)
-
-try:
-    import ase
-    from ase import Atoms
-    from ase.io import write
-except ImportError:
-    sys.stderr.write("ase is not available.\\n")
-    sys.exit(100)
-
-THRESHOLD = {threshold}
-
-def read_coordinates_from_stdin():
-    try:
-        lines = sys.stdin.readlines()
-        if not lines:
-            raise ValueError("Empty stdin")
-        return Atoms('Fe', positions=[[0, 0, 0]], cell=[5,5,5], pbc=True)
-    except Exception:
-        return Atoms('Fe', positions=[[0, 0, 0]], cell=[5,5,5], pbc=True)
-
-def write_bad_structure(path, atoms):
-    write(path, atoms, format='extxyz')
-
-def print_forces(forces):
-    for f in forces:
-        print(f"{{f[0]}} {{f[1]}} {{f[2]}}")
-
-def main():
-    atoms = read_coordinates_from_stdin()
-
-    potential_path = {pot_str}
-    if potential_path is None or potential_path == "None":
-        sys.exit(0)
-
-    calc = pyacemaker(potential_path)
-    atoms.calc = calc
-
-    gamma = 0.0
-
-    try:
-        energy = atoms.get_potential_energy()
-        forces = atoms.get_forces()
-        print(energy)
-        print_forces(forces)
-    except Exception:
-        write_bad_structure("bad_structure.cfg", atoms)
-        sys.exit(100)
-
-if __name__ == "__main__":
-    main()
-""",
-        description="Configuration PACE driver python script template for EON runs",
     )
 
 
@@ -321,6 +196,10 @@ class TrainerConfig(BaseModel):
         default=["/usr/bin", "/usr/local/bin", "/opt/homebrew/bin", "/bin"],
         description="List of trusted directories for executables",
     )
+    binary_hashes: dict[str, str] = Field(
+        default={},
+        description="Optional dict mapping binary names to SHA256 hashes for strict validation"
+    )
 
     @field_validator("trusted_directories")
     @classmethod
@@ -343,27 +222,6 @@ class TrainerConfig(BaseModel):
                 raise ValueError(msg)
             validated.append(str(resolved))
         return validated
-    pace_train_args_template: list[str] = Field(
-        default=[
-            "--dataset",
-            "{dataset}",
-            "--max_num_epochs",
-            "{max_epochs}",
-            "--active_set_size",
-            "{active_set_size}",
-            "--baseline_potential",
-            "{baseline_potential}",
-            "--regularization",
-            "{regularization}",
-            "--output_dir",
-            "{output_dir}",
-        ],
-        description="Template for building pace_train arguments",
-    )
-    pace_activeset_args_template: list[str] = Field(
-        default=["--input", "{input}", "--output", "{output}", "--n", "{n}"],
-        description="Template for building pace_activeset arguments",
-    )
 
 
 class ValidatorConfig(BaseModel):

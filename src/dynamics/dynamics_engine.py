@@ -1,7 +1,6 @@
 import logging
 import os
 import re
-import shlex
 import subprocess
 import sys
 import tempfile
@@ -63,19 +62,27 @@ class MDInterface(AbstractDynamics):
             msg = "Invalid characters in zbl_mapping"
             raise ValueError(msg)
 
-        template = self.config.lammps_cold_start_template
-        script = template.format(
-            lattice_type=shlex.quote(lattice_type),
-            lattice_size=float(self.config.lattice_size),
-            box_x=int(box_x),
-            box_y=int(box_y),
-            box_z=int(box_z),
-            zbl_mapping=shlex.quote(zbl_mapping),
-            dump_name=shlex.quote(dump_name),
-            md_steps=int(min(self.config.md_steps, 1000)),
-            work_dir=shlex.quote(work_dir_str),
-        )
-        tmp_in_file.write(script)
+        script_lines = [
+            "units metal",
+            "boundary p p p",
+            "atom_style atomic",
+            "",
+            f"lattice {lattice_type} {float(self.config.lattice_size)}",
+            f"region box block 0 {int(box_x)} 0 {int(box_y)} 0 {int(box_z)}",
+            "create_box 2 box",
+            "create_atoms 1 box",
+            "",
+            "# Cold start: using only ZBL",
+            "pair_style zbl 1.0 2.0",
+            f"pair_coeff * * {zbl_mapping}",
+            "",
+            "# Force dump to extract structures for initial training",
+            f"dump 1 all custom 10 {dump_name} id type x y z",
+            f"run {int(min(self.config.md_steps, 1000))}",
+            f"write_restart {work_dir_str}/restart.lammps",
+            f"write_data {work_dir_str}/data.lammps",
+        ]
+        tmp_in_file.write("\n".join(script_lines) + "\n")
 
     def _validate_potential_path(self, potential: Path) -> str:
         if not re.match(r"^[a-zA-Z0-9_]+\.yace$", potential.name):
@@ -102,8 +109,6 @@ class MDInterface(AbstractDynamics):
         if not re.match(r"^[a-zA-Z0-9_.-]+$", base_dump_name) or base_dump_name != dump_name:
             msg = "Dump file name contains invalid characters"
             raise ValueError(msg)
-
-        template = self.config.lammps_script_template
 
         box_x, box_y, box_z = self.config.box_size
 
@@ -138,20 +143,30 @@ class MDInterface(AbstractDynamics):
             msg = "Invalid characters in zbl_mapping"
             raise ValueError(msg)
 
-        script = template.format(
-            lattice_type=shlex.quote(lattice_type),
-            lattice_size=float(self.config.lattice_size),
-            box_x=int(box_x),
-            box_y=int(box_y),
-            box_z=int(box_z),
-            pot_path=shlex.quote(pot_path_str),
-            zbl_mapping=shlex.quote(zbl_mapping),
-            threshold=float(self.config.uncertainty_threshold),
-            dump_name=shlex.quote(dump_name),
-            md_steps=int(self.config.md_steps),
-            work_dir=shlex.quote(work_dir_str),
-        )
-        tmp_in_file.write(script)
+        script_lines = [
+            "units metal",
+            "boundary p p p",
+            "atom_style atomic",
+            "",
+            f"lattice {lattice_type} {float(self.config.lattice_size)}",
+            f"region box block 0 {int(box_x)} 0 {int(box_y)} 0 {int(box_z)}",
+            "create_box 2 box",
+            "create_atoms 1 box",
+            "",
+            "pair_style hybrid/overlay pace zbl 1.0 2.0",
+            f"pair_coeff * * pace {pot_path_str}",
+            f"pair_coeff * * zbl {zbl_mapping}",
+            "",
+            "compute pace_gamma all pace gamma_mode=1",
+            "variable max_gamma equal max(c_pace_gamma)",
+            f"fix watchdog all halt 10 v_max_gamma > {float(self.config.uncertainty_threshold)} error soft",
+            "",
+            f"dump 1 all custom 10 {dump_name} id type x y z c_pace_gamma",
+            f"run {int(self.config.md_steps)}",
+            f"write_restart {work_dir_str}/restart.lammps",
+            f"write_data {work_dir_str}/data.lammps",
+        ]
+        tmp_in_file.write("\n".join(script_lines) + "\n")
 
     def _execute_lammps(self, work_dir: Path) -> None:
         in_file_name = "in.lammps"
@@ -169,6 +184,7 @@ class MDInterface(AbstractDynamics):
                 self.config.lmp_binary,
                 self.config.trusted_directories,
                 project_root=str(project_root) if project_root else None,
+                expected_hash=self.config.binary_hashes.get(self.config.lmp_binary),
             )
         except RuntimeError as e:
             msg = "LAMMPS executable not found."
@@ -305,6 +321,7 @@ write_data {work_dir.resolve()}/data.lammps
                 self.config.lmp_binary,
                 self.config.trusted_directories,
                 project_root=str(project_root) if project_root else None,
+                expected_hash=self.config.binary_hashes.get(self.config.lmp_binary),
             )
         except RuntimeError as e:
             msg = "LAMMPS executable not found."

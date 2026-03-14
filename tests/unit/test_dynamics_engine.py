@@ -9,14 +9,14 @@ from src.dynamics.dynamics_engine import MDInterface
 
 
 def test_md_interface_initialization() -> None:
-    config = DynamicsConfig(uncertainty_threshold=6.0, md_steps=1000, temperature=300.0, project_root=str(Path.cwd()), safe_env_keys=["PATH"])
+    config = DynamicsConfig(uncertainty_threshold=6.0, md_steps=1000, temperature=300.0, project_root=str(Path.cwd()))
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
     assert engine.config.uncertainty_threshold == 6.0
 
 
 def test_run_exploration_watchdog(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    config = DynamicsConfig(project_root=str(tmp_path), safe_env_keys=["PATH"])
+    config = DynamicsConfig(project_root=str(tmp_path))
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
@@ -48,7 +48,7 @@ ITEM: ATOMS id type x y z c_pace_gamma
 
 
 def test_resume(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    config = DynamicsConfig(project_root=str(tmp_path), safe_env_keys=["PATH"])
+    config = DynamicsConfig(project_root=str(tmp_path))
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
@@ -89,7 +89,7 @@ ITEM: ATOMS id type x y z c_pace_gamma
 
 
 def test_check_halt(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    config = DynamicsConfig(project_root=str(tmp_path), safe_env_keys=["PATH"])
+    config = DynamicsConfig(project_root=str(tmp_path))
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
@@ -113,7 +113,7 @@ ITEM: ATOMS id type x y z c_pace_gamma
 
 
 def test_run_exploration_invalid_potential(tmp_path: Path) -> None:
-    config = DynamicsConfig(uncertainty_threshold=2.0, project_root=str(tmp_path), safe_env_keys=["PATH"])
+    config = DynamicsConfig(uncertainty_threshold=2.0, project_root=str(tmp_path))
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
@@ -122,7 +122,7 @@ def test_run_exploration_invalid_potential(tmp_path: Path) -> None:
 
 
 def test_run_exploration_invalid_potential_extension(tmp_path: Path) -> None:
-    config = DynamicsConfig(project_root=str(Path.cwd()), safe_env_keys=["PATH"])
+    config = DynamicsConfig(project_root=str(Path.cwd()))
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
@@ -133,7 +133,7 @@ def test_run_exploration_invalid_potential_extension(tmp_path: Path) -> None:
 
 
 def test_run_exploration_invalid_potential_chars(tmp_path: Path) -> None:
-    config = DynamicsConfig(project_root=str(Path.cwd()), safe_env_keys=["PATH"])
+    config = DynamicsConfig(project_root=str(Path.cwd()))
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
@@ -144,7 +144,7 @@ def test_run_exploration_invalid_potential_chars(tmp_path: Path) -> None:
 
 
 def test_resume_missing_restart(tmp_path: Path) -> None:
-    config = DynamicsConfig(project_root=str(tmp_path), safe_env_keys=["PATH"])
+    config = DynamicsConfig(project_root=str(tmp_path))
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
@@ -160,7 +160,7 @@ def test_resume_missing_restart(tmp_path: Path) -> None:
 
 
 def test_run_exploration_cold_start(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    config = DynamicsConfig(project_root=str(Path.cwd()), safe_env_keys=["PATH"])
+    config = DynamicsConfig(project_root=str(Path.cwd()))
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
@@ -188,7 +188,7 @@ ITEM: ATOMS id type x y z c_pace_gamma
 
 
 def test_check_halt_no_dump(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    config = DynamicsConfig(project_root=str(tmp_path), safe_env_keys=["PATH"])
+    config = DynamicsConfig(project_root=str(tmp_path))
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
@@ -200,7 +200,7 @@ def test_check_halt_no_dump(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> 
 def test_run_exploration_subprocess_fail_no_file(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    config = DynamicsConfig(project_root=str(tmp_path), safe_env_keys=["PATH"])
+    config = DynamicsConfig(project_root=str(tmp_path))
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
@@ -218,7 +218,7 @@ def test_run_exploration_subprocess_fail_no_file(
 
 
 def test_resume_subprocess_fail_no_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    config = DynamicsConfig(project_root=str(tmp_path), safe_env_keys=["PATH"])
+    config = DynamicsConfig(project_root=str(tmp_path))
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
@@ -245,7 +245,7 @@ def test_resume_subprocess_fail_no_file(monkeypatch: pytest.MonkeyPatch, tmp_pat
 
 
 def test_extract_high_gamma_structures_missing_dump(tmp_path: Path) -> None:
-    config = DynamicsConfig(project_root=str(tmp_path), safe_env_keys=["PATH"])
+    config = DynamicsConfig(project_root=str(tmp_path))
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
@@ -255,7 +255,7 @@ def test_extract_high_gamma_structures_missing_dump(tmp_path: Path) -> None:
 
 
 def test_extract_high_gamma_structures_no_gamma_array(tmp_path: Path) -> None:
-    config = DynamicsConfig(project_root=str(tmp_path), safe_env_keys=["PATH"])
+    config = DynamicsConfig(project_root=str(tmp_path))
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
@@ -277,7 +277,7 @@ ITEM: ATOMS id type x y z
 
 
 def test_extract_high_gamma_structures(tmp_path: Path) -> None:
-    config = DynamicsConfig(project_root=str(tmp_path), safe_env_keys=["PATH"])
+    config = DynamicsConfig(project_root=str(tmp_path))
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
@@ -303,7 +303,7 @@ ITEM: ATOMS id type x y z
 
 
 def test_execute_lammps_invalid_binary_name(tmp_path: Path) -> None:
-    config = DynamicsConfig(project_root=str(Path.cwd()), safe_env_keys=["PATH"], trusted_directories=[])
+    config = DynamicsConfig(project_root=str(Path.cwd()), trusted_directories=[])
     config.lmp_binary = "lmp;"
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
@@ -318,7 +318,7 @@ def test_execute_lammps_invalid_binary_name(tmp_path: Path) -> None:
 def test_resume_invalid_binary_name(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    config = DynamicsConfig(project_root=str(Path.cwd()), safe_env_keys=["PATH"], trusted_directories=[])
+    config = DynamicsConfig(project_root=str(Path.cwd()), trusted_directories=[])
     config.lmp_binary = "lmp;"
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
@@ -341,7 +341,7 @@ def test_resume_invalid_binary_name(
 
 
 def test_resume_missing_executable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    config = DynamicsConfig(lmp_binary="lmp", trusted_directories=[], project_root=str(Path.cwd()), safe_env_keys=["PATH"])
+    config = DynamicsConfig(lmp_binary="lmp", trusted_directories=[], project_root=str(Path.cwd()))
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
@@ -367,7 +367,7 @@ def test_resume_missing_executable(tmp_path: Path, monkeypatch: pytest.MonkeyPat
 def test_resume_subprocess_calledprocesserror(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    config = DynamicsConfig(project_root=str(tmp_path), safe_env_keys=["PATH"])
+    config = DynamicsConfig(project_root=str(tmp_path))
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
@@ -412,7 +412,7 @@ ITEM: ATOMS id type x y z c_pace_gamma
 def test_extract_high_gamma_structures_no_structures(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    config = DynamicsConfig(project_root=str(tmp_path), safe_env_keys=["PATH"])
+    config = DynamicsConfig(project_root=str(tmp_path))
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
