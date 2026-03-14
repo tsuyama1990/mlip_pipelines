@@ -78,7 +78,7 @@ class EONWrapper(AbstractDynamics):
 
     def run_kmc(self, potential: Path | None, work_dir: Path) -> dict[str, Any]:
         """Runs EON client in the specified working directory."""
-        resolved_work_dir = work_dir.resolve(strict=False)
+        resolved_work_dir = work_dir.resolve(strict=True)
 
         # Verify that the resolved working directory is within the project root to prevent traversal
         if self.config.project_root is not None:
@@ -109,7 +109,7 @@ class EONWrapper(AbstractDynamics):
 
             # We use check=False to capture return code 100 gracefully
             # Create a minimal safe environment whitelist to prevent sensitive credential leaks
-            safe_env_keys = ["PATH"]
+            safe_env_keys = self.config.safe_env_keys
             env: dict[str, str] = {k: os.environ[k] for k in safe_env_keys if k in os.environ}
 
             # Safely invoke EON client using direct list execution through subprocess (shell=False)

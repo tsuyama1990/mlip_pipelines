@@ -62,23 +62,20 @@ class MDInterface(AbstractDynamics):
     def _write_potential_input(
         self, tmp_in_file: Any, potential: Path, dump_name: str, work_dir: Path
     ) -> None:
-        resolved_pot = potential.resolve(strict=True)
-        pot_path_str = str(resolved_pot)
-
         if not re.match(r"^[a-zA-Z0-9_]+\.yace$", potential.name):
             msg = "Potential path must be a valid .yace file"
             raise ValueError(msg)
 
         resolved_pot = potential.resolve(strict=True)
-        pot_path_str = str(resolved_pot)
 
-        # Verify the potential path is within the project root to prevent path traversal
         if self.config.project_root is not None:
             project_root_str = str(self.config.project_root)
             root = Path(os.path.realpath(project_root_str)).resolve(strict=True)
             if not resolved_pot.is_relative_to(root):
                 msg = f"Potential path must be within the project root: {resolved_pot}"
                 raise ValueError(msg)
+
+        pot_path_str = str(resolved_pot)
 
         if not re.match(r"^[a-zA-Z0-9_]+(\.lammps)?$", dump_name):
             msg = "Dump file name contains invalid characters"
@@ -116,7 +113,7 @@ class MDInterface(AbstractDynamics):
     def _execute_lammps(self, work_dir: Path) -> None:
         in_file_name = "in.lammps"
         validate_filename(in_file_name)
-        resolved_in_file = Path(os.path.realpath(work_dir / in_file_name)).resolve(strict=False)
+        resolved_in_file = Path(os.path.realpath(work_dir / in_file_name)).resolve(strict=True)
         resolved_work_dir = work_dir.resolve(strict=True)
 
         if not resolved_in_file.is_relative_to(resolved_work_dir):

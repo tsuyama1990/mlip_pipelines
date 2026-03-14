@@ -113,6 +113,7 @@ write_data {work_dir}/data.lammps
         default="dimer", description="EON Process Search configuration parameter"
     )
     project_root: str | None = Field(default=None, description="Project root directory for resolving binary paths")
+    safe_env_keys: list[str] = Field(default=["PATH"], description="Whitelist of safe environment variables to pass to subprocesses")
     eon_config_template: str = Field(
         default="""[Main]
 job = {eon_job}
