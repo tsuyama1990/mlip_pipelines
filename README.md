@@ -8,13 +8,17 @@
 ## Elevator Pitch
 **MLIP-Pipelines** democratizes atomic simulations by providing a "Zero-Config" active learning pipeline that autonomously generates state-of-the-art Machine Learning Interatomic Potentials (MLIPs). Powered by the Pacemaker (ACE) engine, it intelligently orchestrates structure generation, self-healing Density Functional Theory (DFT) calculations, and Physics-Informed model training, allowing users to build robust potentials with a fraction of the traditional computational cost.
 
-## Features Verified in Cycle 01
+## Features Verified
 
 *   **Robust Configuration Layer**: Implemented strict Pydantic schemas (`ProjectConfig`, `SystemConfig`, `DynamicsConfig`, etc.) that enforce security policies, validate executable paths, and block environment variable injection and path traversal vulnerabilities right at startup.
 *   **Orchestration State Machine**: A central `Orchestrator` robustly manages the transition between exploration, selection, training, and deployment phases.
 *   **Secure & Atomic File Operations**: Includes built-in file verification limits to prevent Out-Of-Memory (OOM) errors during deployment and leverages atomic swapping (`shutil.move()`) to seamlessly hot-reload active learning cycle datasets and results.
 *   **State Checkpointing**: The `Orchestrator` autonomously scans storage directories upon initialization to resume cleanly from the latest valid epoch without complex manual interventions.
-*   **Abstract Sub-systems**: The codebase adopts Dependency Injection via `AbstractDynamics`, `AbstractOracle`, `AbstractTrainer`, and `AbstractGenerator` to prepare for high scalability in real execution environments.
+*   **Intelligent Feature Extraction**: Extracts atomic properties (like melting point and bulk modulus) using universal potential fallbacks for zero-data cold-start scenarios.
+*   **Adaptive Policy Engine**: Autonomously chooses between Random, High-MC, Defect-Driven, and Strain-Heavy exploration strategies based on system physics.
+*   **Intelligent Structure Generation**: Capable of synthesizing specialized interfaces (e.g., FePt/MgO) and intelligently generating defect-laden candidates.
+*   **Robust DFT Oracle Integration**: Quantum Espresso automation via ASE featuring periodic embedding to eliminate cluster surface artifacts.
+*   **Self-Healing Oracle Calculations**: Automatic detection of SCF convergence failure with dynamic adjustment of parameter defaults (mixing_beta, diagonalization) to prevent pipeline halts.
 
 ## Architecture Overview
 

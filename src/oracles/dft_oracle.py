@@ -178,6 +178,7 @@ class DFTManager(AbstractOracle):
 
     def compute_batch(self, structures: list[Atoms], calc_dir: Path) -> list[Atoms]:
         """Runs DFT on a batch of structures with self-healing."""
+        from src.core.exceptions import OracleConvergenceError
         calc_dir.mkdir(parents=True, exist_ok=True)
         results = []
 
@@ -189,26 +190,32 @@ class DFTManager(AbstractOracle):
             calc = self._get_calculator(embedded_atoms, work_dir)
             embedded_atoms.calc = calc
 
-            try:
-                embedded_atoms.get_potential_energy()  # type: ignore[no-untyped-call]
-                embedded_atoms.get_forces()  # type: ignore[no-untyped-call]
-                embedded_atoms.get_stress()  # type: ignore[no-untyped-call]
-                results.append(embedded_atoms)
-            except Exception as e:
-                logging.warning(f"SCF failed for struct {i}: {e}. Attempting self-healing...")
-                calc.parameters["input_data"]["electrons"]["mixing_beta"] = 0.3
-                try:
-                    embedded_atoms.get_potential_energy()  # type: ignore[no-untyped-call]
-                    results.append(embedded_atoms)
-                    continue
-                except Exception as inner_e:
-                    logging.warning(f"Self-healing retry 1 failed: {inner_e}")
+            success = False
+            last_exception = None
 
-                calc.parameters["input_data"]["electrons"]["diagonalization"] = "cg"
+            for attempt in range(self.config.max_retries + 1):
                 try:
                     embedded_atoms.get_potential_energy()  # type: ignore[no-untyped-call]
+                    embedded_atoms.get_forces()  # type: ignore[no-untyped-call]
+                    embedded_atoms.get_stress()  # type: ignore[no-untyped-call]
                     results.append(embedded_atoms)
-                except Exception as final_e:
-                    logging.warning(f"Failed completely for struct {i}: {final_e}")
+                    success = True
+                    break
+                except Exception as e:
+                    last_exception = e
+                    if attempt < self.config.max_retries:
+                        logging.warning(f"SCF failed for struct {i} attempt {attempt + 1}: {e}. Attempting self-healing...")
+                        if attempt == 0:
+                            calc.parameters["input_data"]["electrons"]["mixing_beta"] = 0.3
+                        elif attempt == 1:
+                            calc.parameters["input_data"]["electrons"]["diagonalization"] = "cg"
+                        else:
+                            calc.parameters["input_data"]["electrons"]["mixing_beta"] = 0.1
+                    else:
+                        logging.warning(f"Failed completely for struct {i} after {self.config.max_retries} retries: {e}")
+
+            if not success:
+                msg = f"Failed to converge structure {i} after {self.config.max_retries} retries."
+                raise OracleConvergenceError(msg) from last_exception
 
         return results

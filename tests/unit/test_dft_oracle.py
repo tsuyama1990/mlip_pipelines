@@ -195,7 +195,15 @@ def test_compute_batch_self_healing_success(dft_oracle, tmp_path, monkeypatch):
                 raise Exception(msg)
             return 1.0
 
-        with patch("ase.Atoms.get_potential_energy", mock_get_potential_energy):
+        def mock_get_forces(self):
+            return 1.0
+
+        def mock_get_stress(self):
+            return 1.0
+
+        with patch("ase.Atoms.get_potential_energy", mock_get_potential_energy), patch(
+            "ase.Atoms.get_forces", mock_get_forces
+        ), patch("ase.Atoms.get_stress", mock_get_stress):
             results = dft_oracle.compute_batch([atoms], tmp_path)
             assert len(results) == 1
             assert calc.parameters["input_data"]["electrons"]["mixing_beta"] == 0.3
@@ -226,13 +234,23 @@ def test_compute_batch_self_healing_retry_2_success(dft_oracle, tmp_path, monkey
                 raise Exception(msg)
             return 1.0
 
-        with patch("ase.Atoms.get_potential_energy", mock_get_potential_energy):
+        def mock_get_forces(self):
+            return 1.0
+
+        def mock_get_stress(self):
+            return 1.0
+
+        with patch("ase.Atoms.get_potential_energy", mock_get_potential_energy), patch(
+            "ase.Atoms.get_forces", mock_get_forces
+        ), patch("ase.Atoms.get_stress", mock_get_stress):
             results = dft_oracle.compute_batch([atoms], tmp_path)
             assert len(results) == 1
             assert calc.parameters["input_data"]["electrons"]["diagonalization"] == "cg"
 
 
 def test_compute_batch_total_failure(dft_oracle, tmp_path, monkeypatch):
+    from src.core.exceptions import OracleConvergenceError
+
     pseudo_dir = tmp_path / "pseudos"
     pseudo_dir.mkdir()
     upf_file = pseudo_dir / "Fe.upf"
@@ -251,5 +269,5 @@ def test_compute_batch_total_failure(dft_oracle, tmp_path, monkeypatch):
         with patch(
             "ase.Atoms.get_potential_energy", side_effect=Exception("SCF Failed completely")
         ):
-            results = dft_oracle.compute_batch([atoms], tmp_path)
-            assert len(results) == 0  # Struct failed completely
+            with pytest.raises(OracleConvergenceError, match="Failed to converge structure 0 after 3 retries."):
+                dft_oracle.compute_batch([atoms], tmp_path)

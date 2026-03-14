@@ -4,24 +4,25 @@ rootdir: /app
 configfile: pyproject.toml
 testpaths: tests
 plugins: cov-7.0.0, anyio-4.12.1
-collected 149 items
+collected 152 items
 
 tests/e2e/test_skeleton.py s.                                            [  1%]
-tests/uat/test_tutorial.py s....                                         [  4%]
-tests/unit/test_ace_trainer.py ................                          [ 15%]
-tests/unit/test_adaptive_policy.py .......                               [ 20%]
-tests/unit/test_config.py ..............                                 [ 29%]
-tests/unit/test_defect_builder.py ...                                    [ 31%]
-tests/unit/test_dft_oracle.py ...............                            [ 41%]
-tests/unit/test_domain_models.py .                                       [ 42%]
-tests/unit/test_dynamics_engine.py ....................                  [ 55%]
-tests/unit/test_eon_driver.py .............                              [ 64%]
-tests/unit/test_eon_wrapper.py ...........                               [ 71%]
+tests/uat/test_cycle03_oracle.py ...                                     [  3%]
+tests/uat/test_tutorial.py s....                                         [  6%]
+tests/unit/test_ace_trainer.py ................                          [ 17%]
+tests/unit/test_adaptive_policy.py .......                               [ 21%]
+tests/unit/test_config.py ..............                                 [ 30%]
+tests/unit/test_defect_builder.py ...                                    [ 32%]
+tests/unit/test_dft_oracle.py ...............                            [ 42%]
+tests/unit/test_domain_models.py .                                       [ 43%]
+tests/unit/test_dynamics_engine.py ....................                  [ 56%]
+tests/unit/test_eon_driver.py .............                              [ 65%]
+tests/unit/test_eon_wrapper.py ...........                               [ 72%]
 tests/unit/test_orchestrator.py .............                            [ 80%]
-tests/unit/test_reporter.py ..                                           [ 81%]
+tests/unit/test_reporter.py ..                                           [ 82%]
 tests/unit/test_security_utils.py ....                                   [ 84%]
-tests/unit/test_stability.py ........                                    [ 89%]
-tests/unit/test_structure_generator.py ......                            [ 93%]
+tests/unit/test_stability.py ........                                    [ 90%]
+tests/unit/test_structure_generator.py ......                            [ 94%]
 tests/unit/test_validator.py ........s                                   [100%]
 
 ================================ tests coverage ================================
@@ -46,7 +47,7 @@ src/generators/adaptive_policy.py          67      5    93%   16, 44-45, 123-124
 src/generators/defect_builder.py           72     14    81%   14, 22-23, 26, 43-44, 47, 66-67, 76-77, 81, 105-106
 src/generators/structure_generator.py      54      5    91%   83, 89-92
 src/oracles/__init__.py                     0      0   100%
-src/oracles/dft_oracle.py                 146     20    86%   20-21, 29-30, 34-35, 38-39, 45-46, 52-53, 60-61, 65-66, 97-98, 114-115
+src/oracles/dft_oracle.py                 150     18    88%   20-21, 29-30, 34-35, 38-39, 45-46, 52-53, 60-61, 97-98, 114-115
 src/trainers/__init__.py                    0      0   100%
 src/trainers/ace_trainer.py               206     82    60%   27-30, 33, 42-45, 48-60, 66, 72-89, 94-100, 106-107, 111-114, 117-127, 132, 163-164, 183, 198-199, 217-223, 227-228, 244-245, 249-250, 271-272
 src/validators/__init__.py                  0      0   100%
@@ -54,7 +55,7 @@ src/validators/reporter.py                  7      0   100%
 src/validators/stability_tests.py         119      5    96%   51, 59-60, 63-66
 src/validators/validator.py                93     11    88%   20-22, 33-35, 39-41, 85, 99-100
 ---------------------------------------------------------------------
-TOTAL                                    2046    492    76%
-======================== 146 passed, 3 skipped in 4.05s ========================
+TOTAL                                    2050    490    76%
+======================== 149 passed, 3 skipped in 4.15s ========================
 /app/.venv/lib/python3.12/site-packages/coverage/inorout.py:561: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.4/messages.html#warning-module-not-imported
   self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")
