@@ -11,24 +11,19 @@ def __() -> tuple[Any, ...]:
     import sys
     from pathlib import Path
 
+    import sys
     import matplotlib.pyplot as plt
 
-    # Add project root to sys.path so we can import src
+    import os
+    import numpy as np
+
+    # Ensure src is importable during standard execution
     sys.path.insert(0, str(Path.cwd()))
 
-    import numpy as np
     from ase import Atoms
     from ase.build import bulk
 
-    # Conditionally patch sys.modules to mock heavy dependencies if USE_MOCK is True
-    USE_MOCK = True
-    if USE_MOCK:
-        import sys
-        from unittest.mock import MagicMock
-        if "pyacemaker" not in sys.modules:
-            sys.modules["pyacemaker"] = MagicMock()
-            sys.modules["pyacemaker.calculator"] = MagicMock()
-            sys.modules["phonopy"] = MagicMock()
+    USE_MOCK = os.environ.get("USE_MOCK", "False") == "True"
 
     from src.core import AbstractDynamics, AbstractOracle, AbstractTrainer
     from src.core.orchestrator import Orchestrator
@@ -52,97 +47,9 @@ def __() -> tuple[Any, ...]:
 
     from src.domain_models.dtos import ValidationReport
 
-    class MockMDInterface(AbstractDynamics):
-        def __init__(self, config: DynamicsConfig) -> None:
-            self.config = config
-
-        def run_exploration(self, potential: Path | None, work_dir: Path) -> dict[str, Any]:
-            work_dir.mkdir(parents=True, exist_ok=True)
-            dump_file = work_dir / "dump.lammps"
-            dump_file.write_text("dummy dump")
-            # Simulate a halt triggered by high gamma
-            return {"halted": True, "dump_file": dump_file}
-
-        def resume(self, potential: Path, restart_dir: Path, work_dir: Path) -> dict[str, Any]:
-            work_dir.mkdir(parents=True, exist_ok=True)
-            dump_file = work_dir / "dump.lammps"
-            dump_file.write_text("dummy dump")
-            return {"halted": False, "dump_file": dump_file}
-
-        def extract_high_gamma_structures(self, dump_file: Path, threshold: float) -> list[Atoms]:
-            # Return a dummy atom structure
-            return [bulk("Fe", "bcc", a=2.86)]
-
-    class MockEONWrapper(AbstractDynamics):
-        def __init__(self, config: DynamicsConfig) -> None:
-            self.config = config
-
-        def run_exploration(self, potential: Path | None, work_dir: Path) -> dict[str, Any]:
-            work_dir.mkdir(parents=True, exist_ok=True)
-            # Create kmc specific paths to avoid missing dir error
-            dump_file = work_dir / "dump.extxyz"
-            from ase.io import write
-            write(str(dump_file), bulk("Fe", "bcc", a=2.86), format="extxyz")
-            return {"halted": True, "dump_file": dump_file, "is_kmc": True}
-
-        def extract_high_gamma_structures(self, dump_file: Path, threshold: float) -> list[Atoms]:
-            return [bulk("Fe", "bcc", a=2.86)]
-
-
-    class MockDFTOracle(AbstractOracle):
-        def __init__(self, config: OracleConfig) -> None:
-            self.config = config
-
-        def compute_batch(self, structures: list[Atoms], calc_dir: Path) -> list[Atoms]:
-            # Assign dummy energy and forces so it passes ASE checks
-            for atoms in structures:
-                from ase.calculators.singlepoint import SinglePointCalculator
-                e = -10.0 * len(atoms)
-                f = np.zeros((len(atoms), 3))
-                calc = SinglePointCalculator(atoms, energy=e, forces=f)
-                atoms.calc = calc
-            return structures
-
-
-    class MockACETrainer(AbstractTrainer):
-        def __init__(self, config: TrainerConfig) -> None:
-            self.config = config
-
-        def update_dataset(self, new_atoms_list: list[Atoms], dataset_path: Path) -> Path:
-            from ase.io import write
-            dataset_path.parent.mkdir(parents=True, exist_ok=True)
-            dataset_path.touch(exist_ok=True)
-            # Write to extxyz to make it a valid dataset and simulate new data
-            write(str(dataset_path), new_atoms_list, format="extxyz", append=True)
-            return dataset_path
-
-        def train(self, dataset: Path, initial_potential: Path | None, output_dir: Path) -> Path:
-            output_dir.mkdir(parents=True, exist_ok=True)
-            out_pot = output_dir / "output_potential.yace"
-            out_pot.write_text("elements version b_functions")  # Satisfy orchestrator validation headers
-            return out_pot
-
-        def select_local_active_set(self, candidates: list[Atoms], anchor: Atoms, n: int = 5) -> list[Atoms]:
-            return candidates[:n]
-
-
-    class MockValidator(Validator):
-        def __init__(self, config: ValidatorConfig) -> None:
-            self.config = config
-
-        def validate(self, potential_path: Path) -> ValidationReport:
-            # Simulate passing the validation suite
-            return ValidationReport(
-                passed=True,
-                reason=None,
-                energy_rmse=0.001,
-                force_rmse=0.01,
-                stress_rmse=0.05,
-                phonon_stable=True,
-                mechanically_stable=True,
-            )
-
-    def setup_orchestrator(use_mock: bool = True) -> Orchestrator:
+    def setup_orchestrator() -> Orchestrator:
+        # Avoid running full MLIP dependencies like eonclient by providing fallbacks
+        # in the UAT execution while preserving real core code for tests
         sys_config = SystemConfig(elements=["Fe", "Pt", "Mg", "O"])
         dyn_config = DynamicsConfig(md_steps=100)
         oracle_config = OracleConfig()
@@ -160,24 +67,64 @@ def __() -> tuple[Any, ...]:
 
         orchestrator = Orchestrator(project_config)
 
-        if use_mock:
-            orchestrator.md_engine = MockMDInterface(dyn_config)
-            orchestrator.eon_engine = MockEONWrapper(dyn_config)
-            orchestrator.oracle = MockDFTOracle(oracle_config)
-            orchestrator.trainer = MockACETrainer(trainer_config)
-            orchestrator.validator = MockValidator(val_config)
-            # Patch method to return mock extraction
-            orchestrator.md_engine.extract_high_gamma_structures = MockMDInterface(dyn_config).extract_high_gamma_structures # type: ignore[method-assign]
-            orchestrator.eon_engine.extract_high_gamma_structures = MockEONWrapper(dyn_config).extract_high_gamma_structures # type: ignore[method-assign]
-            # Ensure exploration directory check passes
-            def mock_validate_tmp(tmp: Path) -> None:
-                pass
-            orchestrator._validate_tmp_directories = mock_validate_tmp # type: ignore[method-assign, assignment]
+        if USE_MOCK:
+            # We mock the external subprocess calls on the REAL objects instead of fake ones
+            import unittest.mock
+
+            from ase.io import write
+
+            def mock_eon_run(potential: Any, work_dir: Path) -> dict[str, Any]:
+                work_dir.mkdir(parents=True, exist_ok=True)
+                dump_file = work_dir / "dump.extxyz"
+                write(str(dump_file), bulk("Fe", "bcc", a=2.86), format="extxyz")
+                return {"halted": True, "dump_file": dump_file, "is_kmc": True}
+
+            def mock_md_run(potential: Any, work_dir: Path) -> dict[str, Any]:
+                work_dir.mkdir(parents=True, exist_ok=True)
+                dump_file = work_dir / "dump.lammps"
+                dump_file.write_text("dummy")
+                return {"halted": True, "dump_file": dump_file}
+
+            # EON run
+            orchestrator.eon_engine.run_kmc = unittest.mock.MagicMock(side_effect=mock_eon_run)  # type: ignore[attr-defined]
+
+            # MD run
+            orchestrator.md_engine.run_exploration = unittest.mock.MagicMock(side_effect=mock_md_run)  # type: ignore[method-assign]
+
+            # Oracle
+            orchestrator.oracle.compute_batch = unittest.mock.MagicMock(side_effect=lambda s, d: s)  # type: ignore[method-assign]
+
+            def mock_train(dataset: Path, initial_potential: Path | None, output_dir: Path) -> Path:
+                output_dir.mkdir(parents=True, exist_ok=True)
+                out = output_dir / "output_potential.yace"
+                out.write_text("elements version b_functions")
+                return out
+
+            def mock_update(new_atoms: Any, dataset_path: Path) -> Path:
+                dataset_path.parent.mkdir(parents=True, exist_ok=True)
+                dataset_path.touch()
+                return dataset_path
+
+            # Trainer
+            orchestrator.trainer.train = unittest.mock.MagicMock(side_effect=mock_train)  # type: ignore[method-assign]
+            orchestrator.trainer.update_dataset = unittest.mock.MagicMock(side_effect=mock_update)  # type: ignore[method-assign]
+            orchestrator.trainer.select_local_active_set = unittest.mock.MagicMock(side_effect=lambda c, a, n: c[:n])  # type: ignore[method-assign]
+
+            # Validator
+            orchestrator.validator.validate = unittest.mock.MagicMock(return_value=ValidationReport(  # type: ignore[method-assign]
+                passed=True,
+                reason=None,
+                energy_rmse=0.001,
+                force_rmse=0.01,
+                stress_rmse=0.05,
+                phonon_stable=True,
+                mechanically_stable=True
+            ))
 
         return orchestrator
 
     return (
-        plt, np, Path, sys, logging, Atoms, bulk, ProjectConfig, SystemConfig, DynamicsConfig, OracleConfig, TrainerConfig, ValidatorConfig, StructureGeneratorConfig, PolicyConfig, Orchestrator, AbstractDynamics, AbstractOracle, AbstractTrainer, Validator, Reporter, StructureGenerator, USE_MOCK, ValidationReport, MockMDInterface, MockEONWrapper, MockDFTOracle, MockACETrainer, MockValidator, setup_orchestrator
+        plt, np, Path, sys, logging, Atoms, bulk, ProjectConfig, SystemConfig, DynamicsConfig, OracleConfig, TrainerConfig, ValidatorConfig, StructureGeneratorConfig, PolicyConfig, Orchestrator, AbstractDynamics, AbstractOracle, AbstractTrainer, Validator, Reporter, StructureGenerator, USE_MOCK, ValidationReport, setup_orchestrator, os
     )
 
 
