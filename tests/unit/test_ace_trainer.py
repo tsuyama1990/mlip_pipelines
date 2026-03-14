@@ -59,122 +59,29 @@ def test_select_local_active_set(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert isinstance(selected[0], Atoms)
 
-    @patch("subprocess.run")
-    def test_select_local_active_set_failure(self, mock_run, ace_trainer, tmp_path, anchor_atoms):
-        import subprocess
-        # Test pace_activeset subprocess failure
-        mock_run.side_effect = subprocess.CalledProcessError(1, "cmd", stderr="Failed")
-        candidates = [anchor_atoms.copy()]
-
-        with pytest.raises(RuntimeError, match="pace_activeset failed"):
-            ace_trainer.select_local_active_set(candidates, anchor_atoms, n=1)
-
-    @patch("subprocess.run")
-    def test_select_local_active_set_not_found(self, mock_run, ace_trainer, anchor_atoms):
-        # Test executable missing
-        mock_run.side_effect = FileNotFoundError("Executable not found")
-        candidates = [anchor_atoms.copy()]
-
-        with pytest.raises(RuntimeError, match="pace_activeset executable not found in PATH"):
-            ace_trainer.select_local_active_set(candidates, anchor_atoms, n=1)
-
-    @patch("subprocess.run")
-    def test_select_local_active_set_no_output(self, mock_run, ace_trainer, tmp_path, anchor_atoms):
-        # Test it returns but doesn't create the file
-        mock_run.return_value = MagicMock(returncode=0)
-        candidates = [anchor_atoms.copy()]
-
-        with pytest.raises(RuntimeError, match="pace_activeset did not generate the output file"):
-            ace_trainer.select_local_active_set(candidates, anchor_atoms, n=1)
-
-    def test_select_local_active_set_invalid_n(self, ace_trainer, anchor_atoms):
-        candidates = [anchor_atoms.copy()]
-        with pytest.raises(ValueError, match="n must be a positive integer"):
-            ace_trainer.select_local_active_set(candidates, anchor_atoms, n=0)
-
-    def test_train_dataset_not_found(self, ace_trainer, tmp_path):
-        bad_dataset = tmp_path / "not_found.extxyz"
-        out_dir = tmp_path / "out"
-        with pytest.raises(FileNotFoundError, match="No such file or directory"):
-            ace_trainer.train(bad_dataset, None, out_dir)
-
-    def test_train_dataset_invalid_suffix(self, ace_trainer, tmp_path):
-        bad_dataset = tmp_path / "dataset.txt"
-        bad_dataset.write_text("10\ncontent")
-        out_dir = tmp_path / "out"
-        with pytest.raises(ValueError, match="Dataset must be an .extxyz file"):
-            ace_trainer.train(bad_dataset, None, out_dir)
-
-    def test_train_dataset_invalid_format(self, ace_trainer, tmp_path):
-        bad_dataset = tmp_path / "dataset.extxyz"
-        bad_dataset.write_text("not_a_number\ncontent")
-        out_dir = tmp_path / "out"
-        with pytest.raises(ValueError, match="Dataset does not appear to be a valid XYZ format"):
-            ace_trainer.train(bad_dataset, None, out_dir)
-
-    @patch("subprocess.run")
-    def test_train_subprocess_failure(self, mock_run, ace_trainer, tmp_path):
-        import subprocess
-        mock_run.side_effect = subprocess.CalledProcessError(1, "cmd", stderr="Train Failed")
-
-        dataset = tmp_path / "dataset.extxyz"
-        dataset.write_text("10\ncontent")
-        out_dir = tmp_path / "out"
-
-        with pytest.raises(RuntimeError, match="pace_train execution failed"):
-            ace_trainer.train(dataset, None, out_dir)
-
-    @patch("subprocess.run")
-    def test_train_executable_not_found(self, mock_run, ace_trainer, tmp_path):
-        mock_run.side_effect = FileNotFoundError("Not found")
-
-        dataset = tmp_path / "dataset.extxyz"
-        dataset.write_text("10\ncontent")
-        out_dir = tmp_path / "out"
-
-        with pytest.raises(RuntimeError, match="pace_train executable not found in PATH"):
-            ace_trainer.train(dataset, None, out_dir)
-
-    @patch("subprocess.run")
-    def test_train_success(self, mock_run, ace_trainer, tmp_path):
-        mock_run.return_value = MagicMock(returncode=0)
-
-        dataset = tmp_path / "dataset.extxyz"
-        dataset.write_text("10\ncontent")
-        out_dir = tmp_path / "out"
-        out_dir.mkdir()
-
-        init_pot = tmp_path / "init.yace"
-        init_pot.write_text("pot")
-
-        # Test full success path
-        res_pot = ace_trainer.train(dataset, init_pot, out_dir)
-        assert res_pot == out_dir / "output_potential.yace"
-
-        # Validate that cmd passed to subprocess contains the initial potential argument
-        cmd_args = mock_run.call_args[0][0]
-        assert "--initial_potential" in cmd_args
-        assert str(init_pot.resolve()) in cmd_args
-
 class TestACETrainer:
     @pytest.fixture
     def mock_config(self):
         from src.domain_models.config import TrainerConfig
+
         return TrainerConfig(trusted_directories=[])
 
     @pytest.fixture
     def ace_trainer(self, mock_config):
         from src.trainers.ace_trainer import PacemakerWrapper
+
         return PacemakerWrapper(mock_config)
 
     @pytest.fixture
     def anchor_atoms(self):
         from ase import Atoms
+
         return Atoms("Fe", positions=[(0, 0, 0)])
 
     @patch("subprocess.run")
     def test_select_local_active_set_failure_2(self, mock_run, ace_trainer, tmp_path, anchor_atoms):
         import subprocess
+
         # Test pace_activeset subprocess failure
         mock_run.side_effect = subprocess.CalledProcessError(1, "cmd", stderr="Failed")
         candidates = [anchor_atoms.copy()]
@@ -192,7 +99,9 @@ class TestACETrainer:
             ace_trainer.select_local_active_set(candidates, anchor_atoms, n=1)
 
     @patch("subprocess.run")
-    def test_select_local_active_set_no_output_2(self, mock_run, ace_trainer, tmp_path, anchor_atoms):
+    def test_select_local_active_set_no_output_2(
+        self, mock_run, ace_trainer, tmp_path, anchor_atoms
+    ):
         # Test it returns but doesn't create the file
         mock_run.return_value = MagicMock(returncode=0)
         candidates = [anchor_atoms.copy()]
@@ -228,6 +137,7 @@ class TestACETrainer:
     @patch("subprocess.run")
     def test_train_subprocess_failure_2(self, mock_run, ace_trainer, tmp_path):
         import subprocess
+
         mock_run.side_effect = subprocess.CalledProcessError(1, "cmd", stderr="Train Failed")
 
         dataset = tmp_path / "dataset.extxyz"
@@ -269,18 +179,20 @@ class TestACETrainer:
         assert "--initial_potential" in cmd_args
         assert str(init_pot.resolve()) in cmd_args
 
-
     @patch("subprocess.run")
-    def test_select_local_active_set_invalid_paths(self, mock_run, ace_trainer, tmp_path, anchor_atoms):
+    def test_select_local_active_set_invalid_paths(
+        self, mock_run, ace_trainer, tmp_path, anchor_atoms
+    ):
         candidates = [anchor_atoms.copy()]
         # The trainer creates temp files internally, so we don't directly control the input/output paths it checks
         # But we can patch re.match to force invalid paths
         import re
+
         original_match = re.match
 
         def mock_match(pattern, string, flags=0):
             if pattern == r"^[/a-zA-Z0-9_.-]+$":
-                return None # Force failure
+                return None  # Force failure
             return original_match(pattern, string, flags)
 
         with patch("re.match", side_effect=mock_match):

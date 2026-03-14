@@ -1,6 +1,8 @@
 import logging
 
 from ase import Atoms
+from ase.build import bulk, stack
+from ase.data import chemical_symbols
 
 from src.core import AbstractGenerator
 from src.domain_models.config import InterfaceTarget, StructureGeneratorConfig
@@ -39,9 +41,6 @@ class StructureGenerator(AbstractGenerator):
 
     def generate_interface(self, target: InterfaceTarget) -> Atoms:
         """Generates an interface structure based on an InterfaceTarget config."""
-        from ase.build import bulk, stack
-        from ase.data import chemical_symbols
-
         # Security: validate elements before passing to ASE
         valid_targets = self.config.valid_interface_targets
 
@@ -63,29 +62,28 @@ class StructureGenerator(AbstractGenerator):
 
             # This is a simplified interface construction registry
             def _build_fept() -> Atoms:
-                mat = bulk("Fe", crystalstructure="fcc", a=3.8) # type: ignore[no-untyped-call]
+                mat = bulk("Fe", crystalstructure="fcc", a=3.8)  # type: ignore[no-untyped-call]
                 mat[0].symbol = "Pt"
                 return mat
 
             def _build_mgo() -> Atoms:
-                return bulk("MgO", crystalstructure="rocksalt", a=4.21, basis=[[0, 0, 0], [0.5, 0.5, 0.5]]) # type: ignore[no-untyped-call]
+                return bulk(
+                    "MgO", crystalstructure="rocksalt", a=4.21, basis=[[0, 0, 0], [0.5, 0.5, 0.5]]
+                )  # type: ignore[no-untyped-call]
 
-            builders = {
-                "FePt": _build_fept,
-                "MgO": _build_mgo
-            }
+            builders = {"FePt": _build_fept, "MgO": _build_mgo}
 
             def _build_generic(element: str) -> Atoms:
                 if element in builders:
                     return builders[element]()
-                return bulk(element) # type: ignore[no-untyped-call]
+                return bulk(element)  # type: ignore[no-untyped-call]
 
             mat1 = _build_generic(target.element1)
             mat2 = _build_generic(target.element2)
 
             # Adjust lattice parameters slightly to allow stacking without crashing
             # In a real scenario, this would use sophisticated mismatch analysis
-            mat2.set_cell(mat1.get_cell(), scale_atoms=True) # type: ignore[no-untyped-call]
+            mat2.set_cell(mat1.get_cell(), scale_atoms=True)  # type: ignore[no-untyped-call]
         except Exception as e:
             logging.exception("Failed to generate interface")
             msg = f"Interface generation failed: {e}"

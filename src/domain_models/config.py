@@ -1,3 +1,7 @@
+import logging
+import os
+import re
+import stat
 from pathlib import Path
 from typing import Any, Literal
 
@@ -14,13 +18,12 @@ class InterfaceTarget(BaseModel):
 
 
 def _validate_single_trusted_dir(path: str) -> str | None:
-    import logging
-    import os
-    import stat
-    from pathlib import Path
-
     if ".." in path:
         msg = f"Path traversal characters not allowed in trusted_directory: {path}"
+        raise ValueError(msg)
+
+    if not Path(path).is_absolute():
+        msg = f"trusted_directory must be absolute: {path}"
         raise ValueError(msg)
 
     try:
@@ -42,7 +45,8 @@ def _validate_single_trusted_dir(path: str) -> str | None:
         raise ValueError(msg)
 
     from src.domain_models.config import SystemConfig
-    restricted_prefixes = SystemConfig.model_fields["restricted_directories"].default_factory() # type: ignore
+
+    restricted_prefixes = SystemConfig.model_fields["restricted_directories"].default_factory()  # type: ignore
     for restricted in restricted_prefixes:
         if str(resolved).startswith(restricted):
             msg = f"trusted_directory cannot be a system directory: {restricted}"
@@ -96,6 +100,15 @@ class DynamicsConfig(BaseModel):
         description="Binary name or path for EON client",
         pattern=r"^[a-zA-Z0-9_-]+$",
     )
+
+    @field_validator("lmp_binary", "eon_binary")
+    @classmethod
+    def validate_binary_names(cls, v: str) -> str:
+        if "/" in v or "\\" in v or ".." in v:
+            msg = "Binary name cannot contain path separators or traversal characters."
+            raise ValueError(msg)
+        return v
+
     trusted_directories: list[str] = Field(
         ...,
         description="List of trusted directories for executables. Required.",
@@ -156,7 +169,8 @@ class DynamicsConfig(BaseModel):
 
         # Security: forbid system directories
         from src.domain_models.config import SystemConfig
-        restricted_prefixes = SystemConfig.model_fields["restricted_directories"].default_factory() # type: ignore
+
+        restricted_prefixes = SystemConfig.model_fields["restricted_directories"].default_factory()  # type: ignore
         for restricted in restricted_prefixes:
             if str(resolved).startswith(restricted):
                 msg = f"project_root cannot be a system directory: {restricted}"
@@ -166,12 +180,12 @@ class DynamicsConfig(BaseModel):
 
     @classmethod
     def _validate_single_trusted_dir(cls, path: str) -> str | None:
-        import logging
-        import os
-        import stat
-
         if ".." in path:
             msg = f"Path traversal characters not allowed in trusted_directory: {path}"
+            raise ValueError(msg)
+
+        if not Path(path).is_absolute():
+            msg = f"trusted_directory must be absolute: {path}"
             raise ValueError(msg)
 
         try:
@@ -289,7 +303,9 @@ class TrainerConfig(BaseModel):
         default=50, ge=1, le=10000, description="Number of epochs for fine-tuning"
     )
     max_potential_size: int = Field(
-        default=104857600, ge=1024, description="Maximum allowed YACE file size in bytes (default 100MB)"
+        default=104857600,
+        ge=1024,
+        description="Maximum allowed YACE file size in bytes (default 100MB)",
     )
     active_set_size: int = Field(
         default=500, ge=1, le=10000, description="Target size of active set for D-Optimality"
@@ -306,6 +322,15 @@ class TrainerConfig(BaseModel):
         description="Binary name or path for pace_activeset",
         pattern=r"^[a-zA-Z0-9_-]+$",
     )
+
+    @field_validator("pace_train_binary", "pace_activeset_binary")
+    @classmethod
+    def validate_binary_names(cls, v: str) -> str:
+        if "/" in v or "\\" in v or ".." in v:
+            msg = "Binary name cannot contain path separators or traversal characters."
+            raise ValueError(msg)
+        return v
+
     trusted_directories: list[str] = Field(
         ...,
         description="List of trusted directories for executables. Required.",
@@ -397,7 +422,6 @@ class ProjectConfig(BaseSettings):
 
     @classmethod
     def _validate_env_key(cls, key: str) -> None:
-        import re
         if not key.startswith("MLIP_"):
             msg = f"Unauthorized environment variable injected via .env: {key}. Only MLIP_ prefixes are allowed."
             raise ValueError(msg)
@@ -410,26 +434,24 @@ class ProjectConfig(BaseSettings):
 
     @classmethod
     def _validate_env_value(cls, val: str) -> None:
-        import re
-        if len(val) > 256:
+        if len(val) > 1024:
             msg = "Environment variable value exceeds maximum length"
             raise ValueError(msg)
-        if not re.match(r"^[a-zA-Z0-9_-]+$", val):
-            msg = f"Invalid characters in .env variable value: {val}. Path separators are forbidden."
+        if ".." in val or ";" in val or "&" in val or "|" in val:
+            msg = (
+                f"Invalid characters or traversal sequences in .env variable value: {val}."
+            )
             raise ValueError(msg)
 
     @classmethod
     def _validate_env_file_security(cls, env_file: Path, expected_base: Path) -> Path:
-        import os
-        import stat
-
         if env_file.is_symlink():
             msg = ".env file must not be a symlink."
             raise ValueError(msg)
 
         resolved_env = env_file.resolve(strict=True)
 
-        if resolved_env.parent != expected_base:
+        if resolved_env.parent != expected_base.resolve(strict=True):
             msg = f".env file must reside directly in the allowed base directory: {expected_base}"
             raise ValueError(msg)
 
@@ -452,8 +474,6 @@ class ProjectConfig(BaseSettings):
     @model_validator(mode="before")
     @classmethod
     def validate_env_content(cls, values: dict[str, Any]) -> dict[str, Any]:
-        from pathlib import Path
-
         from src.dynamics.security_utils import (
             _validate_env_key,
             _validate_env_value,
@@ -461,6 +481,7 @@ class ProjectConfig(BaseSettings):
         )
 
         expected_base = Path.cwd().resolve(strict=True)
+        # Using the base directory strictly, not allowing arbitrary values for .env paths
         env_file = expected_base / ".env"
 
         if env_file.exists():
@@ -504,8 +525,6 @@ class ProjectConfig(BaseSettings):
     @field_validator("project_root")
     @classmethod
     def validate_project_root(cls, v: Path) -> Path:
-        import os
-
         if ".." in str(v):
             msg = "Path traversal sequences (..) are not allowed in project_root"
             raise ValueError(msg)
@@ -523,7 +542,8 @@ class ProjectConfig(BaseSettings):
 
         # Security: forbid system directories
         from src.domain_models.config import SystemConfig
-        restricted_prefixes = SystemConfig.model_fields["restricted_directories"].default_factory() # type: ignore
+
+        restricted_prefixes = SystemConfig.model_fields["restricted_directories"].default_factory()  # type: ignore
         for restricted in restricted_prefixes:
             if str(resolved_path).startswith(restricted):
                 msg = f"project_root cannot be a system directory: {restricted}"

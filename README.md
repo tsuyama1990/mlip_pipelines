@@ -8,12 +8,13 @@
 ## Elevator Pitch
 **MLIP-Pipelines** democratizes atomic simulations by providing a "Zero-Config" active learning pipeline that autonomously generates state-of-the-art Machine Learning Interatomic Potentials (MLIPs). Powered by the Pacemaker (ACE) engine, it intelligently orchestrates structure generation, self-healing Density Functional Theory (DFT) calculations, and Physics-Informed model training, allowing users to build robust potentials with a fraction of the traditional computational cost.
 
-## Key Features
+## Features Verified in Cycle 01
 
-1.  **Zero-Config Workflow (工数削減)**: Initiate the entire Active Learning cycle (Exploration $\rightarrow$ DFT $\rightarrow$ Training $\rightarrow$ MD) using a single, strictly validated configuration file. No manual scripting or intervention required.
-2.  **Maximum Data Efficiency (データ効率)**: An Adaptive Exploration Policy Engine dynamically adjusts sampling strategies (MD/MC ratios, defect densities) based on material properties, drastically reducing the required DFT footprint.
-3.  **Physics-Informed Robustness (物理的堅牢性)**: Enforces "Delta Learning" against a hard repulsive baseline (ZBL/LJ). The generated hybrid potentials are mathematically guaranteed to prevent unphysical atomic overlap and catastrophic simulation crashes during extrapolation.
-4.  **Self-Healing Oracle**: The DFT manager automatically detects SCF convergence failures and dynamically heals the calculation by adjusting `mixing_beta` and diagonalization algorithms, preventing costly pipeline stalls.
+*   **Robust Configuration Layer**: Implemented strict Pydantic schemas (`ProjectConfig`, `SystemConfig`, `DynamicsConfig`, etc.) that enforce security policies, validate executable paths, and block environment variable injection and path traversal vulnerabilities right at startup.
+*   **Orchestration State Machine**: A central `Orchestrator` robustly manages the transition between exploration, selection, training, and deployment phases.
+*   **Secure & Atomic File Operations**: Includes built-in file verification limits to prevent Out-Of-Memory (OOM) errors during deployment and leverages atomic swapping (`shutil.move()`) to seamlessly hot-reload active learning cycle datasets and results.
+*   **State Checkpointing**: The `Orchestrator` autonomously scans storage directories upon initialization to resume cleanly from the latest valid epoch without complex manual interventions.
+*   **Abstract Sub-systems**: The codebase adopts Dependency Injection via `AbstractDynamics`, `AbstractOracle`, `AbstractTrainer`, and `AbstractGenerator` to prepare for high scalability in real execution environments.
 
 ## Architecture Overview
 

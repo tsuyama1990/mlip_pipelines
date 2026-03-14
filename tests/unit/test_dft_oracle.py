@@ -85,13 +85,16 @@ def test_compute_batch(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
 def dft_oracle():
     from src.domain_models.config import OracleConfig
     from src.oracles.dft_oracle import DFTManager
+
     config = OracleConfig()
     return DFTManager(config)
+
 
 def test_validate_pseudopotentials_absolute_path_error(dft_oracle, monkeypatch):
     monkeypatch.setattr(dft_oracle.config, "pseudo_dir", "relative/path")
     with pytest.raises(ValueError, match="Pseudopotential directory must be an absolute path"):
         dft_oracle._validate_pseudopotentials({"Fe"})
+
 
 def test_validate_pseudopotentials_not_dir(dft_oracle, tmp_path, monkeypatch):
     not_a_dir = tmp_path / "file.txt"
@@ -100,14 +103,16 @@ def test_validate_pseudopotentials_not_dir(dft_oracle, tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="Pseudopotential directory is not a valid directory"):
         dft_oracle._validate_pseudopotentials({"Fe"})
 
+
 def test_validate_pseudopotentials_invalid_symbol(dft_oracle, tmp_path, monkeypatch):
     pseudo_dir = tmp_path / "pseudos"
     pseudo_dir.mkdir()
     monkeypatch.setattr(dft_oracle.config, "pseudo_dir", str(pseudo_dir))
     with pytest.raises(ValueError, match="Invalid element name"):
-        dft_oracle._validate_pseudopotentials({"fe"}) # lowercase
+        dft_oracle._validate_pseudopotentials({"fe"})  # lowercase
     with pytest.raises(ValueError, match="Invalid chemical symbol detected"):
-        dft_oracle._validate_pseudopotentials({"Xx"}) # not in atomic numbers
+        dft_oracle._validate_pseudopotentials({"Xx"})  # not in atomic numbers
+
 
 def test_validate_pseudopotentials_missing_file(dft_oracle, tmp_path, monkeypatch):
     pseudo_dir = tmp_path / "pseudos"
@@ -115,6 +120,7 @@ def test_validate_pseudopotentials_missing_file(dft_oracle, tmp_path, monkeypatc
     monkeypatch.setattr(dft_oracle.config, "pseudo_dir", str(pseudo_dir))
     with pytest.raises(FileNotFoundError, match="Pseudopotential file not found: Fe.upf"):
         dft_oracle._validate_pseudopotentials({"Fe"})
+
 
 def test_validate_pseudopotentials_invalid_format(dft_oracle, tmp_path, monkeypatch):
     pseudo_dir = tmp_path / "pseudos"
@@ -125,6 +131,7 @@ def test_validate_pseudopotentials_invalid_format(dft_oracle, tmp_path, monkeypa
     with pytest.raises(ValueError, match="Invalid UPF format for pseudopotential: Fe.upf"):
         dft_oracle._validate_pseudopotentials({"Fe"})
 
+
 def test_validate_pseudopotentials_valid(dft_oracle, tmp_path, monkeypatch):
     pseudo_dir = tmp_path / "pseudos"
     pseudo_dir.mkdir()
@@ -134,17 +141,20 @@ def test_validate_pseudopotentials_valid(dft_oracle, tmp_path, monkeypatch):
     pseudos = dft_oracle._validate_pseudopotentials({"Fe"})
     assert pseudos == {"Fe": "Fe.upf"}
 
+
 def test_calculate_kpoints_invalid_cell(dft_oracle):
-    atoms = Atoms("Fe", positions=[(0,0,0)], cell=[0, 0, 0])
+    atoms = Atoms("Fe", positions=[(0, 0, 0)], cell=[0, 0, 0])
     with pytest.raises(ValueError, match="Cell dimensions must be strictly positive and finite"):
         dft_oracle._calculate_kpoints(atoms)
 
+
 def test_calculate_kpoints_too_many(dft_oracle):
-    atoms = Atoms("Fe", positions=[(0,0,0)], cell=[1, 1, 1])
+    atoms = Atoms("Fe", positions=[(0, 0, 0)], cell=[1, 1, 1])
     # 0.001 kspacing will result in ~6283 points per dim -> way over 1000
     dft_oracle.config.kspacing = 0.001
     with pytest.raises(ValueError, match="exceeds maximum allowed points"):
         dft_oracle._calculate_kpoints(atoms)
+
 
 def test_get_calculator(dft_oracle, tmp_path, monkeypatch):
     pseudo_dir = tmp_path / "pseudos"
@@ -153,11 +163,12 @@ def test_get_calculator(dft_oracle, tmp_path, monkeypatch):
     upf_file.write_text("<UPF valid format>")
     monkeypatch.setattr(dft_oracle.config, "pseudo_dir", str(pseudo_dir))
 
-    atoms = Atoms("Fe", positions=[(0,0,0)], cell=[20, 20, 20])
+    atoms = Atoms("Fe", positions=[(0, 0, 0)], cell=[20, 20, 20])
     # Mock Espresso import
     with patch("src.oracles.dft_oracle.Espresso") as mock_espresso:
         dft_oracle._get_calculator(atoms, tmp_path)
         assert mock_espresso.called
+
 
 def test_compute_batch_self_healing_success(dft_oracle, tmp_path, monkeypatch):
     pseudo_dir = tmp_path / "pseudos"
@@ -166,7 +177,7 @@ def test_compute_batch_self_healing_success(dft_oracle, tmp_path, monkeypatch):
     upf_file.write_text("<UPF valid format>")
     monkeypatch.setattr(dft_oracle.config, "pseudo_dir", str(pseudo_dir))
 
-    atoms = Atoms("Fe", positions=[(0,0,0)], cell=[20, 20, 20])
+    atoms = Atoms("Fe", positions=[(0, 0, 0)], cell=[20, 20, 20])
 
     class MockCalc:
         def __init__(self) -> None:
@@ -176,6 +187,7 @@ def test_compute_batch_self_healing_success(dft_oracle, tmp_path, monkeypatch):
     calc = MockCalc()
 
     with patch.object(dft_oracle, "_get_calculator", return_value=calc):
+
         def mock_get_potential_energy(self):
             calc.call_count += 1
             if calc.call_count == 1:
@@ -188,6 +200,7 @@ def test_compute_batch_self_healing_success(dft_oracle, tmp_path, monkeypatch):
             assert len(results) == 1
             assert calc.parameters["input_data"]["electrons"]["mixing_beta"] == 0.3
 
+
 def test_compute_batch_self_healing_retry_2_success(dft_oracle, tmp_path, monkeypatch):
     pseudo_dir = tmp_path / "pseudos"
     pseudo_dir.mkdir()
@@ -195,7 +208,7 @@ def test_compute_batch_self_healing_retry_2_success(dft_oracle, tmp_path, monkey
     upf_file.write_text("<UPF valid format>")
     monkeypatch.setattr(dft_oracle.config, "pseudo_dir", str(pseudo_dir))
 
-    atoms = Atoms("Fe", positions=[(0,0,0)], cell=[20, 20, 20])
+    atoms = Atoms("Fe", positions=[(0, 0, 0)], cell=[20, 20, 20])
 
     class MockCalc:
         def __init__(self) -> None:
@@ -205,6 +218,7 @@ def test_compute_batch_self_healing_retry_2_success(dft_oracle, tmp_path, monkey
     calc = MockCalc()
 
     with patch.object(dft_oracle, "_get_calculator", return_value=calc):
+
         def mock_get_potential_energy(self):
             calc.call_count += 1
             if calc.call_count in (1, 2):
@@ -217,6 +231,7 @@ def test_compute_batch_self_healing_retry_2_success(dft_oracle, tmp_path, monkey
             assert len(results) == 1
             assert calc.parameters["input_data"]["electrons"]["diagonalization"] == "cg"
 
+
 def test_compute_batch_total_failure(dft_oracle, tmp_path, monkeypatch):
     pseudo_dir = tmp_path / "pseudos"
     pseudo_dir.mkdir()
@@ -224,7 +239,7 @@ def test_compute_batch_total_failure(dft_oracle, tmp_path, monkeypatch):
     upf_file.write_text("<UPF valid format>")
     monkeypatch.setattr(dft_oracle.config, "pseudo_dir", str(pseudo_dir))
 
-    atoms = Atoms("Fe", positions=[(0,0,0)], cell=[20, 20, 20])
+    atoms = Atoms("Fe", positions=[(0, 0, 0)], cell=[20, 20, 20])
 
     class MockCalc:
         def __init__(self) -> None:
@@ -233,6 +248,8 @@ def test_compute_batch_total_failure(dft_oracle, tmp_path, monkeypatch):
     calc = MockCalc()
 
     with patch.object(dft_oracle, "_get_calculator", return_value=calc):
-        with patch("ase.Atoms.get_potential_energy", side_effect=Exception("SCF Failed completely")):
+        with patch(
+            "ase.Atoms.get_potential_energy", side_effect=Exception("SCF Failed completely")
+        ):
             results = dft_oracle.compute_batch([atoms], tmp_path)
-            assert len(results) == 0 # Struct failed completely
+            assert len(results) == 0  # Struct failed completely
