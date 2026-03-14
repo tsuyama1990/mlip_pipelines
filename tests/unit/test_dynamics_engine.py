@@ -126,7 +126,7 @@ def test_run_exploration_invalid_potential_extension(tmp_path: Path) -> None:
 
     pot_file = tmp_path / "dummy.txt"
     pot_file.touch()
-    with pytest.raises(ValueError, match="Potential path must end with .yace"):
+    with pytest.raises(ValueError, match="Potential path must be a valid .yace file"):
         engine.run_exploration(potential=pot_file, work_dir=tmp_path)
 
 
@@ -137,7 +137,7 @@ def test_run_exploration_invalid_potential_chars(tmp_path: Path) -> None:
 
     pot_file = tmp_path / "dummy;.yace"
     pot_file.touch()
-    with pytest.raises(ValueError, match="Potential path contains invalid characters"):
+    with pytest.raises(ValueError, match="Potential path must be a valid .yace file"):
         engine.run_exploration(potential=pot_file, work_dir=tmp_path)
 
 

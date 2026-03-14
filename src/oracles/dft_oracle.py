@@ -4,10 +4,11 @@ from pathlib import Path
 from ase import Atoms
 from ase.calculators.espresso import Espresso
 
+from src.core import AbstractOracle
 from src.domain_models.config import OracleConfig
 
 
-class DFTManager:
+class DFTManager(AbstractOracle):
     """Orchestrates Quantum ESPRESSO via ASE for labeling."""
 
     def __init__(self, config: OracleConfig) -> None:
@@ -42,7 +43,7 @@ class DFTManager:
         lengths = max_pos - min_pos + 2 * buffer
 
         # Validate reasonable cell size to prevent memory exhaustion (buffer overflow defense)
-        if any(L > 100.0 for L in lengths):
+        if any(L > 1000.0 for L in lengths):
             msg = "Calculated cell dimensions are too large, potential memory exhaustion."
             raise ValueError(msg)
 
@@ -92,15 +93,20 @@ class DFTManager:
             upf_name = f"{el}.upf"
 
             # Additional layer of security: Ensure the resolved path strictly resides within the intended directory
-            upf_path = (pseudo_dir_path / upf_name).resolve()
+            upf_path = (pseudo_dir_path / upf_name)
 
-            if not upf_path.is_relative_to(pseudo_dir_path):
+            if not upf_path.resolve(strict=False).is_relative_to(pseudo_dir_path):
                 msg = f"Path traversal detected for pseudopotential: {upf_name}"
                 raise ValueError(msg)
 
             if not upf_path.exists():
                 msg = f"Pseudopotential file not found: {upf_name} in {pseudo_dir_path}"
                 raise FileNotFoundError(msg)
+
+            if not upf_path.resolve(strict=True).is_relative_to(pseudo_dir_path.resolve(strict=True)):
+                msg = f"Strict path traversal detected for pseudopotential: {upf_name}"
+                raise ValueError(msg)
+
             pseudos[el] = upf_name
 
         # Check for transition metals

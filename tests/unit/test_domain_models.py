@@ -48,3 +48,99 @@ def test_validation_report_invalid() -> None:
             mechanically_stable=True,
             extra_field="invalid",  # type: ignore[call-arg]
         )
+
+
+def test_oracle_convergence_error() -> None:
+    from src.core.exceptions import OracleConvergenceError
+
+    msg = "SCF failed to converge after maximum retries"
+    exc = OracleConvergenceError(msg)
+
+    assert isinstance(exc, Exception)
+    assert str(exc) == msg
+
+
+def test_abstract_oracle_enforcement() -> None:
+    from src.core import AbstractOracle
+
+    class DummyOracle(AbstractOracle):
+        pass
+
+    with pytest.raises(TypeError, match="Can't instantiate abstract class DummyOracle"):
+        DummyOracle()  # type: ignore[abstract]
+
+
+def test_abstract_trainer_enforcement() -> None:
+    from src.core import AbstractTrainer
+
+    class DummyTrainer(AbstractTrainer):
+        pass
+
+    with pytest.raises(TypeError, match="Can't instantiate abstract class DummyTrainer"):
+        DummyTrainer()  # type: ignore[abstract]
+
+
+def test_abstract_dynamics_enforcement() -> None:
+    from src.core import AbstractDynamics
+
+    class DummyDynamics(AbstractDynamics):
+        pass
+
+    with pytest.raises(TypeError, match="Can't instantiate abstract class DummyDynamics"):
+        DummyDynamics()  # type: ignore[abstract]
+
+
+def test_abstract_generator_enforcement() -> None:
+    from src.core import AbstractGenerator
+
+    class DummyGenerator(AbstractGenerator):
+        pass
+
+    with pytest.raises(TypeError, match="Can't instantiate abstract class DummyGenerator"):
+        DummyGenerator()  # type: ignore[abstract]
+
+
+def test_concrete_interface_compliance() -> None:
+    from src.core import AbstractDynamics, AbstractGenerator, AbstractOracle, AbstractTrainer
+    from src.domain_models.config import (
+        DynamicsConfig,
+        OracleConfig,
+        StructureGeneratorConfig,
+        SystemConfig,
+        TrainerConfig,
+    )
+    from src.dynamics.dynamics_engine import MDInterface
+    from src.dynamics.eon_wrapper import EONWrapper
+    from src.generators.structure_generator import StructureGenerator
+    from src.oracles.dft_oracle import DFTManager
+    from src.trainers.ace_trainer import PacemakerWrapper
+
+    sys_cfg = SystemConfig(elements=["Fe", "Pt"], baseline_potential="zbl")
+    dyn_cfg = DynamicsConfig()
+    md_engine = MDInterface(dyn_cfg, sys_cfg)
+    eon_engine = EONWrapper(dyn_cfg, sys_cfg)
+
+    ora_cfg = OracleConfig()
+    oracle = DFTManager(ora_cfg)
+
+    trn_cfg = TrainerConfig()
+    trainer = PacemakerWrapper(trn_cfg)
+
+    gen_cfg = StructureGeneratorConfig()
+    generator = StructureGenerator(gen_cfg)
+
+    assert isinstance(md_engine, AbstractDynamics)
+    assert isinstance(eon_engine, AbstractDynamics)
+    assert isinstance(oracle, AbstractOracle)
+    assert isinstance(trainer, AbstractTrainer)
+    assert isinstance(generator, AbstractGenerator)
+
+
+def test_dynamics_halt_interrupt() -> None:
+    from src.core.exceptions import DynamicsHaltInterrupt
+
+    msg = "Simulation halted due to high uncertainty"
+    exc = DynamicsHaltInterrupt(msg)
+
+    assert isinstance(exc, Exception)
+    assert str(exc) == msg

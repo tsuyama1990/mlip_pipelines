@@ -1,11 +1,17 @@
+import os
+import re
+import shlex
+import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
+from src.core import AbstractDynamics
 from src.domain_models.config import DynamicsConfig, SystemConfig
 
 
-class EONWrapper:
+class EONWrapper(AbstractDynamics):
     """Manages EON execution and OTF handling."""
 
     def __init__(self, config: DynamicsConfig, system_config: SystemConfig) -> None:
@@ -13,10 +19,17 @@ class EONWrapper:
         self.system_config = system_config
 
     def _write_config_ini(self, work_dir: Path) -> None:
+        if not re.match(r"^[a-zA-Z0-9_-]+$", self.config.eon_job):
+            msg = f"Invalid EON job string: {self.config.eon_job}"
+            raise ValueError(msg)
+        if not re.match(r"^[a-zA-Z0-9_-]+$", self.config.eon_min_mode_method):
+            msg = f"Invalid EON min_mode_method string: {self.config.eon_min_mode_method}"
+            raise ValueError(msg)
+
         ini_content = self.config.eon_config_template.format(
-            eon_job=self.config.eon_job,
+            eon_job=shlex.quote(self.config.eon_job),
             temperature=self.config.temperature,
-            eon_min_mode_method=self.config.eon_min_mode_method,
+            eon_min_mode_method=shlex.quote(self.config.eon_min_mode_method),
         )
         with Path.open(work_dir / "config.ini", "w") as f:
             f.write(ini_content)
@@ -32,8 +45,6 @@ class EONWrapper:
 
         resolved_pot_str = ""
         if potential:
-            import os
-
             resolved_pot = Path(os.path.realpath(potential)).resolve(strict=True)
             if hasattr(self.config, "project_root"):
                 root = Path(os.path.realpath(self.config.project_root)).resolve(strict=True)
@@ -62,6 +73,10 @@ class EONWrapper:
             f.write(driver_content)
         driver_path.chmod(0o755)
 
+    def run_exploration(self, potential: Path | None, work_dir: Path) -> dict[str, Any]:
+        """Runs MD or KMC exploration until a halt condition or completion."""
+        return self.run_kmc(potential, work_dir)
+
     def run_kmc(self, potential: Path | None, work_dir: Path) -> dict[str, Any]:  # noqa: C901, PLR0912, PLR0915
         """Runs EON client in the specified working directory."""
         resolved_work_dir = work_dir.resolve(strict=False)
@@ -79,10 +94,6 @@ class EONWrapper:
 
         try:
             # We execute 'eonclient'. If it's missing, subprocess raises FileNotFoundError.
-            import re
-            import shutil
-            import sys
-
             eon_binary: str = self.config.eon_binary
 
             if not re.match(r"^[a-zA-Z0-9_-]+$", eon_binary):
@@ -98,8 +109,6 @@ class EONWrapper:
             if resolved_which is None:
                 msg = "EON client executable not found."
                 raise RuntimeError(msg)
-
-            import os
 
             eon_path: Path = Path(os.path.realpath(resolved_which)).resolve(strict=True)
             if eon_path.is_symlink():
@@ -129,11 +138,9 @@ class EONWrapper:
 
             eon_bin = str(eon_path.absolute())
 
-            cmd: list[str] = [eon_bin]
+            cmd: list[str] = [shlex.quote(eon_bin)]
 
             # We use check=False to capture return code 100 gracefully
-            import os
-
             env: dict[str, str] = os.environ.copy()
             # Clear sensitive/potentially hazardous env vars
             for k in ["LD_PRELOAD", "LD_LIBRARY_PATH", "PYTHONPATH"]:

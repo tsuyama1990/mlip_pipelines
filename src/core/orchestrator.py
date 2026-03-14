@@ -1,11 +1,16 @@
+import contextlib
 import logging
+import os
+import re
 import shutil
-from collections.abc import Iterator
+import tempfile
+from collections.abc import Generator, Iterator
 from pathlib import Path
 from typing import Any
 
 from ase import Atoms
 
+from src.core import AbstractDynamics, AbstractGenerator, AbstractOracle, AbstractTrainer
 from src.domain_models.config import ProjectConfig
 from src.domain_models.dtos import ExplorationStrategy, MaterialFeatures
 from src.dynamics.dynamics_engine import MDInterface
@@ -23,14 +28,14 @@ class Orchestrator:
 
     def __init__(self, config: ProjectConfig) -> None:
         self.config = config
-        self.md_engine = MDInterface(config.dynamics, config.system)
-        self.eon_engine = EONWrapper(config.dynamics, config.system)
-        self.oracle = DFTManager(config.oracle)
-        self.trainer = PacemakerWrapper(config.trainer)
+        self.md_engine: AbstractDynamics = MDInterface(config.dynamics, config.system)
+        self.eon_engine: AbstractDynamics = EONWrapper(config.dynamics, config.system)
+        self.oracle: AbstractOracle = DFTManager(config.oracle)
+        self.trainer: AbstractTrainer = PacemakerWrapper(config.trainer)
         self.validator = Validator(config.validator)
         self.reporter = Reporter()
         self.policy_engine = AdaptiveExplorationPolicyEngine(config.policy)
-        self.structure_generator = StructureGenerator(config.structure_generator)
+        self.structure_generator: AbstractGenerator = StructureGenerator(config.structure_generator)
         self.iteration = 0
 
     def get_latest_potential(self) -> Path | None:
@@ -94,7 +99,7 @@ class Orchestrator:
     ) -> dict[str, Any]:
         if strategy.md_mc_ratio > 0.0:
             logging.info(f"Running kMC (EON) exploration due to strategy {strategy.policy_name}")
-            return self.eon_engine.run_kmc(
+            return self.eon_engine.run_exploration(
                 potential=current_pot,
                 work_dir=tmp_work_dir / "kmc_run",
             )
@@ -126,12 +131,19 @@ class Orchestrator:
 
             high_gamma_atoms = [ase.io.read(halt_info["dump_file"])]
             if not isinstance(high_gamma_atoms[0], Atoms):
-                high_gamma_atoms = [high_gamma_atoms[0][0]]  # type: ignore[index]
+                high_gamma_atoms = [high_gamma_atoms[0][0]]
         else:
-            high_gamma_atoms = self.md_engine.extract_high_gamma_structures(
-                dump_file=halt_info["dump_file"],
-                threshold=self.config.dynamics.uncertainty_threshold,
-            )
+            # Cast down to MDInterface because extract_high_gamma_structures is MD-specific
+            from src.dynamics.dynamics_engine import MDInterface
+
+            md_engine = self.md_engine
+            if isinstance(md_engine, MDInterface):
+                high_gamma_atoms = md_engine.extract_high_gamma_structures(
+                    dump_file=halt_info["dump_file"],
+                    threshold=self.config.dynamics.uncertainty_threshold,
+                )
+            else:
+                high_gamma_atoms = []
 
         for s0 in high_gamma_atoms:
             candidates = self.structure_generator.generate_local_candidates(s0, n=20)
@@ -145,6 +157,9 @@ class Orchestrator:
     ) -> bool:
         has_new_data = False
         for i, batch in enumerate(candidate_generator):
+            if i >= 100:
+                logging.warning("Maximum batch limit reached. Stopping generator to prevent resource exhaustion.")
+                break
             batch_calc_dir = tmp_work_dir / f"dft_calc_batch_{i}"
             new_data = self.oracle.compute_batch(batch, batch_calc_dir)
             if new_data:
@@ -191,21 +206,19 @@ class Orchestrator:
         return True
 
     def _copy_potential(self, tmp_work_dir: Path, pot_dir: Path, iteration: int) -> Path:
-        import os
-        import shutil
-        import tempfile
-
         final_dest = pot_dir / f"generation_{iteration:03d}.yace"
         src_pot = tmp_work_dir / "training" / "output_potential.yace"
 
-        if not src_pot.is_file() or not src_pot.resolve(strict=True).is_relative_to(
-            tmp_work_dir.resolve(strict=True)
-        ):
+        if not src_pot.is_file():
             msg = "Source potential file missing or invalid"
             raise FileNotFoundError(msg)
 
-        if not src_pot.name.endswith(".yace"):
-            msg = "Source potential file must have .yace extension"
+        if not src_pot.resolve(strict=True).is_relative_to(tmp_work_dir.resolve(strict=True)):
+            msg = "Path traversal detected"
+            raise ValueError(msg)
+
+        if not re.match(r"^[a-zA-Z0-9_-]+\.yace$", src_pot.name):
+            msg = "Source potential file must have a valid .yace filename format"
             raise ValueError(msg)
 
         with Path.open(src_pot) as f:
@@ -240,9 +253,6 @@ class Orchestrator:
         return final_dest
 
     def _manage_directories(self, tmp_work_dir: Path, work_dir: Path) -> None:
-        import shutil
-        import tempfile
-
         expected_dirs = ["training"]
         if not (tmp_work_dir / "md_run").exists() and not (tmp_work_dir / "kmc_run").exists():
             msg = "Missing required exploration directory (md_run or kmc_run)"
@@ -257,21 +267,32 @@ class Orchestrator:
             backup_dir = Path(tempfile.mkdtemp(dir=str(work_dir.parent)))
             try:
                 work_dir.replace(backup_dir)
+                tmp_work_dir.replace(work_dir.resolve(strict=False))
             except Exception:
-                shutil.rmtree(str(backup_dir), ignore_errors=True)
+                if backup_dir.exists() and not work_dir.exists():
+                    backup_dir.replace(work_dir)
                 raise
-            shutil.rmtree(str(backup_dir), ignore_errors=True)
-
-        tmp_work_dir.replace(work_dir.resolve(strict=False))
+            finally:
+                shutil.rmtree(str(backup_dir), ignore_errors=True)
+        else:
+            tmp_work_dir.replace(work_dir.resolve(strict=False))
 
     def _resume_md_engine(self, final_dest: Path, work_dir: Path) -> None:
-        self.md_engine.resume(
-            potential=final_dest,
-            restart_dir=work_dir / "md_run",
-            work_dir=work_dir / "resume_run",
-        )
+        from src.dynamics.dynamics_engine import MDInterface
+
+        md_engine = self.md_engine
+        if isinstance(md_engine, MDInterface):
+            md_engine.resume(
+                potential=final_dest,
+                restart_dir=work_dir / "md_run",
+                work_dir=work_dir / "resume_run",
+            )
 
     def _validate_and_deploy(self, new_pot_path: Path, tmp_work_dir: Path, work_dir: Path) -> str:
+        if not new_pot_path.exists() or not new_pot_path.is_file():
+            msg = f"New potential path is invalid or missing: {new_pot_path}"
+            raise FileNotFoundError(msg)
+
         if not self._validate_potential(new_pot_path):
             return "VALIDATION_FAILED"
 
@@ -301,10 +322,8 @@ class Orchestrator:
         work_dir: Path = base_dir / f"iter_{self.iteration:03d}"
 
         # Cleanly instantiate temp dir via robust context manager mapping explicitly for resource cleanup
-        import contextlib
         import os
         import tempfile
-        from collections.abc import Generator
 
         @contextlib.contextmanager
         def isolated_work_dir(base: Path) -> Generator[Path, None, None]:

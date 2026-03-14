@@ -1,18 +1,23 @@
+import os
 import re
+import shutil
 import subprocess
+import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
 from ase import Atoms
 from ase.io import write
 
+from src.core import AbstractTrainer
 from src.domain_models.config import TrainerConfig
 
 BINARY_NAME_PATTERN = re.compile(r"^[-a-zA-Z0-9_.]+$")
 PARAM_PATTERN = re.compile(r"^[-a-zA-Z0-9_.]+$")
 
 
-class PacemakerWrapper:
+class PacemakerWrapper(AbstractTrainer):
     """Manages Pacemaker active set selection and training."""
 
     def __init__(self, config: TrainerConfig) -> None:
@@ -37,10 +42,9 @@ class PacemakerWrapper:
         return resolved_path
 
     def select_local_active_set(  # noqa: PLR0912
-        self, candidates: list[Atoms], anchor: Atoms, n: int
+        self, candidates: list[Atoms], anchor: Atoms, n: int = 5
     ) -> list[Atoms]:
         """Local D-Optimality selection of candidates."""
-        import tempfile
 
         from ase.io import read
 
@@ -88,7 +92,15 @@ class PacemakerWrapper:
                     )
                     raise ValueError(msg)
 
-                if not any(str(resolved_bin).startswith(td) for td in trusted_dirs):
+                is_trusted = False
+                for trusted_path in trusted_dirs:
+                    try:
+                        if resolved_bin.is_relative_to(Path(trusted_path).resolve(strict=True)):
+                            is_trusted = True
+                            break
+                    except OSError:
+                        continue
+                if not is_trusted:
                     msg = f"Binary must reside in a trusted directory: {binary_setting}"
                     raise ValueError(msg)
                 pace_activeset_bin = str(resolved_bin)
@@ -110,7 +122,15 @@ class PacemakerWrapper:
                         msg = f"Resolved binary name must be 'pace_activeset', got '{resolved_bin.name}'"
                         raise ValueError(msg)
 
-                    if not any(str(resolved_bin).startswith(td) for td in trusted_dirs):
+                    is_trusted = False
+                    for trusted_path in trusted_dirs:
+                        try:
+                            if resolved_bin.is_relative_to(Path(trusted_path).resolve(strict=True)):
+                                is_trusted = True
+                                break
+                        except OSError:
+                            continue
+                    if not is_trusted:
                         msg = f"Resolved binary must reside in a trusted directory: {resolved_bin}"
                         raise ValueError(msg)
                     pace_activeset_bin = str(resolved_bin)
@@ -127,7 +147,7 @@ class PacemakerWrapper:
                     for arg in self.template:
                         formatted_arg = arg.format(**kwargs)
                         if formatted_arg != arg:
-                            if not re.match(r"^[/a-zA-Z0-9_.-]+$", formatted_arg):
+                            if not re.match(r"^[/a-zA-Z0-9_.\-=]+$", formatted_arg):
                                 msg = (
                                     f"Command argument contains invalid characters: {formatted_arg}"
                                 )
@@ -178,7 +198,6 @@ class PacemakerWrapper:
         resolved_output_dir = Path(output_dir).resolve(strict=False)
 
         # Validation for directory traversal out of expected bounds
-        import os
         import tempfile
 
         if hasattr(self.config, "project_root"):
@@ -203,8 +222,6 @@ class PacemakerWrapper:
             msg = "Invalid regularization format"
             raise ValueError(msg)
 
-        import shutil
-        import sys
 
         train_binary_setting = self.config.pace_train_binary
         trusted_dirs = [
@@ -230,7 +247,15 @@ class PacemakerWrapper:
                 msg = f"Resolved binary name must be 'pace_train', got '{resolved_bin.name}'"
                 raise ValueError(msg)
 
-            if not any(str(resolved_bin).startswith(td) for td in trusted_dirs):
+            is_trusted = False
+            for td in trusted_dirs:
+                try:
+                    if resolved_bin.is_relative_to(Path(td).resolve(strict=True)):
+                        is_trusted = True
+                        break
+                except OSError:
+                    continue
+            if not is_trusted:
                 msg = f"Binary must reside in a trusted directory: {train_binary_setting}"
                 raise ValueError(msg)
             pace_train_bin = str(resolved_bin)
@@ -252,7 +277,15 @@ class PacemakerWrapper:
                     msg = f"Resolved binary name must be 'pace_train', got '{resolved_bin.name}'"
                     raise ValueError(msg)
 
-                if not any(str(resolved_bin).startswith(td) for td in trusted_dirs):
+                is_trusted = False
+                for td in trusted_dirs:
+                    try:
+                        if resolved_bin.is_relative_to(Path(td).resolve(strict=True)):
+                            is_trusted = True
+                            break
+                    except OSError:
+                        continue
+                if not is_trusted:
                     msg = f"Resolved binary must reside in a trusted directory: {resolved_bin}"
                     raise ValueError(msg)
                 pace_train_bin = str(resolved_bin)
@@ -268,7 +301,7 @@ class PacemakerWrapper:
                 for arg in self.template:
                     formatted_arg = arg.format(**kwargs)
                     if formatted_arg != arg:
-                        if not re.match(r"^[/a-zA-Z0-9_.-]+$", formatted_arg):
+                        if not re.match(r"^[/a-zA-Z0-9_.\-=]+$", formatted_arg):
                             msg = f"Command argument contains invalid characters: {formatted_arg}"
                             raise ValueError(msg)
                         self.cmd.append(formatted_arg)
