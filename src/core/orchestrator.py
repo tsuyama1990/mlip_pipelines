@@ -265,17 +265,17 @@ class Orchestrator:
 
         return final_dest
 
-    def _manage_directories(self, tmp_work_dir: Path, work_dir: Path) -> None:
+    def _validate_tmp_directories(self, tmp_work_dir: Path) -> None:
         expected_dirs = ["training"]
         if not (tmp_work_dir / "md_run").exists() and not (tmp_work_dir / "kmc_run").exists():
             msg = "Missing required exploration directory (md_run or kmc_run)"
             raise FileNotFoundError(msg)
-
         for expected in expected_dirs:
             if not (tmp_work_dir / expected).exists():
                 msg = f"Missing expected output directory: {expected}"
                 raise FileNotFoundError(msg)
 
+    def _swap_directories(self, tmp_work_dir: Path, work_dir: Path) -> None:
         if work_dir.exists():
             backup_dir = Path(tempfile.mkdtemp(dir=str(work_dir.parent)))
             try:
@@ -289,6 +289,10 @@ class Orchestrator:
                 shutil.rmtree(str(backup_dir), ignore_errors=True)
         else:
             tmp_work_dir.replace(work_dir.resolve(strict=False))
+
+    def _manage_directories(self, tmp_work_dir: Path, work_dir: Path) -> None:
+        self._validate_tmp_directories(tmp_work_dir)
+        self._swap_directories(tmp_work_dir, work_dir)
 
     def _resume_md_engine(self, final_dest: Path, work_dir: Path) -> None:
         from src.dynamics.dynamics_engine import MDInterface
