@@ -11,6 +11,7 @@ from typing import Any
 from ase import Atoms
 
 from src.core import AbstractDynamics, AbstractGenerator, AbstractOracle, AbstractTrainer
+from src.core.exceptions import DynamicsHaltInterrupt, OracleConvergenceError
 from src.domain_models.config import ProjectConfig
 from src.domain_models.dtos import ExplorationStrategy, MaterialFeatures
 from src.dynamics.dynamics_engine import MDInterface
@@ -121,8 +122,6 @@ class Orchestrator:
     def _run_exploration(
         self, current_pot: Path | None, tmp_work_dir: Path
     ) -> dict[str, Any] | str:
-        from src.core.exceptions import DynamicsHaltInterrupt, OracleConvergenceError
-
         try:
             strategy = self._decide_exploration_strategy()
             halt_info = self._execute_exploration(strategy, current_pot, tmp_work_dir)
@@ -233,9 +232,11 @@ class Orchestrator:
             return False
         return True
 
-    def _copy_potential(self, tmp_work_dir: Path, pot_dir: Path, iteration: int) -> Path:  # noqa: PLR0915
+    def _secure_copy_potential(self, src_pot: Path, pot_dir: Path, iteration: int, tmp_work_dir: Path) -> Path:  # noqa: PLR0915, PLR0912
+        import hashlib
+        import os
+
         final_dest = pot_dir / f"generation_{iteration:03d}.yace"
-        src_pot = tmp_work_dir / "training" / "output_potential.yace"
 
         if not src_pot.is_file():
             msg = "Source potential file missing or invalid"
@@ -255,30 +256,34 @@ class Orchestrator:
             raise ValueError(msg)
 
         # Comprehensive integrity validation for YACE files using strict streaming
-        import hashlib
-
         sha256_hash = hashlib.sha256()
-        header_bytes = b""
+        max_size = self.config.trainer.max_potential_size
 
         with Path.open(src_pot, "rb") as f:
-            # Atomic file size constraint (max 100MB) to prevent race conditions and OOM
+            # Atomic file size constraint to prevent race conditions and OOM
             st = os.fstat(f.fileno())
-            if st.st_size > 100 * 1024 * 1024:
-                msg = "Source potential file exceeds maximum allowed size (100MB)"
+            if st.st_size > max_size:
+                msg = f"Source potential file exceeds maximum allowed size ({max_size} bytes)"
                 raise ValueError(msg)
 
-            # Read exactly 1024 bytes for header validation safely
-            header_bytes = f.read(1024)
-            sha256_hash.update(header_bytes)
+            # Read line by line to securely validate headers without reading past 10KB
+            headers_found = set()
+            required_headers = {"elements", "version", "b_functions"}
+
+            # Read first block safely
+            first_block = f.read(8192)
+            sha256_hash.update(first_block)
+
+            content_str = first_block.decode("utf-8", errors="ignore")
+            for h in required_headers:
+                if h in content_str:
+                    headers_found.add(h)
 
             # Continue reading the rest to compute full hash incrementally
             while chunk := f.read(8192):
                 sha256_hash.update(chunk)
 
-        content_str = header_bytes.decode("utf-8", errors="ignore")
-        required_headers = ["elements", "version", "b_functions"]
-        missing_headers = [h for h in required_headers if h not in content_str]
-
+        missing_headers = required_headers - headers_found
         if missing_headers:
             msg = f"Source potential file {src_pot} is missing required YACE headers: {missing_headers}"
             raise ValueError(msg)
@@ -319,6 +324,10 @@ class Orchestrator:
             raise
 
         return final_dest_resolved
+
+    def _copy_potential(self, tmp_work_dir: Path, pot_dir: Path, iteration: int) -> Path:
+        src_pot = tmp_work_dir / "training" / "output_potential.yace"
+        return self._secure_copy_potential(src_pot, pot_dir, iteration, tmp_work_dir)
 
     def _validate_tmp_directories(self, tmp_work_dir: Path) -> None:
         expected_dirs = ["training"]
@@ -380,7 +389,7 @@ class Orchestrator:
             raise
 
     def _pre_generate_interface_target(self) -> str | None:
-        if not self.config.system.interface_target or self.iteration != 0:
+        if not self.config.system.interface_target or self.iteration != self.config.system.interface_generation_iteration:
             return None
 
         logging.info("Interface configuration detected. Pre-generating interface target.")

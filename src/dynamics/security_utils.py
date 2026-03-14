@@ -83,3 +83,53 @@ def validate_filename(filename: str, extra_allowed_chars: str = "") -> None:
     if not re.match(pattern, filename):
         msg = f"Invalid characters in filename: {filename}"
         raise ValueError(msg)
+
+def _validate_env_key(key: str) -> None:
+    if not key.startswith("MLIP_"):
+        msg = f"Unauthorized environment variable injected via .env: {key}. Only MLIP_ prefixes are allowed."
+        raise ValueError(msg)
+    if len(key) > 64:
+        msg = "Environment variable key exceeds maximum length"
+        raise ValueError(msg)
+    if not re.match(r"^[A-Z0-9_]+$", key):
+        msg = f"Invalid characters in .env variable key: {key}"
+        raise ValueError(msg)
+
+
+def _validate_env_value(val: str) -> None:
+    if len(val) > 256:
+        msg = "Environment variable value exceeds maximum length"
+        raise ValueError(msg)
+    if not re.match(r"^[a-zA-Z0-9_-]+$", val):
+        msg = f"Invalid characters in .env variable value: {val}. Path separators are forbidden."
+        raise ValueError(msg)
+
+
+def validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
+    import stat
+
+    if env_file.is_symlink():
+        msg = ".env file must not be a symlink."
+        raise ValueError(msg)
+
+    resolved_env = env_file.resolve(strict=True)
+
+    if resolved_env.parent != expected_base:
+        msg = f".env file must reside directly in the allowed base directory: {expected_base}"
+        raise ValueError(msg)
+
+    st = os.lstat(resolved_env)
+
+    if st.st_size > 10 * 1024:
+        msg = ".env file exceeds maximum allowed size (10KB)."
+        raise ValueError(msg)
+
+    if st.st_uid != os.getuid():
+        msg = ".env file is not owned by the current user."
+        raise ValueError(msg)
+
+    if bool(st.st_mode & stat.S_IRWXO) or bool(st.st_mode & stat.S_IRWXG):
+        msg = ".env file has insecure permissions. It must not be group or world readable/writable."
+        raise ValueError(msg)
+
+    return resolved_env

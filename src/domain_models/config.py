@@ -41,7 +41,8 @@ def _validate_single_trusted_dir(path: str) -> str | None:
         msg = f"trusted_directory must be a directory: {path}"
         raise ValueError(msg)
 
-    restricted_prefixes = ["/etc", "/bin", "/usr", "/sbin", "/var", "/lib", "/boot", "/root"]
+    from src.domain_models.config import SystemConfig
+    restricted_prefixes = SystemConfig.model_fields["restricted_directories"].default_factory() # type: ignore
     for restricted in restricted_prefixes:
         if str(resolved).startswith(restricted):
             msg = f"trusted_directory cannot be a system directory: {restricted}"
@@ -67,6 +68,13 @@ class SystemConfig(BaseModel):
     )
     interface_target: InterfaceTarget | None = Field(
         default=None, description="Target interface structure configuration"
+    )
+    interface_generation_iteration: int = Field(
+        default=0, description="The AL iteration number to inject the generated interface target."
+    )
+    restricted_directories: list[str] = Field(
+        default_factory=lambda: ["/etc", "/bin", "/usr", "/sbin", "/var", "/lib", "/boot", "/root"],
+        description="System directories forbidden from sandbox execution.",
     )
 
 
@@ -147,7 +155,8 @@ class DynamicsConfig(BaseModel):
             raise ValueError(msg)
 
         # Security: forbid system directories
-        restricted_prefixes = ["/etc", "/bin", "/usr", "/sbin", "/var", "/lib", "/boot", "/root"]
+        from src.domain_models.config import SystemConfig
+        restricted_prefixes = SystemConfig.model_fields["restricted_directories"].default_factory() # type: ignore
         for restricted in restricted_prefixes:
             if str(resolved).startswith(restricted):
                 msg = f"project_root cannot be a system directory: {restricted}"
@@ -278,6 +287,9 @@ class TrainerConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     max_epochs: int = Field(
         default=50, ge=1, le=10000, description="Number of epochs for fine-tuning"
+    )
+    max_potential_size: int = Field(
+        default=104857600, ge=1024, description="Maximum allowed YACE file size in bytes (default 100MB)"
     )
     active_set_size: int = Field(
         default=500, ge=1, le=10000, description="Target size of active set for D-Optimality"
@@ -442,11 +454,17 @@ class ProjectConfig(BaseSettings):
     def validate_env_content(cls, values: dict[str, Any]) -> dict[str, Any]:
         from pathlib import Path
 
+        from src.dynamics.security_utils import (
+            _validate_env_key,
+            _validate_env_value,
+            validate_env_file_security,
+        )
+
         expected_base = Path.cwd().resolve(strict=True)
         env_file = expected_base / ".env"
 
         if env_file.exists():
-            resolved_env = cls._validate_env_file_security(env_file, expected_base)
+            resolved_env = validate_env_file_security(env_file, expected_base)
 
             with Path.open(resolved_env, encoding="utf-8") as f:
                 for raw_line in f:
@@ -458,8 +476,8 @@ class ProjectConfig(BaseSettings):
                     key = key.strip()
                     val = val.strip().strip("'").strip('"')
 
-                    cls._validate_env_key(key)
-                    cls._validate_env_value(val)
+                    _validate_env_key(key)
+                    _validate_env_value(val)
 
         return values
 
@@ -504,7 +522,8 @@ class ProjectConfig(BaseSettings):
             raise ValueError(msg)
 
         # Security: forbid system directories
-        restricted_prefixes = ["/etc", "/bin", "/usr", "/sbin", "/var", "/lib", "/boot", "/root"]
+        from src.domain_models.config import SystemConfig
+        restricted_prefixes = SystemConfig.model_fields["restricted_directories"].default_factory() # type: ignore
         for restricted in restricted_prefixes:
             if str(resolved_path).startswith(restricted):
                 msg = f"project_root cannot be a system directory: {restricted}"

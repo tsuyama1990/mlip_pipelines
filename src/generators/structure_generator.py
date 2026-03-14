@@ -61,18 +61,27 @@ class StructureGenerator(AbstractGenerator):
             # Or just build an L1_0 ordered FePt? The tutorial explicitly mentions FePt vs MgO.
             # Let's generate a basic FePt structure and an MgO structure.
 
-            # This is a simplified interface construction
-            if target.element1 == "FePt":
-                mat1 = bulk("Fe", crystalstructure="fcc", a=3.8) # type: ignore[no-untyped-call]
-                # To simulate FePt, change one atom to Pt
-                mat1[0].symbol = "Pt"
-            else:
-                mat1 = bulk(target.element1) # type: ignore[no-untyped-call]
+            # This is a simplified interface construction registry
+            def _build_fept() -> Atoms:
+                mat = bulk("Fe", crystalstructure="fcc", a=3.8) # type: ignore[no-untyped-call]
+                mat[0].symbol = "Pt"
+                return mat
 
-            if target.element2 == "MgO":
-                mat2 = bulk("MgO", crystalstructure="rocksalt", a=4.21, basis=[[0, 0, 0], [0.5, 0.5, 0.5]]) # type: ignore[no-untyped-call]
-            else:
-                mat2 = bulk(target.element2) # type: ignore[no-untyped-call]
+            def _build_mgo() -> Atoms:
+                return bulk("MgO", crystalstructure="rocksalt", a=4.21, basis=[[0, 0, 0], [0.5, 0.5, 0.5]]) # type: ignore[no-untyped-call]
+
+            builders = {
+                "FePt": _build_fept,
+                "MgO": _build_mgo
+            }
+
+            def _build_generic(element: str) -> Atoms:
+                if element in builders:
+                    return builders[element]()
+                return bulk(element) # type: ignore[no-untyped-call]
+
+            mat1 = _build_generic(target.element1)
+            mat2 = _build_generic(target.element2)
 
             # Adjust lattice parameters slightly to allow stacking without crashing
             # In a real scenario, this would use sophisticated mismatch analysis
