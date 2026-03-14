@@ -48,6 +48,7 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["S101", "S603", "C901", "PLR0915", "SIM117", "TRY002"]  # Allow assert in tests
 "src/core/orchestrator.py" = ["C901", "TRY301", "PLR0915", "PLR0912"]
+"src/domain_models/config.py" = ["C901"]
 "src/trainers/ace_trainer.py" = ["C901", "PLR0915"]
 "src/dynamics/dynamics_engine.py" = ["S311", "TRY301"]
 "tutorials/**/*.py" = ["N803", "N807", "F401", "W293", "C901", "RUF001", "B018", "T201", "PLR0915"]

@@ -44,6 +44,10 @@ def validate_executable_path(
     Returns the resolved absolute path as a Path object if safe, raises ValueError otherwise.
     """
 
+    if Path(executable_name).is_absolute():
+        msg = "Executable name cannot be absolute path"
+        raise ValueError(msg)
+
     if not re.match(r"^[/a-zA-Z0-9_.-]+$", executable_name) or ".." in executable_name:
         msg = "Invalid characters in executable name"
         raise ValueError(msg)

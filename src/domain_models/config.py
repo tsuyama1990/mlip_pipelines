@@ -23,6 +23,10 @@ def _validate_single_trusted_dir(path: str) -> str | None:
         msg = f"Path traversal characters not allowed in trusted_directory: {path}"
         raise ValueError(msg)
 
+    if not Path(path).is_absolute():
+        msg = f"trusted_directory must be absolute: {path}"
+        raise ValueError(msg)
+
     try:
         st_info = os.lstat(path)
         if stat.S_ISLNK(st_info.st_mode):
@@ -97,6 +101,15 @@ class DynamicsConfig(BaseModel):
         description="Binary name or path for EON client",
         pattern=r"^[a-zA-Z0-9_-]+$",
     )
+
+    @field_validator("lmp_binary", "eon_binary")
+    @classmethod
+    def validate_binary_names(cls, v: str) -> str:
+        if "/" in v or "\\" in v or ".." in v:
+            msg = "Binary name cannot contain path separators or traversal characters."
+            raise ValueError(msg)
+        return v
+
     trusted_directories: list[str] = Field(
         ...,
         description="List of trusted directories for executables. Required.",
@@ -174,6 +187,10 @@ class DynamicsConfig(BaseModel):
 
         if ".." in path:
             msg = f"Path traversal characters not allowed in trusted_directory: {path}"
+            raise ValueError(msg)
+
+        if not Path(path).is_absolute():
+            msg = f"trusted_directory must be absolute: {path}"
             raise ValueError(msg)
 
         try:
@@ -310,6 +327,15 @@ class TrainerConfig(BaseModel):
         description="Binary name or path for pace_activeset",
         pattern=r"^[a-zA-Z0-9_-]+$",
     )
+
+    @field_validator("pace_train_binary", "pace_activeset_binary")
+    @classmethod
+    def validate_binary_names(cls, v: str) -> str:
+        if "/" in v or "\\" in v or ".." in v:
+            msg = "Binary name cannot contain path separators or traversal characters."
+            raise ValueError(msg)
+        return v
+
     trusted_directories: list[str] = Field(
         ...,
         description="List of trusted directories for executables. Required.",
@@ -435,7 +461,7 @@ class ProjectConfig(BaseSettings):
 
         resolved_env = env_file.resolve(strict=True)
 
-        if resolved_env.parent != expected_base:
+        if resolved_env.parent != expected_base.resolve(strict=True):
             msg = f".env file must reside directly in the allowed base directory: {expected_base}"
             raise ValueError(msg)
 
@@ -467,6 +493,7 @@ class ProjectConfig(BaseSettings):
         )
 
         expected_base = Path.cwd().resolve(strict=True)
+        # Using the base directory strictly, not allowing arbitrary values for .env paths
         env_file = expected_base / ".env"
 
         if env_file.exists():
