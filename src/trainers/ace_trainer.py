@@ -27,6 +27,13 @@ class PacemakerWrapper(AbstractTrainer):
         """Appends new structures to the dataset using a single streaming operation."""
         resolved_path = dataset_path.resolve()
 
+        # Security check: Ensure dataset path is within trusted base directory
+        if hasattr(self.config, "project_root"):
+            proj_root = Path(self.config.project_root).resolve(strict=True)
+            if not resolved_path.is_relative_to(proj_root):
+                msg = f"Dataset path is outside the trusted base directory: {resolved_path}"
+                raise ValueError(msg)
+
         # Verify it writes to a valid directory to prevent path traversal
         if not resolved_path.parent.exists():
             resolved_path.parent.mkdir(parents=True, exist_ok=True)
@@ -153,7 +160,8 @@ class PacemakerWrapper(AbstractTrainer):
                     is_trusted = False
                     for trusted_path in trusted_dirs:
                         try:
-                            if resolved_bin.is_relative_to(Path(trusted_path).resolve(strict=True)):
+                            resolved_trusted = Path(trusted_path).resolve(strict=True)
+                            if resolved_bin.is_relative_to(resolved_trusted):
                                 is_trusted = True
                                 break
                         except OSError:
@@ -311,7 +319,8 @@ class PacemakerWrapper(AbstractTrainer):
                 is_trusted = False
                 for td in trusted_dirs:
                     try:
-                        if resolved_bin.is_relative_to(Path(td).resolve(strict=True)):
+                        resolved_trusted = Path(td).resolve(strict=True)
+                        if resolved_bin.is_relative_to(resolved_trusted):
                             is_trusted = True
                             break
                     except OSError:

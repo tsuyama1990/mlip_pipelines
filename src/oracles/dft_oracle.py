@@ -143,7 +143,11 @@ class DFTManager(AbstractOracle):
             msg = "Cell dimensions must be strictly positive and finite for kspacing calculation"
             raise ValueError(msg)
 
+        # SECURITY: ensure the kspacing calculation does not explode into millions of k-points and DoS the computation
         kpts = [int(np.ceil(2 * np.pi / (self.config.kspacing * x))) for x in b]
+        if np.prod(kpts) > 1000:
+            msg = f"Calculated k-point grid {kpts} exceeds maximum allowed points (1000) to prevent computational exhaustion."
+            raise ValueError(msg)
 
         # Validated smearing
         degauss = self.config.smearing_width if self.config.smearing_width > 0.0 else 0.02
