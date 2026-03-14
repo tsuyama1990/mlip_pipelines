@@ -139,37 +139,55 @@ The architecture cleanly extends the existing domain objects to support the new 
 
 ## 5. Implementation Plan
 
-The project development is decomposed into six strictly sequential cycles, ensuring a stable, additive build process.
+The project development is decomposed into six strictly sequential cycles, ensuring a stable, additive build process. Each cycle provides concrete class blueprints, precise API contracts, and integration milestones.
 
 *   **Cycle 01: Core Architecture & Configuration Infrastructure**
     *   **Focus:** Establish the foundational directory structure, Abstract Base Classes (`src/core/__init__.py`), and the comprehensive Pydantic configuration models (`src/domain_models/config.py`).
-    *   **Implementation:** Define all configuration schemas (`ProjectConfig`, `SystemConfig`, `InterfaceTarget`, etc.) with strict validation rules (path traversal prevention, whitelist checking). Define the core DTOs (`HaltInfo`, `ExplorationStrategy`) in `dtos.py`. Implement robust security utility functions in `security_utils.py` to handle safe environment loading and path resolution.
-    *   **Output:** The fully typed configuration layer capable of safely parsing user inputs and environment variables, ready to be injected into the functional modules.
+    *   **Implementation Details:**
+        *   Define all configuration schemas (`ProjectConfig`, `SystemConfig`, `InterfaceTarget`, etc.) utilizing `pydantic-settings` to manage environment injections. Ensure absolute strictness (`extra="forbid"`) to prevent unknown parameter injection.
+        *   Implement robust security utility functions in `security_utils.py` to handle safe environment loading. Enforce strict `os.lstat` symlink checks, path traversal prevention (`..`), and directory ownership assertions (`os.getuid()`).
+        *   Define the core immutable Data Transfer Objects (`HaltInfo`, `ExplorationStrategy`) in `dtos.py`, ensuring all downstream modules communicate via these strict contracts rather than loose dictionaries.
+    *   **Output:** The fully typed configuration layer capable of safely parsing user inputs and environment variables, fundamentally ready to be securely injected into the functional modules.
 
 *   **Cycle 02: Dynamics Engines (Exploration)**
     *   **Focus:** Implement the `MDInterface` (LAMMPS) and `EONWrapper` (kMC) fulfilling the `AbstractDynamics` contract.
-    *   **Implementation:** Build `src/dynamics/dynamics_engine.py` to orchestrate LAMMPS subprocesses. Implement the OTF halt detection logic by monitoring the `pace_gamma` compute. Build `src/dynamics/eon_wrapper.py` for kMC exploration. Ensure both engines return the strictly typed `HaltInfo` DTO when a high-uncertainty event triggers an interrupt.
-    *   **Output:** The exploration layer capable of simulating atomic systems and safely halting upon detecting extrapolation regions.
+    *   **Implementation Details:**
+        *   Build `src/dynamics/dynamics_engine.py` to orchestrate LAMMPS subprocesses. Implement the OTF halt detection logic by monitoring the `pace_gamma` compute inside LAMMPS and raising a `DynamicsHaltInterrupt`.
+        *   Build `src/dynamics/eon_wrapper.py` for kMC exploration, utilizing a custom `pace_driver.py` script as the EON potential driver.
+        *   Implement the `extract_high_gamma_structures` method specifically within `MDInterface` to parse the LAMMPS dump trajectory, isolating the exact atomic environments responsible for triggering the halt.
+    *   **Output:** The complete exploration layer capable of simulating atomic systems, monitoring uncertainty thresholds, and safely halting execution, returning precisely extracted uncharacterized structural clusters.
 
 *   **Cycle 03: Structure Generation & Interface Building**
-    *   **Focus:** Implement the `StructureGenerator` fulfilling the `AbstractGenerator` contract, and the `AdaptiveExplorationPolicyEngine`.
-    *   **Implementation:** Build `src/generators/structure_generator.py` to handle standard defect generation and local candidate perturbations around halted structures. Critically, implement the `generate_interface` method to handle the additive `InterfaceTarget` requirement (e.g., building FePt/MgO boundaries using ASE `bulk` and `stack` functions).
-    *   **Output:** The generation layer capable of proposing new, targeted structural configurations for the Oracle to evaluate.
+    *   **Focus:** Implement the `StructureGenerator` fulfilling the `AbstractGenerator` contract, alongside the `AdaptiveExplorationPolicyEngine`.
+    *   **Implementation Details:**
+        *   Build `src/generators/structure_generator.py` to handle standard defect generation (vacancies, substitutions) and local candidate perturbations (random rattling via ASE) around halted structures.
+        *   Critically, implement the `generate_interface` method to seamlessly handle the newly defined `InterfaceTarget` requirement. This method must natively employ `ase.build.bulk` and `ase.build.stack` to programmatically build multi-material boundaries (e.g., FePt and MgO interfaces), respecting specified terminating faces.
+        *   Build the `AdaptiveExplorationPolicyEngine` (`adaptive_policy.py`) to determine the optimal exploration strategy based on material parameters (bulk modulus, melting point).
+    *   **Output:** The generation layer capable of proposing new, intelligently targeted structural configurations for the Oracle to evaluate, expanding the material phase space beyond simple random walks.
 
 *   **Cycle 04: The DFT Oracle (Ground Truth Evaluation)**
     *   **Focus:** Implement the `DFTManager` fulfilling the `AbstractOracle` contract.
-    *   **Implementation:** Build `src/oracles/dft_oracle.py` to orchestrate Quantum ESPRESSO calculations via ASE. Implement the critical "Periodic Embedding" logic to properly isolate and evaluate the local high-uncertainty environments extracted during an OTF halt. Ensure robust error handling and retry mechanisms for SCF convergence failures (`OracleConvergenceError`).
-    *   **Output:** The evaluation layer capable of converting uncharacterized atomic structures into high-fidelity training data (energies, forces, stresses).
+    *   **Implementation Details:**
+        *   Build `src/oracles/dft_oracle.py` to orchestrate Quantum ESPRESSO calculations via the ASE `Espresso` calculator.
+        *   Implement the critical "Periodic Embedding" logic natively to isolate and evaluate the local high-uncertainty environments extracted during an OTF halt within appropriately sized orthorhombic supercells.
+        *   Ensure robust error handling and automated retry mechanisms (adjusting `mixing_beta` or `diagonalization`) for `SCF` convergence failures, raising a domain-specific `OracleConvergenceError` only upon terminal failure.
+    *   **Output:** The robust evaluation layer capable of autonomously converting uncharacterized atomic clusters into high-fidelity ground truth training data (energies, forces, stresses).
 
 *   **Cycle 05: The ACE Trainer & Dataset Management**
     *   **Focus:** Implement the `PacemakerWrapper` fulfilling the `AbstractTrainer` contract.
-    *   **Implementation:** Build `src/trainers/ace_trainer.py` to manage the active learning dataset (converting ASE Atoms to Pacemaker formats) and orchestrate the `pace_train` subprocess. Implement the active set selection logic using D-Optimality to minimize computational overhead during subsequent training phases. Ensure the output is a valid, securely hashed `.yace` potential file.
-    *   **Output:** The training layer capable of continuously refining the interatomic potential using the newly acquired Oracle data.
+    *   **Implementation Details:**
+        *   Build `src/trainers/ace_trainer.py` to orchestrate the `pace_train` and `pace_activeset` subprocesses.
+        *   Implement dataset conversion tools to format standard ASE `Atoms` objects into the Pacemaker `.pckl.gzip` format using the `ExtXYZ` standard.
+        *   Implement the active set selection logic using D-Optimality algorithms to intelligently prune redundant structures, drastically minimizing computational overhead during subsequent retraining phases.
+        *   Enforce strict file integrity validation, utilizing streaming `hashlib.sha256` checks and `os.fstat` file size bounds to prevent OOM errors and corrupted `.yace` potentials.
+    *   **Output:** The secure training layer capable of continuously refining the interatomic potential efficiently using only the most mathematically informative structures.
 
 *   **Cycle 06: Orchestration, Validation & Tutorials**
-    *   **Focus:** Implement the central `ActiveLearningOrchestrator`, the `Validator`, and build the interactive user tutorials.
-    *   **Implementation:** Build `src/core/orchestrator.py` to tie all previous cycles together. Implement the strict state machine loop: setup isolated temporary directories, execute exploration, handle `DynamicsHaltInterrupt`, trigger candidate generation, compute DFT forces, train the new potential, validate it (`src/validators/validator.py`), and finally deploy it atomically using `shutil.move`. Create the `tutorials/UAT_AND_TUTORIAL.py` Marimo notebook to provide a compelling, interactive demonstration of the entire pipeline, including the FePt/MgO interface generation and the OTF halt-and-heal mechanisms in a simulated "Mock Mode".
-    *   **Output:** The fully functional, automated MLIP pipeline and its accompanying user documentation.
+    *   **Focus:** Tie the isolated modules together using the central `ActiveLearningOrchestrator`, implement the `Validator`, and build the interactive user tutorials.
+    *   **Implementation Details:**
+        *   Build `src/core/orchestrator.py` to operate the strict state machine loop: setup secure temporary execution directories via context managers, execute dynamic exploration, handle `DynamicsHaltInterrupt`, trigger candidate generation, evaluate DFT forces, execute potential training, validate the result (`src/validators/validator.py`), and atomically deploy it using `shutil.move` to prevent cross-device link failures.
+        *   Create the `tutorials/UAT_AND_TUTORIAL.py` Marimo notebook to provide a compelling, interactive demonstration of the entire pipeline. The notebook must demonstrate the FePt/MgO interface generation and the exact OTF "halt-and-heal" logic visually, running in a simulated "Mock Mode" for instant CI verification.
+    *   **Output:** The fully functional, automated MLIP pipeline, complete with strict QA validation and interactive, executable user documentation.
 
 ## 6. Test Strategy
 
