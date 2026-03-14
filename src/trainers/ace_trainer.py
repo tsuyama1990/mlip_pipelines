@@ -222,7 +222,6 @@ class PacemakerWrapper(AbstractTrainer):
             msg = "Invalid regularization format"
             raise ValueError(msg)
 
-
         train_binary_setting = self.config.pace_train_binary
         trusted_dirs = [
             "/usr/bin",

@@ -158,7 +158,9 @@ class Orchestrator:
         has_new_data = False
         for i, batch in enumerate(candidate_generator):
             if i >= 100:
-                logging.warning("Maximum batch limit reached. Stopping generator to prevent resource exhaustion.")
+                logging.warning(
+                    "Maximum batch limit reached. Stopping generator to prevent resource exhaustion."
+                )
                 break
             batch_calc_dir = tmp_work_dir / f"dft_calc_batch_{i}"
             new_data = self.oracle.compute_batch(batch, batch_calc_dir)
