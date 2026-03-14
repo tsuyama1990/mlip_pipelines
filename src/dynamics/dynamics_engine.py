@@ -7,10 +7,11 @@ from ase import Atoms
 from ase.data import atomic_numbers
 from ase.io import read
 
+from src.core import AbstractDynamics
 from src.domain_models.config import DynamicsConfig, SystemConfig
 
 
-class MDInterface:
+class MDInterface(AbstractDynamics):
     """Manages LAMMPS execution using the python module or subprocess."""
 
     def __init__(self, config: DynamicsConfig, system_config: SystemConfig) -> None:

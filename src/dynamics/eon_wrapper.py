@@ -2,10 +2,11 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from src.core import AbstractDynamics
 from src.domain_models.config import DynamicsConfig, SystemConfig
 
 
-class EONWrapper:
+class EONWrapper(AbstractDynamics):
     """Manages EON execution and OTF handling."""
 
     def __init__(self, config: DynamicsConfig, system_config: SystemConfig) -> None:
@@ -61,6 +62,10 @@ class EONWrapper:
         with Path.open(driver_path, "w") as f:
             f.write(driver_content)
         driver_path.chmod(0o755)
+
+    def run_exploration(self, potential: Path | None, work_dir: Path) -> dict[str, Any]:
+        """Runs MD or KMC exploration until a halt condition or completion."""
+        return self.run_kmc(potential, work_dir)
 
     def run_kmc(self, potential: Path | None, work_dir: Path) -> dict[str, Any]:  # noqa: C901, PLR0912, PLR0915
         """Runs EON client in the specified working directory."""

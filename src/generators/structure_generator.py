@@ -1,9 +1,10 @@
 from ase import Atoms
 
+from src.core import AbstractGenerator
 from src.domain_models.config import StructureGeneratorConfig
 
 
-class StructureGenerator:
+class StructureGenerator(AbstractGenerator):
     """Generates localized candidate structures around an uncertain anchor."""
 
     def __init__(self, config: StructureGeneratorConfig) -> None:

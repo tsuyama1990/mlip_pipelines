@@ -6,13 +6,14 @@ from typing import Any
 from ase import Atoms
 from ase.io import write
 
+from src.core import AbstractTrainer
 from src.domain_models.config import TrainerConfig
 
 BINARY_NAME_PATTERN = re.compile(r"^[-a-zA-Z0-9_.]+$")
 PARAM_PATTERN = re.compile(r"^[-a-zA-Z0-9_.]+$")
 
 
-class PacemakerWrapper:
+class PacemakerWrapper(AbstractTrainer):
     """Manages Pacemaker active set selection and training."""
 
     def __init__(self, config: TrainerConfig) -> None:
@@ -37,7 +38,7 @@ class PacemakerWrapper:
         return resolved_path
 
     def select_local_active_set(  # noqa: PLR0912
-        self, candidates: list[Atoms], anchor: Atoms, n: int
+        self, candidates: list[Atoms], anchor: Atoms, n: int = 5
     ) -> list[Atoms]:
         """Local D-Optimality selection of candidates."""
         import tempfile

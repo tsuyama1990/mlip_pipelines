@@ -4,10 +4,11 @@ from pathlib import Path
 from ase import Atoms
 from ase.calculators.espresso import Espresso
 
+from src.core import AbstractOracle
 from src.domain_models.config import OracleConfig
 
 
-class DFTManager:
+class DFTManager(AbstractOracle):
     """Orchestrates Quantum ESPRESSO via ASE for labeling."""
 
     def __init__(self, config: OracleConfig) -> None:

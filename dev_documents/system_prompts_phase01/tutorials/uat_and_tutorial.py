@@ -32,7 +32,6 @@ def __(mo):
 def __():
     import sys
     from pathlib import Path
-    from typing import Any
 
     # Path patching for headless test execution directly
     sys.path.insert(0, str(Path.cwd()))
