@@ -41,7 +41,9 @@ def test_uat_03_01_successful_dft_calculation_and_embedding(tmp_path: Path):
              patch("ase.Atoms.get_stress", return_value=[0,0,0,0,0,0]):
 
             # WHEN compute_batch() is called with these structures
-            results = manager.compute_batch([cluster], tmp_path)
+            import tempfile
+            calc_dir = Path(tempfile.gettempdir()) / "uat_dir1"
+            results = manager.compute_batch([cluster], calc_dir)
 
             # THEN each structure should be processed by _apply_periodic_embedding()
             # AND the resulting Atoms objects passed to the calculator should have pbc=True
@@ -101,7 +103,9 @@ def test_uat_03_02_self_healing_on_scf_convergence_failure(tmp_path: Path):
             "ase.Atoms.get_forces", mock_get_forces
         ), patch("ase.Atoms.get_stress", mock_get_stress):
 
-            results = manager.compute_batch([cluster], tmp_path)
+            import tempfile
+            calc_dir = Path(tempfile.gettempdir()) / "uat_dir2"
+            results = manager.compute_batch([cluster], calc_dir)
 
             # AND the DFTManager should catch this exception
             # AND the mixing_beta parameter on the calculator should be automatically reduced (e.g., from 0.7 to 0.3)

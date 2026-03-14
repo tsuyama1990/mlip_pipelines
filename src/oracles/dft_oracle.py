@@ -42,6 +42,12 @@ class DFTManager(AbstractOracle):
             msg = f"Atomic structure is too large (exceeds {self.config.max_atoms} atoms). Potential memory exhaustion."
             raise ValueError(msg)
 
+        # DoS Protection: validate global atoms
+        global_atoms = atoms.get_global_number_of_atoms()  # type: ignore[no-untyped-call]
+        if global_atoms > self.config.max_atoms * 10:
+            msg = f"Global structure size ({global_atoms}) exceeds extreme physical bounds, possible DoS attempt."
+            raise ValueError(msg)
+
         self._validate_symbols(atoms)
         self._validate_distances(embedded)
 
@@ -106,9 +112,57 @@ class DFTManager(AbstractOracle):
                 raise ValueError(msg)
             return pseudo_dir_path
 
-    def _validate_pseudopotentials(self, symbols: set[str]) -> dict[str, str]:
+    def _validate_upf_content(self, upf_path: Path, upf_name: str) -> None:
         import os
         import stat
+        try:
+            fd = os.open(str(upf_path), os.O_RDONLY | os.O_NOFOLLOW)
+        except OSError as e:
+            msg = f"Failed to securely open pseudopotential (possibly a symlink): {upf_name}"
+            raise FileNotFoundError(msg) from e
+
+        # Ensure fd is tracked for cleanup until os.fdopen takes ownership
+        fd_owned_by_fdopen = False
+        try:
+            st = os.fstat(fd)
+            is_reg = stat.S_ISREG(st.st_mode)
+            is_owned = st.st_uid == os.getuid()
+
+            if not is_reg:
+                msg = f"Pseudopotential must be a regular file: {upf_name}"
+                raise ValueError(msg)
+
+            if not is_owned:
+                msg = f"Pseudopotential file ownership violation: {upf_name} is not owned by the current user."
+                raise ValueError(msg)
+
+            with os.fdopen(fd, "r", encoding="utf-8") as f:
+                fd_owned_by_fdopen = True
+                content = f.read()
+
+            has_open = "<UPF" in content or "PP_INFO" in content
+            has_close = "</UPF>" in content or "PP_INFO" in content
+
+            if not has_open:
+                msg = f"Invalid UPF format for pseudopotential: {upf_name}. Missing required opening tags."
+                raise ValueError(msg)
+            if not has_close:
+                msg = f"Invalid UPF format for pseudopotential: {upf_name}. Missing required closing tags."
+                raise ValueError(msg)
+
+        except UnicodeDecodeError as e:
+            msg = f"File is corrupted or not utf-8 text: {upf_name}"
+            raise ValueError(msg) from e
+        except Exception:
+            raise
+        finally:
+            if not fd_owned_by_fdopen:
+                import contextlib
+                with contextlib.suppress(OSError):
+                    os.close(fd)
+
+    def _validate_pseudopotentials(self, symbols: set[str]) -> dict[str, str]:
+        import os
         pseudos = {}
         pseudo_dir_path = self._get_pseudo_dir_path()
 
@@ -119,11 +173,16 @@ class DFTManager(AbstractOracle):
                 raise ValueError(msg)
 
             upf_name = f"{el}.upf"
-            upf_path = pseudo_dir_path / upf_name
+            # Strict resolution before usage to prevent directory escape aliases
+            try:
+                upf_path = pseudo_dir_path.joinpath(upf_name).resolve(strict=True)
+            except FileNotFoundError as e:
+                msg = f"Pseudopotential file not found: {upf_name} in {pseudo_dir_path}"
+                raise FileNotFoundError(msg) from e
 
             # Robust pre-resolution TOCTOU validation using commonpath
             try:
-                is_safe = os.path.commonpath([str(pseudo_dir_path), os.path.normpath(str(upf_path))]) == str(pseudo_dir_path)
+                is_safe = os.path.commonpath([str(pseudo_dir_path), str(upf_path)]) == str(pseudo_dir_path)
             except ValueError as e:
                 msg = f"Invalid path constructed for pseudopotential: {upf_name}"
                 raise ValueError(msg) from e
@@ -132,28 +191,7 @@ class DFTManager(AbstractOracle):
                 msg = f"Path traversal detected: {upf_name}"
                 raise ValueError(msg)
 
-            try:
-                # Open directly to avoid TOCTOU .exists() race conditions
-                # Errors out natively if missing/unreadable
-                with Path.open(upf_path, "r", encoding="utf-8") as f:
-                    fd = f.fileno()
-                    st = os.fstat(fd)
-                    import stat
-                    if not stat.S_ISREG(st.st_mode):
-                        msg = f"Pseudopotential must be a regular file: {upf_name}"
-                        raise ValueError(msg)
-
-                    content = f.read()
-
-                    if "<UPF" not in content and "PP_INFO" not in content:
-                        msg = f"Invalid UPF format for pseudopotential: {upf_name}. Missing required opening tags."
-                        raise ValueError(msg)
-                    if "</UPF>" not in content and "PP_INFO" not in content:
-                        msg = f"Invalid UPF format for pseudopotential: {upf_name}. Missing required closing tags."
-                        raise ValueError(msg)
-            except UnicodeDecodeError as e:
-                msg = f"File is corrupted or not utf-8 text: {upf_name}"
-                raise ValueError(msg) from e
+            self._validate_upf_content(upf_path, upf_name)
 
             pseudos[el] = upf_name
         return pseudos
@@ -171,7 +209,16 @@ class DFTManager(AbstractOracle):
             msg = "Cell dimensions must be strictly positive and finite for kspacing calculation"
             raise ValueError(msg)
 
-        kpts = [int(np.ceil(2 * np.pi / (self.config.kspacing * x))) for x in b]
+        kpts = []
+        for x in b:
+            # Safe integer arithmetic and bounds checking before appending
+            val_float = np.ceil(2 * np.pi / (self.config.kspacing * x))
+            if val_float > self.config.max_kpoints:
+                msg = f"Calculated dimension k-points ({val_float}) exceeds maximum absolute points ({self.config.max_kpoints})"
+                raise ValueError(msg)
+            kpts.append(int(val_float))
+
+        # Check total grid size
         if np.prod(kpts) > self.config.max_kpoints:
             msg = f"Calculated k-point grid {kpts} exceeds maximum allowed points ({self.config.max_kpoints}) to prevent computational exhaustion."
             raise ValueError(msg)
@@ -221,14 +268,34 @@ class DFTManager(AbstractOracle):
             input_data=input_data,
         )
 
+    def _update_calc_parameters(self, calc: Espresso, attempt: int) -> None:
+        """Securely mutates calculator parameters for self-healing."""
+        if attempt == 0:
+            calc.parameters["input_data"]["electrons"]["mixing_beta"] = 0.3
+        elif attempt == 1:
+            calc.parameters["input_data"]["electrons"]["diagonalization"] = "cg"
+        else:
+            calc.parameters["input_data"]["electrons"]["mixing_beta"] = 0.1
+
     def compute_batch(self, structures: list[Atoms], calc_dir: Path) -> list[Atoms]:
         """Runs DFT on a batch of structures with self-healing."""
+        import tempfile
+
         from src.core.exceptions import OracleConvergenceError
-        calc_dir.mkdir(parents=True, exist_ok=True)
+
+        # Secure workspace execution: ensure calc_dir is inside tempfile.gettempdir()
+        tmp_base = Path(tempfile.gettempdir()).resolve(strict=True)
+        resolved_calc_dir = calc_dir.resolve(strict=False)
+
+        if not resolved_calc_dir.is_relative_to(tmp_base):
+            msg = f"Security Violation: Oracle compute batches must be executed inside a trusted temporary directory, not {calc_dir}"
+            raise ValueError(msg)
+
+        resolved_calc_dir.mkdir(parents=True, exist_ok=True)
         results = []
 
         for i, atoms in enumerate(structures):
-            work_dir = calc_dir / f"struct_{i}"
+            work_dir = resolved_calc_dir / f"struct_{i}"
             work_dir.mkdir(parents=True, exist_ok=True)
 
             embedded_atoms = self._apply_periodic_embedding(atoms)
@@ -250,12 +317,7 @@ class DFTManager(AbstractOracle):
                     last_exception = e
                     if attempt < self.config.max_retries:
                         logging.warning(f"SCF failed for struct {i} attempt {attempt + 1}: {e}. Attempting self-healing...")
-                        if attempt == 0:
-                            calc.parameters["input_data"]["electrons"]["mixing_beta"] = 0.3
-                        elif attempt == 1:
-                            calc.parameters["input_data"]["electrons"]["diagonalization"] = "cg"
-                        else:
-                            calc.parameters["input_data"]["electrons"]["mixing_beta"] = 0.1
+                        self._update_calc_parameters(calc, attempt)
                     else:
                         logging.warning(f"Failed completely for struct {i} after {self.config.max_retries} retries: {e}")
 

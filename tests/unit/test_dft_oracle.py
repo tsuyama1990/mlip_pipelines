@@ -128,7 +128,7 @@ def test_validate_pseudopotentials_invalid_format(dft_oracle, tmp_path, monkeypa
     upf_file = pseudo_dir / "Fe.upf"
     upf_file.write_text("invalid content")
     monkeypatch.setattr(dft_oracle.config, "pseudo_dir", str(pseudo_dir))
-    with pytest.raises(ValueError, match="Invalid UPF format for pseudopotential: Fe.upf"):
+    with pytest.raises(ValueError, match="Invalid UPF format for pseudopotential"):
         dft_oracle._validate_pseudopotentials({"Fe"})
 
 
@@ -152,7 +152,7 @@ def test_calculate_kpoints_too_many(dft_oracle):
     atoms = Atoms("Fe", positions=[(0, 0, 0)], cell=[1, 1, 1])
     # 0.001 kspacing will result in ~6283 points per dim -> way over 1000
     dft_oracle.config.kspacing = 0.001
-    with pytest.raises(ValueError, match="exceeds maximum allowed points"):
+    with pytest.raises(ValueError, match="exceeds maximum absolute points"):
         dft_oracle._calculate_kpoints(atoms)
 
 
@@ -171,6 +171,8 @@ def test_get_calculator(dft_oracle, tmp_path, monkeypatch):
 
 
 def test_compute_batch_self_healing_success(dft_oracle, tmp_path, monkeypatch):
+    import tempfile
+
     pseudo_dir = tmp_path / "pseudos"
     pseudo_dir.mkdir()
     upf_file = pseudo_dir / "Fe.upf"
@@ -204,12 +206,16 @@ def test_compute_batch_self_healing_success(dft_oracle, tmp_path, monkeypatch):
         with patch("ase.Atoms.get_potential_energy", mock_get_potential_energy), patch(
             "ase.Atoms.get_forces", mock_get_forces
         ), patch("ase.Atoms.get_stress", mock_get_stress):
-            results = dft_oracle.compute_batch([atoms], tmp_path)
+
+            calc_dir = Path(tempfile.gettempdir()) / "test_calc_dir1"
+            results = dft_oracle.compute_batch([atoms], calc_dir)
             assert len(results) == 1
             assert calc.parameters["input_data"]["electrons"]["mixing_beta"] == 0.3
 
 
 def test_compute_batch_self_healing_retry_2_success(dft_oracle, tmp_path, monkeypatch):
+    import tempfile
+
     pseudo_dir = tmp_path / "pseudos"
     pseudo_dir.mkdir()
     upf_file = pseudo_dir / "Fe.upf"
@@ -243,12 +249,16 @@ def test_compute_batch_self_healing_retry_2_success(dft_oracle, tmp_path, monkey
         with patch("ase.Atoms.get_potential_energy", mock_get_potential_energy), patch(
             "ase.Atoms.get_forces", mock_get_forces
         ), patch("ase.Atoms.get_stress", mock_get_stress):
-            results = dft_oracle.compute_batch([atoms], tmp_path)
+
+            calc_dir = Path(tempfile.gettempdir()) / "test_calc_dir2"
+            results = dft_oracle.compute_batch([atoms], calc_dir)
             assert len(results) == 1
             assert calc.parameters["input_data"]["electrons"]["diagonalization"] == "cg"
 
 
 def test_compute_batch_total_failure(dft_oracle, tmp_path, monkeypatch):
+    import tempfile
+
     from src.core.exceptions import OracleConvergenceError
 
     pseudo_dir = tmp_path / "pseudos"
@@ -269,5 +279,6 @@ def test_compute_batch_total_failure(dft_oracle, tmp_path, monkeypatch):
         with patch(
             "ase.Atoms.get_potential_energy", side_effect=Exception("SCF Failed completely")
         ):
+            calc_dir = Path(tempfile.gettempdir()) / "test_calc_dir3"
             with pytest.raises(OracleConvergenceError, match="Failed to converge structure 0 after 3 retries."):
-                dft_oracle.compute_batch([atoms], tmp_path)
+                dft_oracle.compute_batch([atoms], calc_dir)

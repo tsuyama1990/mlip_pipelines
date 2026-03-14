@@ -17,6 +17,45 @@ class InterfaceTarget(BaseModel):
     face2: str = Field(default="Mg", description="Terminating face of second material")
 
 
+def _check_allowed_base_dirs(resolved_str: str, path_str: str) -> None:
+    import tempfile
+    home_dir = str(Path.home().resolve(strict=True))
+    tmp_dir = str(Path(tempfile.gettempdir()).resolve(strict=True))
+    cwd_dir = str(Path.cwd().resolve(strict=True))
+
+    is_safe = False
+    for safe_base in [home_dir, tmp_dir, cwd_dir]:
+        try:
+            if os.path.commonpath([safe_base, resolved_str]) == safe_base:
+                is_safe = True
+                break
+        except ValueError:
+            pass
+
+    if not is_safe:
+        msg = f"Directory {path_str} must reside securely within an allowed base directory (home, tmp, cwd)."
+        raise ValueError(msg)
+
+    restricted_prefixes = ["/etc", "/bin", "/usr", "/sbin", "/var", "/lib", "/boot", "/root"]
+    for restricted in restricted_prefixes:
+        try:
+            is_restricted = os.path.commonpath([restricted, resolved_str]) == restricted
+        except ValueError:
+            continue
+        if is_restricted:
+            msg = f"Directory cannot be a system directory: {restricted}"
+            raise ValueError(msg)
+
+def _check_ownership_and_perms(resolved: Path, path_str: str) -> None:
+    st = resolved.stat()
+    if st.st_uid != os.getuid():
+        msg = f"Directory {path_str} is not owned by the current user (uid={os.getuid()}). This is insecure."
+        raise ValueError(msg)
+
+    if bool(st.st_mode & stat.S_IWOTH):
+        msg = f"Directory {path_str} is world-writable, which is insecure."
+        raise ValueError(msg)
+
 def _secure_resolve_and_validate_dir(path_str: str, check_exists: bool = True) -> str | None:
     path = Path(path_str)
 
@@ -24,9 +63,22 @@ def _secure_resolve_and_validate_dir(path_str: str, check_exists: bool = True) -
         msg = f"Directory path must be absolute: {path_str}"
         raise ValueError(msg)
 
+    if ".." in path_str:
+        msg = "Path traversal sequences are not allowed."
+        raise ValueError(msg)
+
+    try:
+        resolved = path.resolve(strict=check_exists)
+    except FileNotFoundError:
+        logging.warning(f"Directory skipped as it does not exist: {path_str}")
+        return None
+    except Exception as e:
+        msg = f"Failed to resolve path: {path_str}"
+        raise ValueError(msg) from e
+
     if check_exists:
         try:
-            st_info = os.lstat(path)
+            st_info = os.lstat(resolved)
             if stat.S_ISLNK(st_info.st_mode):
                 msg = f"Directory {path_str} cannot be a symlink."
                 raise ValueError(msg)
@@ -34,28 +86,14 @@ def _secure_resolve_and_validate_dir(path_str: str, check_exists: bool = True) -
             logging.warning(f"Directory skipped as it does not exist: {path_str}")
             return None
 
-    resolved = path.resolve(strict=check_exists)
-
-    if check_exists and not resolved.is_dir():
-        msg = f"Path must be a directory: {path_str}"
-        raise ValueError(msg)
-
-    restricted_prefixes = ["/etc", "/bin", "/usr", "/sbin", "/var", "/lib", "/boot", "/root"]
-    for restricted in restricted_prefixes:
-        if str(resolved).startswith(restricted):
-            msg = f"Directory cannot be a system directory: {restricted}"
+        if not resolved.is_dir():
+            msg = f"Path must be a directory: {path_str}"
             raise ValueError(msg)
+
+    _check_allowed_base_dirs(str(resolved), path_str)
 
     if check_exists:
-        st = resolved.stat()
-        # Strict ownership verification is required first
-        if st.st_uid != os.getuid():
-            msg = f"Directory {path_str} is not owned by the current user (uid={os.getuid()}). This is insecure."
-            raise ValueError(msg)
-
-        if bool(st.st_mode & stat.S_IWOTH):
-            msg = f"Directory {path_str} is world-writable, which is insecure."
-            raise ValueError(msg)
+        _check_ownership_and_perms(resolved, path_str)
 
     return str(resolved)
 
@@ -103,6 +141,13 @@ class DynamicsConfig(BaseModel):
         if "/" in v or "\\" in v or ".." in v:
             msg = "Binary name cannot contain path separators or traversal characters."
             raise ValueError(msg)
+
+        # Verify the binary is natively reachable in the system PATH
+        import shutil
+        if not shutil.which(v):
+            msg = f"Binary {v} not found in PATH or not executable."
+            raise ValueError(msg)
+
         return v
 
     trusted_directories: list[str] = Field(
@@ -113,6 +158,38 @@ class DynamicsConfig(BaseModel):
         default={},
         description="Optional dict mapping binary names to SHA256 hashes for strict validation",
     )
+
+    @model_validator(mode="after")
+    def validate_binary_hashes(self) -> "DynamicsConfig":
+        import hashlib
+        import shutil
+
+        # Helper for validating a specific binary mapping
+        def verify_hash(binary_name: str, expected_hash: str) -> None:
+            bin_path_str = shutil.which(binary_name)
+            if not bin_path_str:
+                msg = f"Binary {binary_name} could not be resolved."
+                raise ValueError(msg)
+
+            bin_path = Path(bin_path_str)
+            # Read in chunks to prevent OOM
+            sha256 = hashlib.sha256()
+            with Path.open(bin_path, "rb") as f:
+                for chunk in iter(lambda: f.read(4096), b""):
+                    sha256.update(chunk)
+
+            if sha256.hexdigest() != expected_hash:
+                msg = f"Binary {binary_name} hash mismatch. Expected {expected_hash}, got {sha256.hexdigest()}"
+                raise ValueError(msg)
+
+        # Check the explicitly required ones if hashes are provided
+        if self.lmp_binary in self.binary_hashes:
+            verify_hash(self.lmp_binary, self.binary_hashes[self.lmp_binary])
+
+        if self.eon_binary in self.binary_hashes:
+            verify_hash(self.eon_binary, self.binary_hashes[self.eon_binary])
+
+        return self
     pace_train_args_template: list[str] = Field(
         default=[
             "--dataset",
@@ -446,61 +523,38 @@ class ProjectConfig(BaseSettings):
 
     @model_validator(mode="before")
     @classmethod
-    def validate_env_content(cls, values: dict[str, Any]) -> dict[str, Any]:  # noqa: PLR0912
+    def validate_env_content(cls, values: dict[str, Any]) -> dict[str, Any]:
         expected_base = Path.cwd().resolve(strict=True)
         env_file = expected_base / ".env"
 
         if env_file.exists():
-            if not env_file.is_file():
-                msg = ".env must be a regular file."
-                raise ValueError(msg)
+            resolved_env = cls._validate_env_file_security(env_file, expected_base)
 
-            if env_file.is_symlink():
-                msg = ".env file must not be a symlink."
-                raise ValueError(msg)
+            from dotenv import dotenv_values
 
-            resolved_env = env_file.resolve(strict=True)
+            # Using well-tested python-dotenv for parsing
+            env_vars = dotenv_values(resolved_env)
 
-            # Additional content safety checks
-            with Path.open(resolved_env, encoding="utf-8") as f:
-                content = f.read()
-                if "import " in content or "eval(" in content or "exec(" in content:
-                    msg = "Suspicious content detected in .env file."
-                    raise ValueError(msg)
+            for key, val in env_vars.items():
+                if val is None:
+                    continue
+                cls._validate_env_key(key)
+                cls._validate_env_value(val)
 
-            with Path.open(resolved_env, encoding="utf-8") as f:
-                fc = f.read()
-                if "import " in fc or "eval(" in fc or "exec(" in fc:
-                    msg = "Suspicious content detected in .env file."
-                    raise ValueError(msg)
-
-            with Path.open(resolved_env, encoding="utf-8") as f:
-                for raw_line in f:
-                    clean_line = raw_line.strip()
-                    if not clean_line or clean_line.startswith("#") or "=" not in clean_line:
-                        continue
-
-                    key, val = clean_line.split("=", 1)
-                    key = key.strip()
-                    val = val.strip().strip("'").strip('"')
-
-                    cls._validate_env_key(key)
-                    cls._validate_env_value(val)
-
-                    # Strict type parsing based on expected model fields
-                    # We inject the parsed and type-checked values directly into the configuration dict
-                    if val.lower() in ("true", "1", "yes"):
-                        values[key.replace("MLIP_", "").lower()] = True
-                    elif val.lower() in ("false", "0", "no"):
-                        values[key.replace("MLIP_", "").lower()] = False
-                    else:
-                        try:
-                            if "." in val:
-                                values[key.replace("MLIP_", "").lower()] = float(val)
-                            else:
-                                values[key.replace("MLIP_", "").lower()] = int(val)
-                        except ValueError:
-                            values[key.replace("MLIP_", "").lower()] = val
+                # We inject the parsed values directly into the configuration dict
+                clean_key = key.replace("MLIP_", "").lower()
+                if val.lower() in ("true", "1", "yes"):
+                    values[clean_key] = True
+                elif val.lower() in ("false", "0", "no"):
+                    values[clean_key] = False
+                else:
+                    try:
+                        if "." in val:
+                            values[clean_key] = float(val)
+                        else:
+                            values[clean_key] = int(val)
+                    except ValueError:
+                        values[clean_key] = val
 
         return values
 
