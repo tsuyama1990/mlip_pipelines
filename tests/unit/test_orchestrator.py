@@ -284,3 +284,25 @@ def test_get_latest_potential_invalid_file(
 
     latest = orch.get_latest_potential()
     assert latest is None
+def test_orchestrator_interface_generation_error(tmp_path: Path, mock_project_config: ProjectConfig, monkeypatch: pytest.MonkeyPatch) -> None:
+    import sys
+    from unittest.mock import MagicMock
+
+    from src.domain_models.config import InterfaceTarget
+
+    monkeypatch.setitem(
+        sys.modules, "pyacemaker.calculator", type("pyacemaker", (), {"pyacemaker": True})
+    )
+    from src.core.orchestrator import Orchestrator
+
+    mock_project_config.system.interface_target = InterfaceTarget(
+        element1="FePt", element2="MgO", face1="Fe", face2="Mg"
+    )
+
+    orch = Orchestrator(mock_project_config)
+    # Mock generator to raise error
+    orch.structure_generator.generate_interface = MagicMock(side_effect=RuntimeError("Test error")) # type: ignore
+
+    # Run cycle, should handle the exception and return ERROR
+    res = orch.run_cycle()
+    assert res == "ERROR"

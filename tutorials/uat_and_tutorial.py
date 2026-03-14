@@ -23,6 +23,7 @@ def __() -> tuple[Any, ...]:
     from src.core.orchestrator import Orchestrator
     from src.domain_models.config import (
         DynamicsConfig,
+        InterfaceTarget,
         OracleConfig,
         PolicyConfig,
         ProjectConfig,
@@ -137,6 +138,7 @@ def __() -> tuple[Any, ...]:
         ProjectConfig,
         SystemConfig,
         DynamicsConfig,
+        InterfaceTarget,
         OracleConfig,
         TrainerConfig,
         ValidatorConfig,
@@ -203,15 +205,21 @@ def __p1r(phase1_results: dict[str, Any]) -> None:
 
 
 @app.cell
-def __phase2(setup_orchestrator: Any) -> tuple[Any, dict[str, float]]:
+def __phase2(setup_orchestrator: Any, InterfaceTarget: Any) -> tuple[Any, dict[str, float]]:
     # ==========================================
     # Phase 2: The Aha! Moment (FePt/MgO Interface)
     # ==========================================
     # Here we simulate configuring the pipeline for an interface boundary calculation.
     orchestrator_interface = setup_orchestrator()
     orchestrator_interface.config.system.elements = ["Fe", "Pt", "Mg", "O"]
+    orchestrator_interface.config.system.interface_target = InterfaceTarget(
+        element1="FePt", element2="MgO", face1="Fe", face2="Mg"
+    )
 
     # In a real run, this would generate and relax an interface structure.
+    # We call run_cycle to actually trigger the interface generation and mock AL loop
+    orchestrator_interface.run_cycle()
+
     # For the mock tutorial, we present the final computed mock values.
     interface_energy = 0.85  # J/m^2
     fept_order_parameter = 0.92

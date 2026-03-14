@@ -343,6 +343,32 @@ class Orchestrator:
                 "No initial potential found. Starting cold-start exploration (Baseline only)."
             )
 
+        # Before entering standard loop, check if we need to generate a target interface
+        if self.config.system.interface_target and self.iteration == 0:
+            logging.info("Interface configuration detected. Pre-generating interface target.")
+            try:
+                # Type safe access by ensuring generator is not abstract proxy before calling
+                from src.generators.structure_generator import StructureGenerator
+
+                if isinstance(self.structure_generator, StructureGenerator):
+                    initial_struct = self.structure_generator.generate_interface(
+                        self.config.system.interface_target
+                    )
+                    # We inject this structure into the start of the MD cycle via working directory
+                    # This guarantees the MD simulator reads our generated structure configuration instead of randomly exploring
+                    from ase.io import write
+
+                    work_dir_setup = self.config.project_root / "active_learning" / f"iter_{self.iteration:03d}" / "md_run"
+                    work_dir_setup.mkdir(parents=True, exist_ok=True)
+                    target_file = work_dir_setup / "initial_structure.extxyz"
+                    write(str(target_file), initial_struct, format="extxyz")
+                    logging.info(f"Generated interface structure with {len(initial_struct)} atoms and saved to {target_file}")
+                else:
+                    logging.warning("Structure generator does not support generate_interface")
+            except Exception:
+                logging.exception("Failed to generate interface structure")
+                return "ERROR"
+
         base_dir: Path = self.config.project_root / "active_learning"
         base_dir.mkdir(parents=True, exist_ok=True)
 

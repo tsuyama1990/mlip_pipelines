@@ -146,3 +146,14 @@ def test_dynamics_halt_interrupt() -> None:
 
     assert isinstance(exc, Exception)
     assert str(exc) == msg
+
+def test_interface_target() -> None:
+    from src.domain_models.config import InterfaceTarget
+    target = InterfaceTarget(element1="FePt", element2="MgO", face1="Fe", face2="Mg")
+    assert target.element1 == "FePt"
+    assert target.element2 == "MgO"
+    assert target.face1 == "Fe"
+    assert target.face2 == "Mg"
+
+    with pytest.raises(ValidationError):
+        InterfaceTarget(element1="Fe", element2="MgO", unexpected="field") # type: ignore[call-arg]

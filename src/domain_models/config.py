@@ -5,11 +5,22 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+class InterfaceTarget(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    element1: str = Field(..., description="First element or material (e.g., 'FePt')")
+    element2: str = Field(..., description="Second element or material (e.g., 'MgO')")
+    face1: str = Field(default="Fe", description="Terminating face of first material")
+    face2: str = Field(default="Mg", description="Terminating face of second material")
+
+
 class SystemConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     elements: list[str] = Field(..., min_length=1, description="List of elements in the system")
     baseline_potential: Literal["lj", "zbl"] = Field(
         default="zbl", description="Baseline potential for core repulsion"
+    )
+    interface_target: InterfaceTarget | None = Field(
+        default=None, description="Target interface structure configuration"
     )
 
 

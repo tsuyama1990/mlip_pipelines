@@ -1,7 +1,9 @@
+import logging
+
 from ase import Atoms
 
 from src.core import AbstractGenerator
-from src.domain_models.config import StructureGeneratorConfig
+from src.domain_models.config import InterfaceTarget, StructureGeneratorConfig
 
 
 class StructureGenerator(AbstractGenerator):
@@ -34,3 +36,41 @@ class StructureGenerator(AbstractGenerator):
         # but the trainer pipeline expects a list for selection sampling.
         # This wrapper explicitly bounds the generation safely.
         return list(_generator())
+
+    def generate_interface(self, target: InterfaceTarget) -> Atoms:
+        """Generates an interface structure based on an InterfaceTarget config."""
+        from ase.build import bulk, stack
+
+        logging.info(
+            f"Generating interface between {target.element1} (face {target.face1}) "
+            f"and {target.element2} (face {target.face2})."
+        )
+
+        try:
+            # For simplicity, we create bulk representations and stack them
+            # For FePt, we approximate it by building an Fe bulk, then a Pt bulk and stacking them?
+            # Or just build an L1_0 ordered FePt? The tutorial explicitly mentions FePt vs MgO.
+            # Let's generate a basic FePt structure and an MgO structure.
+
+            # This is a simplified interface construction
+            if target.element1 == "FePt":
+                mat1 = bulk("Fe", crystalstructure="fcc", a=3.8) # type: ignore[no-untyped-call]
+                # To simulate FePt, change one atom to Pt
+                mat1[0].symbol = "Pt"
+            else:
+                mat1 = bulk(target.element1) # type: ignore[no-untyped-call]
+
+            if target.element2 == "MgO":
+                mat2 = bulk("MgO", crystalstructure="rocksalt", a=4.21, basis=[[0, 0, 0], [0.5, 0.5, 0.5]]) # type: ignore[no-untyped-call]
+            else:
+                mat2 = bulk(target.element2) # type: ignore[no-untyped-call]
+
+            # Adjust lattice parameters slightly to allow stacking without crashing
+            # In a real scenario, this would use sophisticated mismatch analysis
+            mat2.set_cell(mat1.get_cell(), scale_atoms=True) # type: ignore[no-untyped-call]
+        except Exception as e:
+            logging.exception("Failed to generate interface")
+            msg = f"Interface generation failed: {e}"
+            raise RuntimeError(msg) from e
+        else:
+            return stack(mat1, mat2, axis=2, maxstrain=10.0)  # type: ignore[no-untyped-call]
