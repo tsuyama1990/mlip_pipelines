@@ -46,11 +46,12 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*.py" = ["S101"]  # Allow assert in tests
+"tests/**/*.py" = ["S101", "S603"]  # Allow assert in tests
 "src/core/orchestrator.py" = ["C901", "TRY301"]
 "src/trainers/ace_trainer.py" = ["C901", "PLR0915"]
 "src/dynamics/dynamics_engine.py" = ["S311", "TRY301"]
-"tutorials/**/*.py" = ["N803", "N807", "F401", "W293"]
+"tutorials/**/*.py" = ["N803", "N807", "F401", "W293", "C901", "RUF001", "B018", "T201"]
+"dev_documents/**/*.py" = ["N803", "N807"]
 
 [tool.ruff.lint.mccabe]
 max-complexity = 10  # Exceeding this prompts function splitting (prevent AI long functions)
@@ -82,4 +83,8 @@ follow_imports = "skip"
 
 [[tool.mypy.overrides]]
 module = "tutorials.*"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "dev_documents.*"
 ignore_errors = true
