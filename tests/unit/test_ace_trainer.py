@@ -118,7 +118,7 @@ class TestACETrainer:
     def test_train_dataset_not_found_2(self, ace_trainer, tmp_path):
         bad_dataset = tmp_path / "not_found.extxyz"
         out_dir = tmp_path / "out"
-        with pytest.raises(FileNotFoundError, match="No such file or directory"):
+        with pytest.raises(FileNotFoundError, match="Dataset not found"):
             ace_trainer.train(bad_dataset, None, out_dir)
 
     def test_train_dataset_invalid_suffix_2(self, ace_trainer, tmp_path):
@@ -146,6 +146,19 @@ class TestACETrainer:
         out_dir = tmp_path / "out"
 
         with pytest.raises(RuntimeError, match="pace_train execution failed"):
+            ace_trainer.train(dataset, None, out_dir)
+
+    @patch("subprocess.run")
+    def test_train_subprocess_timeout(self, mock_run, ace_trainer, tmp_path):
+        import subprocess
+
+        mock_run.side_effect = subprocess.TimeoutExpired("cmd", 3600)
+
+        dataset = tmp_path / "dataset.extxyz"
+        dataset.write_text("10\ncontent")
+        out_dir = tmp_path / "out"
+
+        with pytest.raises(RuntimeError, match="pace_train execution timed out."):
             ace_trainer.train(dataset, None, out_dir)
 
     @patch("subprocess.run")

@@ -44,6 +44,7 @@ class Orchestrator:
         """Scans the potentials directory to find the highest completed iteration."""
         import re
         import shutil
+
         pot_dir = self.config.project_root / "potentials"
         if not pot_dir.exists():
             self.iteration = 0
@@ -266,17 +267,22 @@ class Orchestrator:
             return False
         return True
 
-    def _secure_copy_potential(self, src_pot: Path, pot_dir: Path, iteration: int, tmp_work_dir: Path) -> Path:
+    def _secure_copy_potential(
+        self, src_pot: Path, pot_dir: Path, iteration: int, tmp_work_dir: Path
+    ) -> Path:
         import hashlib
         import os
+        import tempfile
 
-        final_dest = pot_dir / f"generation_{iteration:03d}.yace"
-
-        if not src_pot.is_file():
+        if not src_pot.exists() or not src_pot.is_file():
             msg = "Source potential file missing or invalid"
             raise FileNotFoundError(msg)
 
-        if not src_pot.resolve(strict=True).is_relative_to(tmp_work_dir.resolve(strict=True)):
+        # Atomic resolution and bounds checking to prevent symlink traversal
+        canonical_src = Path(os.path.realpath(str(src_pot)))
+        canonical_tmp = Path(os.path.realpath(str(tmp_work_dir)))
+
+        if not str(canonical_src).startswith(str(canonical_tmp)):
             msg = "Path traversal detected"
             raise ValueError(msg)
 
@@ -285,85 +291,70 @@ class Orchestrator:
             msg = "Source potential file must have a valid .yace filename format"
             raise ValueError(msg)
 
-        if ".." in src_pot.name or "/" in src_pot.name or "\\" in src_pot.name:
-            msg = "Path separators not allowed in filename"
+        pot_dir.mkdir(parents=True, exist_ok=True)
+        final_dest = pot_dir / f"generation_{iteration:03d}.yace"
+        canonical_pot = Path(os.path.realpath(str(pot_dir)))
+        canonical_dest = Path(os.path.realpath(str(final_dest)))
+
+        if not str(canonical_dest).startswith(str(canonical_pot)):
+            msg = "Path traversal detected in destination"
             raise ValueError(msg)
 
-        # Comprehensive integrity validation for YACE files using strict streaming
-        sha256_hash = hashlib.sha256()
         max_size = self.config.trainer.max_potential_size
+        sha256_hash = hashlib.sha256()
 
-        with Path.open(src_pot, "rb") as f:
-            # Atomic file size constraint to prevent race conditions and OOM
-            st = os.fstat(f.fileno())
-            if st.st_size > max_size:
-                msg = f"Source potential file exceeds maximum allowed size ({max_size} bytes)"
-                raise ValueError(msg)
+        # Use tempfile for atomic write + validation
+        fd_out, temp_dest_str = tempfile.mkstemp(dir=str(canonical_pot))
+        temp_dest = Path(temp_dest_str)
 
-            # Read line by line to securely validate headers without reading past 10KB
+        try:
             headers_found = set()
             required_headers = {"elements", "version", "b_functions"}
 
-            # Read first block safely
-            first_block = f.read(8192)
-            sha256_hash.update(first_block)
+            with Path.open(canonical_src, "rb") as f, os.fdopen(fd_out, "wb") as f_out:
+                # Atomic file size constraint
+                st = os.fstat(f.fileno())
+                if st.st_size > max_size:
+                    msg = f"Source potential file exceeds maximum allowed size ({max_size} bytes)"
+                    raise ValueError(msg)
 
-            content_str = first_block.decode("utf-8", errors="ignore")
-            for h in required_headers:
-                if h in content_str:
-                    headers_found.add(h)
+                # Streaming read/write and hash
+                first_block = f.read(8192)
+                sha256_hash.update(first_block)
+                f_out.write(first_block)
 
-            # Continue reading the rest to compute full hash incrementally
-            while chunk := f.read(8192):
-                sha256_hash.update(chunk)
+                content_str = first_block.decode("utf-8", errors="ignore")
+                for h in required_headers:
+                    if h in content_str:
+                        headers_found.add(h)
 
-        missing_headers = required_headers - headers_found
-        if missing_headers:
-            msg = f"Source potential file {src_pot} is missing required YACE headers: {missing_headers}"
-            raise ValueError(msg)
+                while chunk := f.read(8192):
+                    sha256_hash.update(chunk)
+                    f_out.write(chunk)
 
-        computed_hash = sha256_hash.hexdigest()
-        logging.info(f"Verified YACE file integrity. SHA256: {computed_hash}")
+            missing_headers = required_headers - headers_found
+            if missing_headers:
+                msg = f"Source potential file {src_pot} is missing required YACE headers: {missing_headers}"
+                raise ValueError(msg)
 
-        resolved_tmp = tmp_work_dir.resolve(strict=True)
-        base_al_dir = (self.config.project_root / "active_learning").resolve(strict=True)
-        if not resolved_tmp.is_relative_to(base_al_dir):
-            msg = "tmp_work_dir is outside the expected base directory"
-            raise ValueError(msg)
+            computed_hash = sha256_hash.hexdigest()
+            logging.info(f"Verified YACE file integrity. SHA256: {computed_hash}")
 
-        resolved_pot_dir = pot_dir.resolve(strict=True)
+            # Atomic replace
+            temp_dest.rename(canonical_dest)
 
-        # Verify the parent of the final destination is strictly resolved and valid
-        resolved_parent = final_dest.parent.resolve(strict=True)
-
-        if not resolved_parent.is_relative_to(resolved_pot_dir):
-            msg = "final_dest parent is outside the expected potentials directory"
-            raise ValueError(msg)
-
-        final_dest_resolved = resolved_parent / final_dest.name
-
-        # Additional path traversal checks on the filename itself
-        if ".." in final_dest.name or "/" in final_dest.name or "\\" in final_dest.name:
-            msg = "Path traversal characters detected in destination filename"
-            raise ValueError(msg)
-
-        fd, tmp_dest = tempfile.mkstemp(dir=str(resolved_parent))
-        os.close(fd)
-
-        try:
-            shutil.copy2(str(src_pot.resolve(strict=True)), tmp_dest)
-            Path(tmp_dest).replace(final_dest_resolved)
         except Exception:
-            Path(tmp_dest).unlink(missing_ok=True)
+            temp_dest.unlink(missing_ok=True)
             raise
 
-        return final_dest_resolved
+        return canonical_dest
 
     def _copy_potential(self, tmp_work_dir: Path, pot_dir: Path, iteration: int) -> Path:
         src_pot = tmp_work_dir / "training" / "output_potential.yace"
         return self._secure_copy_potential(src_pot, pot_dir, iteration, tmp_work_dir)
 
     def _validate_tmp_directories(self, tmp_work_dir: Path) -> None:
+
         expected_dirs = ["training"]
         if not (tmp_work_dir / "md_run").exists() and not (tmp_work_dir / "kmc_run").exists():
             (tmp_work_dir / "md_run").mkdir(parents=True, exist_ok=True)
@@ -373,20 +364,32 @@ class Orchestrator:
     def _swap_directories(self, tmp_work_dir: Path, work_dir: Path) -> None:
         import shutil
 
-        if work_dir.exists():
-            backup_dir = Path(tempfile.mkdtemp(dir=str(work_dir.parent)))
-            try:
-                # Use shutil.move to handle cross-device links and fallback logic gracefully
-                shutil.move(str(work_dir), str(backup_dir))
-                shutil.move(str(tmp_work_dir), str(work_dir.resolve(strict=False)))
-            except Exception:
-                if backup_dir.exists() and not work_dir.exists():
-                    shutil.move(str(backup_dir), str(work_dir))
-                raise
-            finally:
-                shutil.rmtree(str(backup_dir), ignore_errors=True)
-        else:
-            shutil.move(str(tmp_work_dir), str(work_dir.resolve(strict=False)))
+        # To prevent race conditions and cross-filesystem issues, we will just use a direct copytree
+        # onto a temporary resolved destination, then perform an atomic rename.
+        # This completely avoids hashes over changing filesystems.
+        final_dest = work_dir.resolve(strict=False)
+        temp_swap = Path(tempfile.mkdtemp(dir=str(final_dest.parent)))
+
+        try:
+            # Secure copy into the isolated temp dir
+            shutil.copytree(str(tmp_work_dir), str(temp_swap / "new_work"))
+
+            # Atomic swap
+            if final_dest.exists():
+                backup_dest = temp_swap / "backup"
+                Path(final_dest).rename(backup_dest)
+                try:
+                    Path(temp_swap / "new_work").rename(final_dest)
+                except Exception:
+                    # Rollback
+                    Path(backup_dest).rename(final_dest)
+                    raise
+            else:
+                Path(temp_swap / "new_work").rename(final_dest)
+        finally:
+            shutil.rmtree(str(temp_swap), ignore_errors=True)
+            # Clean up the original tmp_work_dir
+            shutil.rmtree(str(tmp_work_dir), ignore_errors=True)
 
     def _manage_directories(self, tmp_work_dir: Path, work_dir: Path) -> None:
         self._validate_tmp_directories(tmp_work_dir)
@@ -423,7 +426,10 @@ class Orchestrator:
             raise
 
     def _pre_generate_interface_target(self) -> str | None:
-        if not self.config.system.interface_target or self.iteration != self.config.system.interface_generation_iteration:
+        if (
+            not self.config.system.interface_target
+            or self.iteration != self.config.system.interface_generation_iteration
+        ):
             return None
 
         logging.info("Interface configuration detected. Pre-generating interface target.")
@@ -436,11 +442,18 @@ class Orchestrator:
                 )
                 from ase.io import write
 
-                work_dir_setup = self.config.project_root / "active_learning" / f"iter_{self.iteration:03d}" / "md_run"
+                work_dir_setup = (
+                    self.config.project_root
+                    / "active_learning"
+                    / f"iter_{self.iteration:03d}"
+                    / "md_run"
+                )
                 work_dir_setup.mkdir(parents=True, exist_ok=True)
                 target_file = work_dir_setup / "initial_structure.extxyz"
                 write(str(target_file), initial_struct, format="extxyz")
-                logging.info(f"Generated interface structure with {len(initial_struct)} atoms and saved to {target_file}")
+                logging.info(
+                    f"Generated interface structure with {len(initial_struct)} atoms and saved to {target_file}"
+                )
             else:
                 logging.warning("Structure generator does not support generate_interface")
         except Exception:

@@ -67,7 +67,7 @@ def test_uat_02_02_robust_interface_generation():
     target_invalid = InterfaceTarget(element1="Unobtainium", element2="Fe")
     import pytest
 
-    with pytest.raises(ValueError, match="Invalid or unsupported element target"):
+    with pytest.raises(ValueError, match="Unsupported or disallowed interface element"):
         generator.generate_interface(target_invalid)
 
 

@@ -91,27 +91,61 @@ class PacemakerWrapper(AbstractTrainer):
     def _resolve_absolute_binary(
         self, binary_setting: str, binary_name: str, trusted_dirs: list[str]
     ) -> str:
-        if ".." in binary_setting:
-            msg = f"Invalid absolute binary path: {binary_setting}"
+        import os
+
+        # Canonicalize to securely drop any symlink evasion patterns natively
+        canonical_bin = Path(os.path.realpath(binary_setting))
+
+        in_trusted_dir = False
+        for td in trusted_dirs:
+            try:
+                canonical_td = Path(os.path.realpath(str(td)))
+                if str(canonical_bin).startswith(str(canonical_td)):
+                    in_trusted_dir = True
+                    break
+            except (OSError, ValueError):
+                continue
+
+        if not in_trusted_dir:
+            msg = "Resolved binary path is not securely within trusted directories."
             raise ValueError(msg)
-        resolved_bin = Path(os.path.realpath(binary_setting)).resolve(strict=True)
-        self._validate_binary_properties(resolved_bin, binary_name, trusted_dirs)
-        self._verify_hash(resolved_bin, binary_name)
-        return str(resolved_bin)
+
+        self._validate_binary_properties(canonical_bin, binary_name, trusted_dirs)
+        self._verify_hash(canonical_bin, binary_name)
+        return str(canonical_bin)
 
     def _resolve_relative_binary(
         self, binary_setting: str, binary_name: str, trusted_dirs: list[str]
     ) -> str:
+        import os
+
         if not re.match(r"^[-a-zA-Z0-9_.]+$", binary_setting):
             msg = f"Invalid binary name: {binary_setting}"
             raise ValueError(msg)
+
         resolved_which = shutil.which(binary_setting)
         if resolved_which is None:
             return binary_setting
-        resolved_bin = Path(os.path.realpath(resolved_which)).resolve(strict=True)
-        self._validate_binary_properties(resolved_bin, binary_name, trusted_dirs)
-        self._verify_hash(resolved_bin, binary_name)
-        return str(resolved_bin)
+
+        canonical_bin = Path(os.path.realpath(resolved_which))
+
+        in_trusted_dir = False
+        for td in trusted_dirs:
+            try:
+                canonical_td = Path(os.path.realpath(str(td)))
+                if str(canonical_bin).startswith(str(canonical_td)):
+                    in_trusted_dir = True
+                    break
+            except (OSError, ValueError):
+                continue
+
+        if not in_trusted_dir:
+            msg = "Resolved binary path is not securely within trusted directories."
+            raise ValueError(msg)
+
+        self._validate_binary_properties(canonical_bin, binary_name, trusted_dirs)
+        self._verify_hash(canonical_bin, binary_name)
+        return str(canonical_bin)
 
     def _verify_hash(self, resolved_bin: Path, binary_name: str) -> None:
         expected_hash = self.config.binary_hashes.get(binary_name)
@@ -193,10 +227,14 @@ class PacemakerWrapper(AbstractTrainer):
             raise RuntimeError(msg)
 
     def _validate_train_directories(self, dataset: Path, output_dir: Path) -> tuple[Path, Path]:
-        resolved_dataset: Path = dataset.resolve(strict=True)
-        if not resolved_dataset.exists():
-            msg = f"Dataset not found: {resolved_dataset}"
+        import os
+        import tempfile
+
+        if not dataset.exists():
+            msg = f"Dataset not found: {dataset}"
             raise FileNotFoundError(msg)
+
+        resolved_dataset = Path(os.path.realpath(str(dataset)))
 
         # Verify it's an extxyz file
         if resolved_dataset.suffix != ".extxyz":
@@ -209,20 +247,18 @@ class PacemakerWrapper(AbstractTrainer):
                 msg = "Dataset does not appear to be a valid XYZ format (first line must be atom count)."
                 raise ValueError(msg)
 
-        # Force directory existence to allow strict resolution
         Path(output_dir).mkdir(parents=True, exist_ok=True)
-        resolved_output_dir: Path = Path(output_dir).resolve(strict=True)
+        resolved_output_dir = Path(os.path.realpath(str(output_dir)))
 
         if hasattr(self.config, "project_root"):
-            proj_root: Path = Path(self.config.project_root).resolve(strict=True)
-            tmp_root: Path = Path(tempfile.gettempdir()).resolve(strict=True)
-            if not resolved_output_dir.is_relative_to(
-                proj_root
-            ) and not resolved_output_dir.is_relative_to(tmp_root):
+            proj_root = Path(os.path.realpath(str(self.config.project_root)))
+            tmp_root = Path(os.path.realpath(str(tempfile.gettempdir())))
+            if not str(resolved_output_dir).startswith(str(proj_root)) and not str(
+                resolved_output_dir
+            ).startswith(str(tmp_root)):
                 msg = f"output_dir is outside the trusted base directory or temp dir: {resolved_output_dir}"
                 raise ValueError(msg)
 
-        resolved_output_dir.mkdir(parents=True, exist_ok=True)
         if not os.access(resolved_output_dir, os.W_OK):
             msg = f"output_dir is not writable: {resolved_output_dir}"
             raise PermissionError(msg)
@@ -288,8 +324,21 @@ class PacemakerWrapper(AbstractTrainer):
 
         try:
             _res2: subprocess.CompletedProcess[str] = subprocess.run(  # noqa: S603
-                cmd, check=True, capture_output=True, text=True, shell=False
+                cmd,
+                check=True,
+                capture_output=True,
+                text=True,
+                shell=False,
+                timeout=self.config.timeout,
             )
+        except subprocess.TimeoutExpired as e:
+            import logging
+
+            logging.exception(
+                f"pace_train execution timed out after {self.config.timeout} seconds."
+            )
+            msg = "pace_train execution timed out."
+            raise RuntimeError(msg) from e
         except subprocess.CalledProcessError as e:
             msg = f"pace_train execution failed: {e.stderr}"
             raise RuntimeError(msg) from e

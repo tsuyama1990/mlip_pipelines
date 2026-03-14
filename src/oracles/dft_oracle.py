@@ -88,24 +88,45 @@ class DFTManager(AbstractOracle):
 
     def _get_pseudo_dir_path(self) -> Path:
         import os
+
         try:
             raw_pseudo_dir = Path(self.config.pseudo_dir)
             if not raw_pseudo_dir.is_absolute():
-                msg = f"Pseudopotential directory must be an absolute path: {self.config.pseudo_dir}"
+                msg = (
+                    f"Pseudopotential directory must be an absolute path: {self.config.pseudo_dir}"
+                )
                 raise ValueError(msg)
             pseudo_dir_path = raw_pseudo_dir.resolve(strict=True)
 
-            # Directory traversal prevention: whitelist checking (Only home dir allowed)
-            home_dir = Path.home().resolve(strict=True)
-            if os.path.commonpath([str(home_dir), str(pseudo_dir_path)]) != str(home_dir):
-                msg = f"Pseudopotential directory must reside securely within the user's home directory: {pseudo_dir_path}"
-                raise ValueError(msg)
+            # Directory traversal prevention
+            restricted_prefixes = [
+                "/etc",
+                "/bin",
+                "/usr",
+                "/sbin",
+                "/var",
+                "/lib",
+                "/boot",
+                "/root",
+            ]
+            for restricted in restricted_prefixes:
+                try:
+                    is_restricted = (
+                        os.path.commonpath([restricted, str(pseudo_dir_path)]) == restricted
+                    )
+                except ValueError:
+                    continue
+                if is_restricted:
+                    msg = f"Directory cannot be a system directory: {restricted}"
+                    raise ValueError(msg)
         except FileNotFoundError as e:
             msg = f"Pseudopotential directory not found: {self.config.pseudo_dir}"
             raise FileNotFoundError(msg) from e
         else:
             if not pseudo_dir_path.is_dir():
-                msg = f"Pseudopotential directory is not a valid directory: {self.config.pseudo_dir}"
+                msg = (
+                    f"Pseudopotential directory is not a valid directory: {self.config.pseudo_dir}"
+                )
                 raise ValueError(msg)
             return pseudo_dir_path
 
@@ -115,30 +136,46 @@ class DFTManager(AbstractOracle):
     def _check_upf_stat_and_content(self, fd: int, upf_name: str) -> None:
         import os
         import stat
+
         st = os.fstat(fd)
         if not stat.S_ISREG(st.st_mode):
             self._raise_upf_error(f"Pseudopotential must be a regular file: {upf_name}")
 
         if st.st_uid != os.getuid():
-            self._raise_upf_error(f"Pseudopotential file ownership violation: {upf_name} is not owned by the current user.")
+            self._raise_upf_error(
+                f"Pseudopotential file ownership violation: {upf_name} is not owned by the current user."
+            )
 
-        if st.st_size > 10 * 1024 * 1024: # DoS Protection against massive files
+        if st.st_size > 10 * 1024 * 1024:  # DoS Protection against massive files
             self._raise_upf_error(f"Pseudopotential file too large (>10MB): {upf_name}")
 
         with os.fdopen(fd, "r", encoding="utf-8") as f:
             content = f.read()
 
         if "<UPF" not in content and "PP_INFO" not in content:
-            self._raise_upf_error(f"Invalid UPF format for pseudopotential: {upf_name}. Missing required opening tags.")
+            self._raise_upf_error(
+                f"Invalid UPF format for pseudopotential: {upf_name}. Missing required opening tags."
+            )
         if "</UPF>" not in content and "PP_INFO" not in content:
-            self._raise_upf_error(f"Invalid UPF format for pseudopotential: {upf_name}. Missing required closing tags.")
+            self._raise_upf_error(
+                f"Invalid UPF format for pseudopotential: {upf_name}. Missing required closing tags."
+            )
 
-    def _validate_upf_content(self, upf_path: Path, upf_name: str) -> None:
+    def _validate_upf_content(self, upf_path: Path, upf_name: str, pseudo_dir_path: Path) -> None:
         import os
+
+        # Single canonicalization to avoid TOCTOU on path resolution
+        canonical_upf = Path(os.path.realpath(str(upf_path)))
+        canonical_pseudo_dir = Path(os.path.realpath(str(pseudo_dir_path)))
+
+        if not str(canonical_upf).startswith(str(canonical_pseudo_dir)):
+            msg = f"Path traversal detected: {upf_name} resolves outside trusted base."
+            raise ValueError(msg)
+
         try:
-            fd = os.open(str(upf_path), os.O_RDONLY | os.O_NOFOLLOW)
+            fd = os.open(str(canonical_upf), os.O_RDONLY)
         except OSError as e:
-            msg = f"Failed to securely open pseudopotential (possibly a symlink): {upf_name}"
+            msg = f"Failed to securely open pseudopotential: {upf_name}"
             raise FileNotFoundError(msg) from e
 
         try:
@@ -152,12 +189,14 @@ class DFTManager(AbstractOracle):
             raise
         except Exception:
             import contextlib
+
             with contextlib.suppress(OSError):
                 os.close(fd)
             raise
 
     def _validate_pseudopotentials(self, symbols: set[str]) -> dict[str, str]:
         import os
+
         pseudos = {}
         pseudo_dir_path = self._get_pseudo_dir_path()
 
@@ -177,7 +216,9 @@ class DFTManager(AbstractOracle):
 
             # Robust pre-resolution TOCTOU validation using commonpath
             try:
-                is_safe = os.path.commonpath([str(pseudo_dir_path), str(upf_path)]) == str(pseudo_dir_path)
+                is_safe = os.path.commonpath([str(pseudo_dir_path), str(upf_path)]) == str(
+                    pseudo_dir_path
+                )
             except ValueError as e:
                 msg = f"Invalid path constructed for pseudopotential: {upf_name}"
                 raise ValueError(msg) from e
@@ -186,7 +227,7 @@ class DFTManager(AbstractOracle):
                 msg = f"Path traversal detected: {upf_name}"
                 raise ValueError(msg)
 
-            self._validate_upf_content(upf_path, upf_name)
+            self._validate_upf_content(upf_path, upf_name, pseudo_dir_path)
 
             pseudos[el] = upf_name
         return pseudos
@@ -221,6 +262,38 @@ class DFTManager(AbstractOracle):
 
     def _get_calculator(self, atoms: Atoms, work_dir: Path) -> Espresso:
         """Creates the ESPRESSO calculator with self-healing parameters."""
+        import os
+        import tempfile
+
+        # Security: Canonicalize work_dir and check its boundaries
+        canonical_work_dir = work_dir.resolve(strict=True)
+        is_safe = False
+        allowed_bases = [
+            str(Path(tempfile.gettempdir()).resolve(strict=True)),
+        ]
+        if hasattr(self.config, "project_root"):
+            allowed_bases.append(str(Path(self.config.project_root).resolve(strict=True)))
+
+        try:
+            st = os.lstat(canonical_work_dir)
+            for safe_base in allowed_bases:
+                base_st = os.lstat(safe_base)
+                try:
+                    if (
+                        os.path.commonpath([safe_base, str(canonical_work_dir)]) == safe_base
+                        and st.st_dev == base_st.st_dev
+                    ):  # Additional mount point check
+                        is_safe = True
+                        break
+                except ValueError:
+                    pass
+        except OSError:
+            pass
+
+        if not is_safe:
+            msg = f"Work directory {canonical_work_dir} is not within trusted boundaries or device mismatch."
+            raise ValueError(msg)
+
         symbols: set[str] = set(atoms.get_chemical_symbols())  # type: ignore[no-untyped-call]
 
         try:
@@ -316,10 +389,14 @@ class DFTManager(AbstractOracle):
                 except Exception as e:
                     last_exception = e
                     if attempt < self.config.max_retries:
-                        logging.warning(f"SCF failed for struct {i} attempt {attempt + 1}: {e}. Attempting self-healing...")
+                        logging.warning(
+                            f"SCF failed for struct {i} attempt {attempt + 1}: {e}. Attempting self-healing..."
+                        )
                         self._update_calc_parameters(calc, attempt)
                     else:
-                        logging.warning(f"Failed completely for struct {i} after {self.config.max_retries} retries: {e}")
+                        logging.warning(
+                            f"Failed completely for struct {i} after {self.config.max_retries} retries: {e}"
+                        )
 
             if not success:
                 msg = f"Failed to converge structure {i} after {self.config.max_retries} retries."

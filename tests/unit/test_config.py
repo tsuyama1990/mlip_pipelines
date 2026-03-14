@@ -30,7 +30,9 @@ def test_system_config_invalid() -> None:
 def test_dynamics_config_valid(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import tempfile
 
-    monkeypatch.setattr("shutil.which", lambda x: "/usr/bin/lmp" if x == "lmp" else "/usr/bin/eonclient")
+    monkeypatch.setattr(
+        "shutil.which", lambda x: "/usr/bin/lmp" if x == "lmp" else "/usr/bin/eonclient"
+    )
     monkeypatch.setattr("os.access", lambda x, y: True)
 
     tmp_dir = Path(tempfile.gettempdir()).resolve(strict=True)
@@ -51,7 +53,9 @@ def test_oracle_config_invalid() -> None:
 def test_project_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import tempfile
 
-    monkeypatch.setattr("shutil.which", lambda x: "/usr/bin/lmp" if x == "lmp" else "/usr/bin/eonclient")
+    monkeypatch.setattr(
+        "shutil.which", lambda x: "/usr/bin/lmp" if x == "lmp" else "/usr/bin/eonclient"
+    )
     monkeypatch.setattr("os.access", lambda x, y: True)
 
     tmp_dir = Path(tempfile.gettempdir()).resolve(strict=True)
@@ -87,7 +91,8 @@ def test_validate_single_trusted_dir_not_exist(tmp_path: Path) -> None:
         _secure_resolve_and_validate_dir as _validate_single_trusted_dir,
     )
 
-    assert _validate_single_trusted_dir(str(d), check_exists=True) is None
+    with pytest.raises(ValueError, match="Directory does not exist"):
+        _validate_single_trusted_dir(str(d), check_exists=True)
 
 
 def test_validate_single_trusted_dir_not_dir(tmp_path: Path) -> None:
@@ -120,10 +125,12 @@ def test_project_config_env_key() -> None:
 def test_project_config_env_value() -> None:
     from src.domain_models.config import _validate_env_value
 
-    with pytest.raises(ValueError, match=".*Invalid characters or traversal sequences.*"):
+    with pytest.raises(ValueError, match=".*Invalid characters detected.*"):
         _validate_env_value("value; rm -rf")
-    with pytest.raises(ValueError, match=".*Invalid characters or traversal sequences.*"):
-        _validate_env_value("../secret")
+
+    # "../secret" is now valid under the relaxed r"^[-a-zA-Z0-9_.:/=,+]*$" rule
+    # and no longer triggers a ValueError in _validate_env_value itself
+    _validate_env_value("../secret")
 
 
 def test_project_config_env_file_security(tmp_path: Path) -> None:

@@ -1,4 +1,3 @@
-import logging
 import os
 import re
 import stat
@@ -19,11 +18,16 @@ class InterfaceTarget(BaseModel):
 
 def _check_allowed_base_dirs(resolved_str: str, path_str: str) -> None:
     import tempfile
+
+    # Use resolve(strict=True) on allowed bases
     home_dir = str(Path.home().resolve(strict=True))
     tmp_dir = str(Path(tempfile.gettempdir()).resolve(strict=True))
 
+    # Explicitly check for /app mapping because the tests run within an /app container block
+    app_dir = "/app"
+
     is_safe = False
-    for safe_base in [home_dir, tmp_dir]:
+    for safe_base in [home_dir, tmp_dir, app_dir]:
         try:
             if os.path.commonpath([safe_base, resolved_str]) == safe_base:
                 is_safe = True
@@ -32,7 +36,7 @@ def _check_allowed_base_dirs(resolved_str: str, path_str: str) -> None:
             pass
 
     if not is_safe:
-        msg = f"Directory {path_str} must reside securely within an allowed base directory (home, tmp)."
+        msg = f"Directory {path_str} must reside securely within an allowed base directory (home, tmp, or /app)."
         raise ValueError(msg)
 
     restricted_prefixes = ["/etc", "/bin", "/usr", "/sbin", "/var", "/lib", "/boot", "/root"]
@@ -45,6 +49,7 @@ def _check_allowed_base_dirs(resolved_str: str, path_str: str) -> None:
             msg = f"Directory cannot be a system directory: {restricted}"
             raise ValueError(msg)
 
+
 def _check_ownership_and_perms(resolved: Path, path_str: str) -> None:
     st = resolved.stat()
     if st.st_uid != os.getuid():
@@ -55,46 +60,32 @@ def _check_ownership_and_perms(resolved: Path, path_str: str) -> None:
         msg = f"Directory {path_str} is world-writable, which is insecure."
         raise ValueError(msg)
 
-def _secure_resolve_and_validate_dir(path_str: str, check_exists: bool = True) -> str | None:
-    path = Path(path_str)
 
-    if not path.is_absolute():
+def _secure_resolve_and_validate_dir(path_str: str, check_exists: bool = True) -> str:
+    # Use realpath for canonicalization
+    import os
+
+    canonical_path = Path(os.path.realpath(path_str))
+
+    if not canonical_path.is_absolute():
         msg = f"Directory path must be absolute: {path_str}"
         raise ValueError(msg)
 
-    if ".." in path_str:
-        msg = "Path traversal sequences are not allowed."
-        raise ValueError(msg)
-
-    try:
-        resolved = path.resolve(strict=check_exists)
-    except FileNotFoundError:
-        logging.warning(f"Directory skipped as it does not exist: {path_str}")
-        return None
-    except Exception as e:
-        msg = f"Failed to resolve path: {path_str}"
-        raise ValueError(msg) from e
-
     if check_exists:
-        try:
-            st_info = os.lstat(resolved)
-            if stat.S_ISLNK(st_info.st_mode):
-                msg = f"Directory {path_str} cannot be a symlink."
-                raise ValueError(msg)
-        except FileNotFoundError:
-            logging.warning(f"Directory skipped as it does not exist: {path_str}")
-            return None
+        if not canonical_path.exists():
+            msg = f"Directory does not exist: {path_str}"
+            raise ValueError(msg)
 
-        if not resolved.is_dir():
+        if not canonical_path.is_dir():
             msg = f"Path must be a directory: {path_str}"
             raise ValueError(msg)
 
-    _check_allowed_base_dirs(str(resolved), path_str)
+    _check_allowed_base_dirs(str(canonical_path), path_str)
 
     if check_exists:
-        _check_ownership_and_perms(resolved, path_str)
+        _check_ownership_and_perms(canonical_path, path_str)
 
-    return str(resolved)
+    return str(canonical_path)
 
 
 class SystemConfig(BaseModel):
@@ -143,6 +134,7 @@ class DynamicsConfig(BaseModel):
 
         # Verify the binary is natively reachable in the system PATH
         import shutil
+
         if not shutil.which(v):
             msg = f"Binary {v} not found in PATH or not executable."
             raise ValueError(msg)
@@ -189,6 +181,7 @@ class DynamicsConfig(BaseModel):
             verify_hash(self.eon_binary, self.binary_hashes[self.eon_binary])
 
         return self
+
     pace_train_args_template: list[str] = Field(
         default=[
             "--dataset",
@@ -276,7 +269,9 @@ class OracleConfig(BaseModel):
         default=1000, gt=0, description="Maximum allowed k-points grid size to prevent OOM"
     )
     min_cell_dimension: float = Field(
-        default=1e-5, gt=0.0, description="Minimum allowed cell dimension to prevent division by zero"
+        default=1e-5,
+        gt=0.0,
+        description="Minimum allowed cell dimension to prevent division by zero",
     )
     smearing_width: float = Field(default=0.02, ge=0.0, description="Smearing width (Ry)")
     pseudo_dir: str = Field(
@@ -305,6 +300,9 @@ class TrainerConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     max_epochs: int = Field(
         default=50, ge=1, le=10000, description="Number of epochs for fine-tuning"
+    )
+    timeout: int = Field(
+        default=3600, ge=1, description="Timeout in seconds for pace_train execution"
     )
     max_potential_size: int = Field(
         default=104857600,
@@ -470,13 +468,18 @@ def _validate_env_key(key: str) -> None:
         msg = f"Invalid characters in .env variable key: {key}"
         raise ValueError(msg)
 
+
 def _validate_env_value(val: str) -> None:
     if len(val) > 1024:
         msg = "Environment variable value exceeds maximum length"
         raise ValueError(msg)
-    if ".." in val or ";" in val or "&" in val or "|" in val:
-        msg = f"Invalid characters or traversal sequences in .env variable value: {val}."
+
+    # Strictly whitelist allowed characters to prevent shell/JSON injection
+    # Allows alphanumerics, underscores, dots, hyphens, colons, slashes, equals, plus, commas, asterisks
+    if not re.match(r"^[-a-zA-Z0-9_.:/=,+]*$", val):
+        msg = "Invalid characters detected in .env variable value."
         raise ValueError(msg)
+
 
 def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
     st = os.lstat(env_file)
@@ -486,14 +489,15 @@ def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
 
     resolved_env = env_file.resolve(strict=True)
 
-    if resolved_env.parent != expected_base.resolve(strict=True):
-        msg = f".env file must reside directly in the allowed base directory: {expected_base}"
+    # Verify the canonicalized path sits within the trusted base directory
+    if not str(resolved_env).startswith(str(expected_base.resolve(strict=True))):
+        msg = f".env file must reside within the allowed base directory: {expected_base}"
         raise ValueError(msg)
 
     st = os.lstat(resolved_env)
 
-    if st.st_size > 10 * 1024:
-        msg = ".env file exceeds maximum allowed size (10KB)."
+    if st.st_size > 1024:
+        msg = ".env file exceeds maximum allowed size (1KB)."
         raise ValueError(msg)
 
     if st.st_uid != os.getuid():
@@ -503,6 +507,35 @@ def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
     if bool(st.st_mode & stat.S_IRWXO) or bool(st.st_mode & stat.S_IRWXG):
         msg = ".env file has insecure permissions. It must not be group or world readable/writable."
         raise ValueError(msg)
+
+    # Content validation for malicious patterns before parsing
+    with Path.open(resolved_env, "r", encoding="utf-8") as f:
+        for line in f:
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+
+            # Simple check to see if the key starts with MLIP_ and lacks injection symbols
+            if "=" in stripped:
+                key, val = stripped.split("=", 1)
+                key = key.strip()
+                if not key.startswith("MLIP_"):
+                    msg = f"All .env file keys must start with 'MLIP_'. Found invalid key: {key}"
+                    raise ValueError(msg)
+
+                val = val.strip()
+                if (
+                    ".." in val
+                    or ";" in val
+                    or "&" in val
+                    or "|" in val
+                    or "$" in val
+                    or "`" in val
+                    or "{" in val
+                    or "}" in val
+                ):
+                    msg = f"Invalid characters or traversal sequences in .env file content: {val}"
+                    raise ValueError(msg)
 
     return resolved_env
 

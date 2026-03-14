@@ -88,8 +88,12 @@ def test_write_config_ini_invalid_min_mode_method(tmp_path: Path) -> None:
         engine._write_config_ini(tmp_path)
 
 
-def test_write_pace_driver_invalid_potential(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("shutil.which", lambda x: "/usr/bin/eonclient" if x == "eonclient" else None)
+def test_write_pace_driver_invalid_potential(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "shutil.which", lambda x: "/usr/bin/eonclient" if x == "eonclient" else None
+    )
     config = DynamicsConfig(
         project_root=str(tmp_path),
         eon_binary="eonclient",
@@ -125,7 +129,9 @@ def test_write_pace_driver_invalid_python_executable(
 
 
 def test_run_kmc_invalid_work_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("shutil.which", lambda x: "/usr/bin/eonclient" if x == "eonclient" else None)
+    monkeypatch.setattr(
+        "shutil.which", lambda x: "/usr/bin/eonclient" if x == "eonclient" else None
+    )
     config = DynamicsConfig(
         project_root=str(tmp_path),
         eon_binary="eonclient",
@@ -144,7 +150,9 @@ def test_run_kmc_invalid_work_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
 def test_run_kmc_subprocess_fail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     dummy_bin_dir = tmp_path / "bin"
     dummy_bin_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setattr("shutil.which", lambda x: "/usr/bin/eonclient" if x == "eonclient" else None)
+    monkeypatch.setattr(
+        "shutil.which", lambda x: "/usr/bin/eonclient" if x == "eonclient" else None
+    )
 
     config = DynamicsConfig(
         project_root=str(tmp_path),
@@ -181,7 +189,9 @@ def test_run_kmc_subprocess_fail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 def test_run_kmc_subprocess_halted(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     dummy_bin_dir = tmp_path / "bin"
     dummy_bin_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setattr("shutil.which", lambda x: "/usr/bin/eonclient" if x == "eonclient" else None)
+    monkeypatch.setattr(
+        "shutil.which", lambda x: "/usr/bin/eonclient" if x == "eonclient" else None
+    )
 
     config = DynamicsConfig(
         project_root=str(tmp_path),
@@ -217,7 +227,9 @@ def test_run_kmc_subprocess_halted(tmp_path: Path, monkeypatch: pytest.MonkeyPat
 
 
 def test_run_kmc_missing_executable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("shutil.which", lambda x: "/usr/bin/eonclient" if x == "eonclient" else None)
+    monkeypatch.setattr(
+        "shutil.which", lambda x: "/usr/bin/eonclient" if x == "eonclient" else None
+    )
     config = DynamicsConfig(
         project_root=str(tmp_path),
         eon_binary="eonclient",
