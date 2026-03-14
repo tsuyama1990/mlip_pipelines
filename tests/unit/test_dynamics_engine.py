@@ -9,14 +9,20 @@ from src.dynamics.dynamics_engine import MDInterface
 
 
 def test_md_interface_initialization() -> None:
-    config = DynamicsConfig(uncertainty_threshold=6.0, md_steps=1000, temperature=300.0)
+    config = DynamicsConfig(
+        uncertainty_threshold=6.0,
+        md_steps=1000,
+        temperature=300.0,
+        project_root=str(Path.cwd()),
+        trusted_directories=[],
+    )
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
     assert engine.config.uncertainty_threshold == 6.0
 
 
 def test_run_exploration_watchdog(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    config = DynamicsConfig()
+    config = DynamicsConfig(trusted_directories=[], project_root=str(tmp_path))
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
@@ -48,7 +54,7 @@ ITEM: ATOMS id type x y z c_pace_gamma
 
 
 def test_resume(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    config = DynamicsConfig()
+    config = DynamicsConfig(trusted_directories=[], project_root=str(tmp_path))
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
@@ -89,7 +95,7 @@ ITEM: ATOMS id type x y z c_pace_gamma
 
 
 def test_check_halt(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    config = DynamicsConfig()
+    config = DynamicsConfig(trusted_directories=[], project_root=str(tmp_path))
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
@@ -113,7 +119,9 @@ ITEM: ATOMS id type x y z c_pace_gamma
 
 
 def test_run_exploration_invalid_potential(tmp_path: Path) -> None:
-    config = DynamicsConfig()
+    config = DynamicsConfig(
+        uncertainty_threshold=2.0, project_root=str(tmp_path), trusted_directories=[]
+    )
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
@@ -122,7 +130,7 @@ def test_run_exploration_invalid_potential(tmp_path: Path) -> None:
 
 
 def test_run_exploration_invalid_potential_extension(tmp_path: Path) -> None:
-    config = DynamicsConfig()
+    config = DynamicsConfig(trusted_directories=[], project_root=str(Path.cwd()))
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
@@ -133,7 +141,7 @@ def test_run_exploration_invalid_potential_extension(tmp_path: Path) -> None:
 
 
 def test_run_exploration_invalid_potential_chars(tmp_path: Path) -> None:
-    config = DynamicsConfig()
+    config = DynamicsConfig(trusted_directories=[], project_root=str(Path.cwd()))
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
@@ -144,7 +152,7 @@ def test_run_exploration_invalid_potential_chars(tmp_path: Path) -> None:
 
 
 def test_resume_missing_restart(tmp_path: Path) -> None:
-    config = DynamicsConfig()
+    config = DynamicsConfig(trusted_directories=[], project_root=str(tmp_path))
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
@@ -160,7 +168,7 @@ def test_resume_missing_restart(tmp_path: Path) -> None:
 
 
 def test_run_exploration_cold_start(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    config = DynamicsConfig()
+    config = DynamicsConfig(trusted_directories=[], project_root=str(Path.cwd()))
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
@@ -188,7 +196,7 @@ ITEM: ATOMS id type x y z c_pace_gamma
 
 
 def test_check_halt_no_dump(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    config = DynamicsConfig()
+    config = DynamicsConfig(trusted_directories=[], project_root=str(tmp_path))
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
@@ -200,7 +208,7 @@ def test_check_halt_no_dump(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> 
 def test_run_exploration_subprocess_fail_no_file(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    config = DynamicsConfig()
+    config = DynamicsConfig(trusted_directories=[], project_root=str(tmp_path))
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
@@ -218,7 +226,7 @@ def test_run_exploration_subprocess_fail_no_file(
 
 
 def test_resume_subprocess_fail_no_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    config = DynamicsConfig()
+    config = DynamicsConfig(trusted_directories=[], project_root=str(tmp_path))
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
@@ -245,7 +253,7 @@ def test_resume_subprocess_fail_no_file(monkeypatch: pytest.MonkeyPatch, tmp_pat
 
 
 def test_extract_high_gamma_structures_missing_dump(tmp_path: Path) -> None:
-    config = DynamicsConfig()
+    config = DynamicsConfig(trusted_directories=[], project_root=str(tmp_path))
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
@@ -255,7 +263,7 @@ def test_extract_high_gamma_structures_missing_dump(tmp_path: Path) -> None:
 
 
 def test_extract_high_gamma_structures_no_gamma_array(tmp_path: Path) -> None:
-    config = DynamicsConfig()
+    config = DynamicsConfig(trusted_directories=[], project_root=str(tmp_path))
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
@@ -277,7 +285,7 @@ ITEM: ATOMS id type x y z
 
 
 def test_extract_high_gamma_structures(tmp_path: Path) -> None:
-    config = DynamicsConfig()
+    config = DynamicsConfig(trusted_directories=[], project_root=str(tmp_path))
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
@@ -301,17 +309,22 @@ ITEM: ATOMS id type x y z
     assert len(structures) == 1
     assert len(structures[0]) == 1
 
-def disabled_test_execute_lammps_invalid_binary_name(tmp_path: Path) -> None:
-    config = DynamicsConfig(trusted_directories=[])
+
+def test_execute_lammps_invalid_binary_name(tmp_path: Path) -> None:
+    config = DynamicsConfig(trusted_directories=[], project_root=str(Path.cwd()))
     config.lmp_binary = "lmp;"
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
-    with pytest.raises(ValueError, match="Invalid LAMMPS binary name"):
+    # Touch the in.lammps file so path resolution succeeds and we hit the binary validation
+    (tmp_path / "in.lammps").touch()
+
+    with pytest.raises(ValueError, match="Invalid characters in executable name"):
         engine._execute_lammps(tmp_path)
 
-def disabled_test_resume_invalid_binary_name(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    config = DynamicsConfig(trusted_directories=[])
+
+def test_resume_invalid_binary_name(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    config = DynamicsConfig(trusted_directories=[], project_root=str(Path.cwd()))
     config.lmp_binary = "lmp;"
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
@@ -329,11 +342,12 @@ def disabled_test_resume_invalid_binary_name(tmp_path: Path, monkeypatch: pytest
     work_dir = tmp_path / "resume_run"
     work_dir.mkdir(parents=True)
 
-    with pytest.raises(ValueError, match="Invalid LAMMPS binary name"):
+    with pytest.raises(ValueError, match="Invalid characters in executable name"):
         engine.resume(pot_file, restart_dir, work_dir)
 
+
 def test_resume_missing_executable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    config = DynamicsConfig(lmp_binary="lmp", trusted_directories=[])
+    config = DynamicsConfig(lmp_binary="lmp", project_root=str(Path.cwd()), trusted_directories=[])
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
@@ -349,13 +363,17 @@ def test_resume_missing_executable(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     work_dir.mkdir(parents=True)
 
     import shutil
+
     monkeypatch.setattr(shutil, "which", lambda *args, **kwargs: None)
 
     with pytest.raises(RuntimeError, match="LAMMPS executable not found."):
         engine.resume(pot_file, restart_dir, work_dir)
 
-def test_resume_subprocess_calledprocesserror(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    config = DynamicsConfig()
+
+def test_resume_subprocess_calledprocesserror(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = DynamicsConfig(trusted_directories=[], project_root=str(tmp_path))
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
@@ -396,8 +414,11 @@ ITEM: ATOMS id type x y z c_pace_gamma
     res = engine.resume(pot_file, restart_dir, work_dir)
     assert res["halted"] is False
 
-def test_extract_high_gamma_structures_no_structures(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    config = DynamicsConfig()
+
+def test_extract_high_gamma_structures_no_structures(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = DynamicsConfig(trusted_directories=[], project_root=str(tmp_path))
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
@@ -405,6 +426,7 @@ def test_extract_high_gamma_structures_no_structures(tmp_path: Path, monkeypatch
     dump_file.touch()
 
     import ase.io
+
     monkeypatch.setattr(ase.io, "read", lambda *args, **kwargs: [])
 
     with pytest.raises(ValueError, match="No structures read from dump file"):

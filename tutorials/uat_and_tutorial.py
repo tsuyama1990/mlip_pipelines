@@ -1,5 +1,6 @@
-import marimo
 from typing import Any
+
+import marimo
 
 __generated_with = "0.20.4"
 app = marimo.App()
@@ -8,15 +9,13 @@ app = marimo.App()
 @app.cell
 def __() -> tuple[Any, ...]:
     import logging
+    import os
     import sys
+    from collections.abc import Callable
     from pathlib import Path
 
-    import sys
     import matplotlib.pyplot as plt
-
-    import os
     import numpy as np
-
     from ase import Atoms
     from ase.build import bulk
 
@@ -46,9 +45,11 @@ def __() -> tuple[Any, ...]:
         # Avoid running full MLIP dependencies like eonclient by providing fallbacks
         # in the UAT execution while preserving real core code for tests
         sys_config = SystemConfig(elements=["Fe", "Pt", "Mg", "O"])
-        dyn_config = DynamicsConfig(md_steps=100)
+        dyn_config = DynamicsConfig(
+            md_steps=100, project_root=str(Path.cwd()), trusted_directories=[]
+        )
         oracle_config = OracleConfig()
-        trainer_config = TrainerConfig(max_epochs=2)
+        trainer_config = TrainerConfig(max_epochs=2, trusted_directories=[])
         val_config = ValidatorConfig()
 
         project_config = ProjectConfig(
@@ -58,7 +59,7 @@ def __() -> tuple[Any, ...]:
             dynamics=dyn_config,
             oracle=oracle_config,
             trainer=trainer_config,
-            validator=val_config
+            validator=val_config,
         )
 
         orchestrator = Orchestrator(project_config)
@@ -82,13 +83,15 @@ def __() -> tuple[Any, ...]:
                 return {"halted": True, "dump_file": dump_file}
 
             # EON run
-            orchestrator.eon_engine.run_kmc = unittest.mock.MagicMock(side_effect=mock_eon_run)  # type: ignore[attr-defined]
+            orchestrator.eon_engine.run_kmc = unittest.mock.MagicMock(side_effect=mock_eon_run)  # type: ignore
 
             # MD run
-            orchestrator.md_engine.run_exploration = unittest.mock.MagicMock(side_effect=mock_md_run)  # type: ignore[method-assign]
+            orchestrator.md_engine.run_exploration = unittest.mock.MagicMock(  # type: ignore
+                side_effect=mock_md_run
+            )
 
             # Oracle
-            orchestrator.oracle.compute_batch = unittest.mock.MagicMock(side_effect=lambda s, d: s)  # type: ignore[method-assign]
+            orchestrator.oracle.compute_batch = unittest.mock.MagicMock(side_effect=lambda s, d: s)  # type: ignore
 
             def mock_train(dataset: Path, initial_potential: Path | None, output_dir: Path) -> Path:
                 output_dir.mkdir(parents=True, exist_ok=True)
@@ -102,30 +105,59 @@ def __() -> tuple[Any, ...]:
                 return dataset_path
 
             # Trainer
-            orchestrator.trainer.train = unittest.mock.MagicMock(side_effect=mock_train)  # type: ignore[method-assign]
-            orchestrator.trainer.update_dataset = unittest.mock.MagicMock(side_effect=mock_update)  # type: ignore[method-assign]
-            orchestrator.trainer.select_local_active_set = unittest.mock.MagicMock(side_effect=lambda c, a, n: c[:n])  # type: ignore[method-assign]
+            orchestrator.trainer.train = unittest.mock.MagicMock(side_effect=mock_train)  # type: ignore
+            orchestrator.trainer.update_dataset = unittest.mock.MagicMock(side_effect=mock_update)  # type: ignore
+            orchestrator.trainer.select_local_active_set = unittest.mock.MagicMock(  # type: ignore
+                side_effect=lambda c, a, n: c[:n]
+            )
 
             # Validator
-            orchestrator.validator.validate = unittest.mock.MagicMock(return_value=ValidationReport(  # type: ignore[method-assign]
-                passed=True,
-                reason=None,
-                energy_rmse=0.001,
-                force_rmse=0.01,
-                stress_rmse=0.05,
-                phonon_stable=True,
-                mechanically_stable=True
-            ))
+            orchestrator.validator.validate = unittest.mock.MagicMock(  # type: ignore
+                return_value=ValidationReport(
+                    passed=True,
+                    reason=None,
+                    energy_rmse=0.001,
+                    force_rmse=0.01,
+                    stress_rmse=0.05,
+                    phonon_stable=True,
+                    mechanically_stable=True,
+                )
+            )
 
         return orchestrator
 
     return (
-        plt, np, Path, sys, logging, Atoms, bulk, ProjectConfig, SystemConfig, DynamicsConfig, OracleConfig, TrainerConfig, ValidatorConfig, StructureGeneratorConfig, PolicyConfig, Orchestrator, AbstractDynamics, AbstractOracle, AbstractTrainer, Validator, Reporter, StructureGenerator, ValidationReport, setup_orchestrator, os
+        plt,
+        np,
+        Path,
+        sys,
+        logging,
+        Atoms,
+        bulk,
+        ProjectConfig,
+        SystemConfig,
+        DynamicsConfig,
+        OracleConfig,
+        TrainerConfig,
+        ValidatorConfig,
+        StructureGeneratorConfig,
+        PolicyConfig,
+        Orchestrator,
+        AbstractDynamics,
+        AbstractOracle,
+        AbstractTrainer,
+        Validator,
+        Reporter,
+        StructureGenerator,
+        ValidationReport,
+        setup_orchestrator,
+        os,
+        Callable,
     )
 
 
 @app.cell
-def __phase1(setup_orchestrator: Any, plt: Any, np: Any) -> tuple[Any, ...]:
+def __phase1(setup_orchestrator: Any, plt: Any, np: Any) -> tuple[Any, dict[str, Any], Any]:
     # ==========================================
     # Phase 1: Zero-Config Run & OTF Halt
     # ==========================================
@@ -155,10 +187,7 @@ def __phase1(setup_orchestrator: Any, plt: Any, np: Any) -> tuple[Any, ...]:
     ax.grid(True)
     plt.close(fig)
 
-    phase1_results = {
-        "final_potential": final_pot_path,
-        "halt_visualized": fig
-    }
+    phase1_results = {"final_potential": final_pot_path, "halt_visualized": fig}
 
     return orchestrator, phase1_results, fig
 
@@ -169,12 +198,12 @@ def __fig(fig: Any) -> None:
 
 
 @app.cell
-def __p1r(phase1_results: Any) -> None:
+def __p1r(phase1_results: dict[str, Any]) -> None:
     print(f"Phase 1 Completed. Generated potential at: {phase1_results['final_potential']}")
 
 
 @app.cell
-def __phase2(setup_orchestrator: Any) -> tuple[Any, ...]:
+def __phase2(setup_orchestrator: Any) -> tuple[Any, dict[str, float]]:
     # ==========================================
     # Phase 2: The Aha! Moment (FePt/MgO Interface)
     # ==========================================
@@ -184,7 +213,7 @@ def __phase2(setup_orchestrator: Any) -> tuple[Any, ...]:
 
     # In a real run, this would generate and relax an interface structure.
     # For the mock tutorial, we present the final computed mock values.
-    interface_energy = 0.85 # J/m^2
+    interface_energy = 0.85  # J/m^2
     fept_order_parameter = 0.92
 
     aha_results = {
@@ -196,7 +225,7 @@ def __phase2(setup_orchestrator: Any) -> tuple[Any, ...]:
 
 
 @app.cell
-def __aha(aha_results: Any) -> None:
+def __aha(aha_results: dict[str, float]) -> None:
     print("==========================================")
     print("Phase 2: The Aha! Moment (FePt/MgO Interface)")
     print("==========================================")

@@ -8,13 +8,13 @@ from src.trainers.ace_trainer import PacemakerWrapper
 
 
 def test_pacemaker_initialization() -> None:
-    config = TrainerConfig(max_epochs=10, active_set_size=200)
+    config = TrainerConfig(max_epochs=10, active_set_size=200, trusted_directories=[])
     wrapper = PacemakerWrapper(config)
     assert wrapper.config.max_epochs == 10
 
 
 def test_update_dataset(tmp_path: Path) -> None:
-    config = TrainerConfig()
+    config = TrainerConfig(trusted_directories=[])
     wrapper = PacemakerWrapper(config)
 
     atoms1 = Atoms("Fe", positions=[(0, 0, 0)])
@@ -27,7 +27,7 @@ def test_update_dataset(tmp_path: Path) -> None:
 
 
 def test_select_local_active_set(monkeypatch: pytest.MonkeyPatch) -> None:
-    config = TrainerConfig()
+    config = TrainerConfig(trusted_directories=[])
     wrapper = PacemakerWrapper(config)
 
     anchor = Atoms("Fe", positions=[(0, 0, 0)])

@@ -5,7 +5,6 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any
 
 from ase import Atoms
 from ase.io import write
@@ -97,6 +96,7 @@ class PacemakerWrapper(AbstractTrainer):
             raise ValueError(msg)
         resolved_bin = Path(os.path.realpath(binary_setting)).resolve(strict=True)
         self._validate_binary_properties(resolved_bin, binary_name, trusted_dirs)
+        self._verify_hash(resolved_bin, binary_name)
         return str(resolved_bin)
 
     def _resolve_relative_binary(
@@ -110,30 +110,27 @@ class PacemakerWrapper(AbstractTrainer):
             return binary_setting
         resolved_bin = Path(os.path.realpath(resolved_which)).resolve(strict=True)
         self._validate_binary_properties(resolved_bin, binary_name, trusted_dirs)
+        self._verify_hash(resolved_bin, binary_name)
         return str(resolved_bin)
+
+    def _verify_hash(self, resolved_bin: Path, binary_name: str) -> None:
+        expected_hash = self.config.binary_hashes.get(binary_name)
+        if expected_hash:
+            import hashlib
+
+            h = hashlib.sha256()
+            with Path.open(resolved_bin, "rb") as f:
+                for chunk in iter(lambda: f.read(4096), b""):
+                    h.update(chunk)
+            if h.hexdigest() != expected_hash:
+                msg = f"Executable hash mismatch for {resolved_bin}"
+                raise ValueError(msg)
 
     def _resolve_binary_path(self, binary_setting: str, binary_name: str) -> str:
         trusted_dirs = self._get_trusted_dirs()
         if Path(binary_setting).is_absolute():
             return self._resolve_absolute_binary(binary_setting, binary_name, trusted_dirs)
         return self._resolve_relative_binary(binary_setting, binary_name, trusted_dirs)
-
-    class PaceCommandBuilder:
-        def __init__(self, binary: str, template: list[str]) -> None:
-            self.cmd: list[str] = [binary]
-            self.template = template
-
-        def build(self, **kwargs: Any) -> list[str]:
-            for arg in self.template:
-                formatted_arg = arg.format(**kwargs)
-                if formatted_arg != arg:
-                    if not re.match(r"^[/a-zA-Z0-9_.\-=]+$", formatted_arg):
-                        msg = f"Command argument contains invalid characters: {formatted_arg}"
-                        raise ValueError(msg)
-                    self.cmd.append(formatted_arg)
-                else:
-                    self.cmd.append(arg)
-            return self.cmd
 
     def select_local_active_set(
         self, candidates: list[Atoms], anchor: Atoms, n: int = 5
@@ -155,12 +152,26 @@ class PacemakerWrapper(AbstractTrainer):
             pace_activeset_bin = self._resolve_binary_path(
                 self.config.pace_activeset_binary, "pace_activeset"
             )
-            builder = self.PaceCommandBuilder(
-                pace_activeset_bin, self.config.pace_activeset_args_template
-            )
-            cmd = builder.build(
-                input=str(in_file.resolve()), output=str(out_file.resolve()), n=str(n)
-            )
+
+            in_file_str = str(in_file.resolve(strict=True))
+            out_file_str = str(out_file.resolve(strict=False))
+
+            if not re.match(r"^[/a-zA-Z0-9_.-]+$", in_file_str) or ".." in in_file_str:
+                msg = f"Invalid input file path: {in_file_str}"
+                raise ValueError(msg)
+            if not re.match(r"^[/a-zA-Z0-9_.-]+$", out_file_str) or ".." in out_file_str:
+                msg = f"Invalid output file path: {out_file_str}"
+                raise ValueError(msg)
+
+            cmd = [
+                pace_activeset_bin,
+                "--input",
+                in_file_str,
+                "--output",
+                out_file_str,
+                "--n",
+                str(n),
+            ]
 
             try:
                 _res: subprocess.CompletedProcess[str] = subprocess.run(  # noqa: S603
@@ -182,7 +193,7 @@ class PacemakerWrapper(AbstractTrainer):
             raise RuntimeError(msg)
 
     def _validate_train_directories(self, dataset: Path, output_dir: Path) -> tuple[Path, Path]:
-        resolved_dataset = dataset.resolve(strict=True)
+        resolved_dataset: Path = dataset.resolve(strict=True)
         if not resolved_dataset.exists():
             msg = f"Dataset not found: {resolved_dataset}"
             raise FileNotFoundError(msg)
@@ -193,18 +204,18 @@ class PacemakerWrapper(AbstractTrainer):
             raise ValueError(msg)
 
         with Path.open(resolved_dataset, "r") as f:
-            first_line = f.readline().strip()
+            first_line: str = f.readline().strip()
             if not first_line.isdigit():
                 msg = "Dataset does not appear to be a valid XYZ format (first line must be atom count)."
                 raise ValueError(msg)
 
         # Force directory existence to allow strict resolution
         Path(output_dir).mkdir(parents=True, exist_ok=True)
-        resolved_output_dir = Path(output_dir).resolve(strict=True)
+        resolved_output_dir: Path = Path(output_dir).resolve(strict=True)
 
         if hasattr(self.config, "project_root"):
-            proj_root = Path(self.config.project_root).resolve(strict=True)
-            tmp_root = Path(tempfile.gettempdir()).resolve(strict=True)
+            proj_root: Path = Path(self.config.project_root).resolve(strict=True)
+            tmp_root: Path = Path(tempfile.gettempdir()).resolve(strict=True)
             if not resolved_output_dir.is_relative_to(
                 proj_root
             ) and not resolved_output_dir.is_relative_to(tmp_root):
@@ -228,19 +239,35 @@ class PacemakerWrapper(AbstractTrainer):
             msg = "Invalid regularization format"
             raise ValueError(msg)
 
-        builder = self.PaceCommandBuilder(pace_train_bin, self.config.pace_train_args_template)
-        cmd = builder.build(
-            dataset=str(dataset.resolve()),
-            max_epochs=str(self.config.max_epochs),
-            active_set_size=str(self.config.active_set_size),
-            baseline_potential=self.config.baseline_potential,
-            regularization=self.config.regularization,
-            output_dir=str(output_dir),
-        )
+        dataset_str = str(dataset.resolve(strict=True))
+        if not re.match(r"^[/a-zA-Z0-9_.-]+$", dataset_str) or ".." in dataset_str:
+            msg = f"Invalid dataset path: {dataset_str}"
+            raise ValueError(msg)
+
+        output_dir_str = str(output_dir.resolve(strict=True))
+        if not re.match(r"^[/a-zA-Z0-9_.-]+$", output_dir_str) or ".." in output_dir_str:
+            msg = f"Invalid output directory path: {output_dir_str}"
+            raise ValueError(msg)
+
+        cmd = [
+            pace_train_bin,
+            "--dataset",
+            dataset_str,
+            "--max_num_epochs",
+            str(int(self.config.max_epochs)),
+            "--active_set_size",
+            str(int(self.config.active_set_size)),
+            "--baseline_potential",
+            self.config.baseline_potential,
+            "--regularization",
+            self.config.regularization,
+            "--output_dir",
+            output_dir_str,
+        ]
 
         if initial_potential and initial_potential.exists():
-            resolved_init_pot = str(initial_potential.resolve())
-            if not re.match(r"^[/a-zA-Z0-9_.-]+$", resolved_init_pot):
+            resolved_init_pot = str(initial_potential.resolve(strict=True))
+            if not re.match(r"^[/a-zA-Z0-9_.-]+$", resolved_init_pot) or ".." in resolved_init_pot:
                 msg = f"Initial potential path contains invalid characters: {resolved_init_pot}"
                 raise ValueError(msg)
             cmd.extend(["--initial_potential", resolved_init_pot])

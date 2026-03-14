@@ -101,6 +101,8 @@ def test_abstract_generator_enforcement() -> None:
 
 
 def test_concrete_interface_compliance() -> None:
+    from pathlib import Path
+
     from src.core import AbstractDynamics, AbstractGenerator, AbstractOracle, AbstractTrainer
     from src.domain_models.config import (
         DynamicsConfig,
@@ -116,14 +118,14 @@ def test_concrete_interface_compliance() -> None:
     from src.trainers.ace_trainer import PacemakerWrapper
 
     sys_cfg = SystemConfig(elements=["Fe", "Pt"], baseline_potential="zbl")
-    dyn_cfg = DynamicsConfig()
+    dyn_cfg = DynamicsConfig(trusted_directories=[], project_root=str(Path.cwd()))
     md_engine = MDInterface(dyn_cfg, sys_cfg)
     eon_engine = EONWrapper(dyn_cfg, sys_cfg)
 
     ora_cfg = OracleConfig()
     oracle = DFTManager(ora_cfg)
 
-    trn_cfg = TrainerConfig()
+    trn_cfg = TrainerConfig(trusted_directories=[])
     trainer = PacemakerWrapper(trn_cfg)
 
     gen_cfg = StructureGeneratorConfig()
