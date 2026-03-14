@@ -133,6 +133,16 @@ class Orchestrator:
         except OracleConvergenceError:
             logging.exception("Oracle convergence failed during initial setup/exploration.")
             raise
+        except Exception as e:
+            logging.exception("An unexpected critical failure occurred during exploration.")
+            # Ensure proper resource cleanup occurs even on unexpected generic exceptions
+            import shutil
+
+            if tmp_work_dir.exists():
+                shutil.rmtree(str(tmp_work_dir), ignore_errors=True)
+
+            msg = "Critical infrastructure failure during exploration."
+            raise RuntimeError(msg) from e
 
     def _select_candidates(self, halt_info: dict[str, Any]) -> Iterator[list[Atoms]]:
         dump_file = halt_info.get("dump_file")
@@ -231,11 +241,6 @@ class Orchestrator:
             msg = "Source potential file missing or invalid"
             raise FileNotFoundError(msg)
 
-        # Immediate file size constraint (max 100MB) to prevent OOM before any heavy reads
-        if src_pot.stat().st_size > 100 * 1024 * 1024:
-            msg = "Source potential file exceeds maximum allowed size (100MB)"
-            raise ValueError(msg)
-
         if not src_pot.resolve(strict=True).is_relative_to(tmp_work_dir.resolve(strict=True)):
             msg = "Path traversal detected"
             raise ValueError(msg)
@@ -256,6 +261,12 @@ class Orchestrator:
         header_bytes = b""
 
         with Path.open(src_pot, "rb") as f:
+            # Atomic file size constraint (max 100MB) to prevent race conditions and OOM
+            st = os.fstat(f.fileno())
+            if st.st_size > 100 * 1024 * 1024:
+                msg = "Source potential file exceeds maximum allowed size (100MB)"
+                raise ValueError(msg)
+
             # Read exactly 1024 bytes for header validation safely
             header_bytes = f.read(1024)
             sha256_hash.update(header_bytes)
@@ -416,7 +427,6 @@ class Orchestrator:
         work_dir: Path = base_dir / f"iter_{self.iteration:03d}"
 
         # Cleanly instantiate temp dir via robust context manager mapping explicitly for resource cleanup
-        import os
         import tempfile
 
         @contextlib.contextmanager

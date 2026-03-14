@@ -13,6 +13,52 @@ class InterfaceTarget(BaseModel):
     face2: str = Field(default="Mg", description="Terminating face of second material")
 
 
+def _validate_single_trusted_dir(path: str) -> str | None:
+    import logging
+    import os
+    import stat
+    from pathlib import Path
+
+    if ".." in path:
+        msg = f"Path traversal characters not allowed in trusted_directory: {path}"
+        raise ValueError(msg)
+
+    try:
+        st_info = os.lstat(path)
+        if stat.S_ISLNK(st_info.st_mode):
+            msg = f"trusted_directory {path} cannot be a symlink."
+            raise ValueError(msg)
+    except FileNotFoundError:
+        logging.warning(f"Trusted directory skipped as it does not exist: {path}")
+        return None
+
+    resolved = Path(path).resolve(strict=True)
+
+    if not resolved.is_absolute():
+        msg = f"trusted_directory must be absolute: {path}"
+        raise ValueError(msg)
+    if not resolved.is_dir():
+        msg = f"trusted_directory must be a directory: {path}"
+        raise ValueError(msg)
+
+    restricted_prefixes = ["/etc", "/bin", "/usr", "/sbin", "/var", "/lib", "/boot", "/root"]
+    for restricted in restricted_prefixes:
+        if str(resolved).startswith(restricted):
+            msg = f"trusted_directory cannot be a system directory: {restricted}"
+            raise ValueError(msg)
+
+    st = resolved.stat()
+    if bool(st.st_mode & stat.S_IWOTH):
+        msg = f"trusted_directory {path} is world-writable, which is insecure."
+        raise ValueError(msg)
+
+    if st.st_uid != os.getuid():
+        msg = f"trusted_directory {path} is not owned by the current user. This is insecure."
+        raise ValueError(msg)
+
+    return str(resolved)
+
+
 class SystemConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     elements: list[str] = Field(..., min_length=1, description="List of elements in the system")
@@ -88,6 +134,10 @@ class DynamicsConfig(BaseModel):
             msg = "project_root cannot be empty"
             raise ValueError(msg)
 
+        if ".." in v:
+            msg = "Path traversal sequences (..) are not allowed in project_root"
+            raise ValueError(msg)
+
         resolved = Path(v).resolve(strict=True)
         if not resolved.is_absolute():
             msg = "project_root must be absolute"
@@ -105,50 +155,58 @@ class DynamicsConfig(BaseModel):
 
         return str(resolved)
 
-    @field_validator("trusted_directories")
     @classmethod
-    def validate_trusted_directories(cls, v: list[str]) -> list[str]:
+    def _validate_single_trusted_dir(cls, path: str) -> str | None:
         import logging
         import os
         import stat
 
+        if ".." in path:
+            msg = f"Path traversal characters not allowed in trusted_directory: {path}"
+            raise ValueError(msg)
+
+        try:
+            st_info = os.lstat(path)
+            if stat.S_ISLNK(st_info.st_mode):
+                msg = f"trusted_directory {path} cannot be a symlink."
+                raise ValueError(msg)
+        except FileNotFoundError:
+            logging.warning(f"Trusted directory skipped as it does not exist: {path}")
+            return None
+
+        resolved = Path(path).resolve(strict=True)
+
+        if not resolved.is_absolute():
+            msg = f"trusted_directory must be absolute: {path}"
+            raise ValueError(msg)
+        if not resolved.is_dir():
+            msg = f"trusted_directory must be a directory: {path}"
+            raise ValueError(msg)
+
+        restricted_prefixes = ["/etc", "/bin", "/usr", "/sbin", "/var", "/lib", "/boot", "/root"]
+        for restricted in restricted_prefixes:
+            if str(resolved).startswith(restricted):
+                msg = f"trusted_directory cannot be a system directory: {restricted}"
+                raise ValueError(msg)
+
+        st = resolved.stat()
+        if bool(st.st_mode & stat.S_IWOTH):
+            msg = f"trusted_directory {path} is world-writable, which is insecure."
+            raise ValueError(msg)
+
+        if st.st_uid != os.getuid():
+            msg = f"trusted_directory {path} is not owned by the current user. This is insecure."
+            raise ValueError(msg)
+
+        return str(resolved)
+
+    @classmethod
+    def validate_trusted_directories(cls, v: list[str]) -> list[str]:
         validated = []
         for path in v:
-            try:
-                p = Path(path)
-                if p.is_symlink():
-                    msg = f"trusted_directory {path} cannot be a symlink."
-                    raise ValueError(msg)
-
-                resolved = Path(path).resolve(strict=True)
-            except FileNotFoundError:
-                logging.warning(f"Trusted directory skipped as it does not exist: {path}")
-                continue
-            if not resolved.is_absolute():
-                msg = f"trusted_directory must be absolute: {path}"
-                raise ValueError(msg)
-            if not resolved.exists() or not resolved.is_dir():
-                msg = f"trusted_directory must exist and be a directory: {path}"
-                raise ValueError(msg)
-
-            # Security: forbid system directories
-            restricted_prefixes = ["/etc", "/bin", "/usr", "/sbin", "/var", "/lib", "/boot", "/root"]
-            for restricted in restricted_prefixes:
-                if str(resolved).startswith(restricted):
-                    msg = f"trusted_directory cannot be a system directory: {restricted}"
-                    raise ValueError(msg)
-
-            # Security: verify directory is not world-writable and is owned by the current user
-            st = resolved.stat()
-            if bool(st.st_mode & stat.S_IWOTH):
-                msg = f"trusted_directory {path} is world-writable, which is insecure."
-                raise ValueError(msg)
-
-            if st.st_uid != os.getuid():
-                msg = f"trusted_directory {path} is not owned by the current user. This is insecure."
-                raise ValueError(msg)
-
-            validated.append(str(resolved))
+            res = _validate_single_trusted_dir(path)
+            if res:
+                validated.append(res)
         return validated
 
     eon_config_template: str = Field(
@@ -248,48 +306,11 @@ class TrainerConfig(BaseModel):
     @field_validator("trusted_directories")
     @classmethod
     def validate_trusted_directories(cls, v: list[str]) -> list[str]:
-        import logging
-        import os
-        import stat
-
         validated = []
         for path in v:
-            try:
-                p = Path(path)
-                if p.is_symlink():
-                    msg = f"trusted_directory {path} cannot be a symlink."
-                    raise ValueError(msg)
-
-                resolved = Path(path).resolve(strict=True)
-            except FileNotFoundError:
-                logging.warning(f"Trusted directory skipped as it does not exist: {path}")
-                continue
-
-            if not resolved.is_absolute():
-                msg = f"trusted_directory must be absolute: {path}"
-                raise ValueError(msg)
-            if not resolved.is_dir():
-                msg = f"trusted_directory must be a directory: {path}"
-                raise ValueError(msg)
-
-            # Security: forbid system directories
-            restricted_prefixes = ["/etc", "/bin", "/usr", "/sbin", "/var", "/lib", "/boot", "/root"]
-            for restricted in restricted_prefixes:
-                if str(resolved).startswith(restricted):
-                    msg = f"trusted_directory cannot be a system directory: {restricted}"
-                    raise ValueError(msg)
-
-            # Security: verify directory is not world-writable and is owned by current user
-            st = resolved.stat()
-            if bool(st.st_mode & stat.S_IWOTH):
-                msg = f"trusted_directory {path} is world-writable, which is insecure."
-                raise ValueError(msg)
-
-            if st.st_uid != os.getuid():
-                msg = f"trusted_directory {path} is not owned by the current user. This is insecure."
-                raise ValueError(msg)
-
-            validated.append(str(resolved))
+            res = _validate_single_trusted_dir(path)
+            if res:
+                validated.append(res)
         return validated
 
 
@@ -321,6 +342,10 @@ class StructureGeneratorConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     stdev: float = Field(default=0.05, ge=0.0, description="Standard deviation for rattling")
     seed_base: int = Field(default=42, description="Base seed for reproducibility")
+    valid_interface_targets: list[str] = Field(
+        default_factory=lambda: ["FePt", "MgO"],
+        description="Whitelist of explicitly supported synthetic interface components",
+    )
 
 
 class PolicyConfig(BaseModel):
@@ -462,6 +487,10 @@ class ProjectConfig(BaseSettings):
     @classmethod
     def validate_project_root(cls, v: Path) -> Path:
         import os
+
+        if ".." in str(v):
+            msg = "Path traversal sequences (..) are not allowed in project_root"
+            raise ValueError(msg)
 
         # Canonicalize path and resolve symlinks securely without os.path.realpath
         resolved_path = Path(v).resolve(strict=True)
