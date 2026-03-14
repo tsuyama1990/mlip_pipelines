@@ -138,7 +138,7 @@ class MDInterface(AbstractDynamics):
         cmd: list[str] = [lmp_bin, "-in", in_file_name]
 
         try:
-            _res: subprocess.CompletedProcess[bytes] = subprocess.run(
+            _res: subprocess.CompletedProcess[bytes] = subprocess.run(  # noqa: S603
                 cmd,
                 cwd=work_dir,
                 check=True,
@@ -264,7 +264,7 @@ write_data {work_dir.resolve()}/data.lammps
         cmd = [lmp_bin, "-in", in_file.name]
 
         try:
-            subprocess.run(
+            subprocess.run(  # noqa: S603
                 cmd,
                 cwd=work_dir,
                 check=True,

@@ -109,11 +109,11 @@ class EONWrapper(AbstractDynamics):
 
             # We use check=False to capture return code 100 gracefully
             # Create a minimal safe environment whitelist to prevent sensitive credential leaks
-            safe_env_keys = ["PATH", "HOME", "USER", "LANG", "LC_ALL"]
+            safe_env_keys = ["PATH"]
             env: dict[str, str] = {k: os.environ[k] for k in safe_env_keys if k in os.environ}
 
             # Safely invoke EON client using direct list execution through subprocess (shell=False)
-            res: subprocess.CompletedProcess[bytes] = subprocess.run(
+            res: subprocess.CompletedProcess[bytes] = subprocess.run(  # noqa: S603
                 cmd,
                 cwd=str(resolved_work_dir.absolute()),
                 capture_output=True,

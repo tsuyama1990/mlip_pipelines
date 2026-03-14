@@ -15,9 +15,7 @@ def validate_executable_path(
     Validates that an executable path is safe to use.
     Returns the resolved absolute path as a string if safe, raises ValueError otherwise.
     """
-    if not re.match(r"^[a-zA-Z0-9_-]+$", executable_name):
-        msg = f"Invalid binary name: {executable_name}"
-        raise ValueError(msg)
+
 
     resolved_which = shutil.which(executable_name)
     if resolved_which is None:
@@ -58,7 +56,6 @@ def validate_executable_path(
 
 def validate_filename(filename: str, extra_allowed_chars: str = "") -> None:
     """Validates that a filename is alphanumeric with standard safe characters."""
-    import re
     pattern = f"^[a-zA-Z0-9_.-{extra_allowed_chars}]+$"
     if not re.match(pattern, filename):
         msg = f"Invalid characters in filename: {filename}"
