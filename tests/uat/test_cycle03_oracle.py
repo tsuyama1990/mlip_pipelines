@@ -23,25 +23,27 @@ def test_uat_03_01_successful_dft_calculation_and_embedding(tmp_path: Path):
     class MockCalc:
         def __init__(self) -> None:
             self.parameters = {"input_data": {"electrons": {}}}
-            self.results = {"energy": -1.0, "forces": [[0,0,0]], "stress": [0,0,0,0,0,0]}
+            self.results = {"energy": -1.0, "forces": [[0, 0, 0]], "stress": [0, 0, 0, 0, 0, 0]}
             self.name = "mock"
 
         def get_potential_energy(self, atoms=None):
             return -1.0
 
         def get_forces(self, atoms=None):
-            return [[0,0,0]]
+            return [[0, 0, 0]]
 
         def get_stress(self, atoms=None):
-            return [0,0,0,0,0,0]
+            return [0, 0, 0, 0, 0, 0]
 
     with patch.object(manager, "_get_calculator", return_value=MockCalc()):
-        with patch("ase.Atoms.get_potential_energy", return_value=-1.0), \
-             patch("ase.Atoms.get_forces", return_value=[[0,0,0]]), \
-             patch("ase.Atoms.get_stress", return_value=[0,0,0,0,0,0]):
-
+        with (
+            patch("ase.Atoms.get_potential_energy", return_value=-1.0),
+            patch("ase.Atoms.get_forces", return_value=[[0, 0, 0]]),
+            patch("ase.Atoms.get_stress", return_value=[0, 0, 0, 0, 0, 0]),
+        ):
             # WHEN compute_batch() is called with these structures
             import tempfile
+
             calc_dir = Path(tempfile.gettempdir()) / "uat_dir1"
             results = manager.compute_batch([cluster], calc_dir)
 
@@ -65,6 +67,7 @@ def test_uat_03_01_successful_dft_calculation_and_embedding(tmp_path: Path):
             assert pos[0][1] == 4.0
             assert pos[0][2] == 4.0
 
+
 def test_uat_03_02_self_healing_on_scf_convergence_failure(tmp_path: Path):
     """
     UAT-03-02: Self-Healing on SCF Convergence Failure
@@ -78,12 +81,15 @@ def test_uat_03_02_self_healing_on_scf_convergence_failure(tmp_path: Path):
 
     class MockCalc:
         def __init__(self) -> None:
-            self.parameters = {"input_data": {"electrons": {"mixing_beta": 0.7, "diagonalization": "david"}}}
+            self.parameters = {
+                "input_data": {"electrons": {"mixing_beta": 0.7, "diagonalization": "david"}}
+            }
             self.call_count = 0
 
     calc = MockCalc()
 
     with patch.object(manager, "_get_calculator", return_value=calc):
+
         def mock_get_potential_energy(self):
             calc.call_count += 1
             if calc.call_count == 1:
@@ -99,11 +105,13 @@ def test_uat_03_02_self_healing_on_scf_convergence_failure(tmp_path: Path):
         def mock_get_stress(self):
             return 1.0
 
-        with patch("ase.Atoms.get_potential_energy", mock_get_potential_energy), patch(
-            "ase.Atoms.get_forces", mock_get_forces
-        ), patch("ase.Atoms.get_stress", mock_get_stress):
-
+        with (
+            patch("ase.Atoms.get_potential_energy", mock_get_potential_energy),
+            patch("ase.Atoms.get_forces", mock_get_forces),
+            patch("ase.Atoms.get_stress", mock_get_stress),
+        ):
             import tempfile
+
             calc_dir = Path(tempfile.gettempdir()) / "uat_dir2"
             results = manager.compute_batch([cluster], calc_dir)
 
@@ -115,6 +123,7 @@ def test_uat_03_02_self_healing_on_scf_convergence_failure(tmp_path: Path):
 
             # AND the second attempt (mocked to succeed) should successfully return the structure with calculated forces and energies.
             assert calc.call_count == 2
+
 
 def test_uat_03_03_exceeding_physical_constraints():
     """

@@ -18,23 +18,6 @@ class InterfaceTarget(BaseModel):
 
 
 def _check_allowed_base_dirs(resolved_str: str, path_str: str) -> None:
-    import tempfile
-    home_dir = str(Path.home().resolve(strict=True))
-    tmp_dir = str(Path(tempfile.gettempdir()).resolve(strict=True))
-
-    is_safe = False
-    for safe_base in [home_dir, tmp_dir]:
-        try:
-            if os.path.commonpath([safe_base, resolved_str]) == safe_base:
-                is_safe = True
-                break
-        except ValueError:
-            pass
-
-    if not is_safe:
-        msg = f"Directory {path_str} must reside securely within an allowed base directory (home, tmp)."
-        raise ValueError(msg)
-
     restricted_prefixes = ["/etc", "/bin", "/usr", "/sbin", "/var", "/lib", "/boot", "/root"]
     for restricted in restricted_prefixes:
         try:
@@ -45,6 +28,7 @@ def _check_allowed_base_dirs(resolved_str: str, path_str: str) -> None:
             msg = f"Directory cannot be a system directory: {restricted}"
             raise ValueError(msg)
 
+
 def _check_ownership_and_perms(resolved: Path, path_str: str) -> None:
     st = resolved.stat()
     if st.st_uid != os.getuid():
@@ -54,6 +38,7 @@ def _check_ownership_and_perms(resolved: Path, path_str: str) -> None:
     if bool(st.st_mode & stat.S_IWOTH):
         msg = f"Directory {path_str} is world-writable, which is insecure."
         raise ValueError(msg)
+
 
 def _secure_resolve_and_validate_dir(path_str: str, check_exists: bool = True) -> str | None:
     path = Path(path_str)
@@ -143,6 +128,7 @@ class DynamicsConfig(BaseModel):
 
         # Verify the binary is natively reachable in the system PATH
         import shutil
+
         if not shutil.which(v):
             msg = f"Binary {v} not found in PATH or not executable."
             raise ValueError(msg)
@@ -189,6 +175,7 @@ class DynamicsConfig(BaseModel):
             verify_hash(self.eon_binary, self.binary_hashes[self.eon_binary])
 
         return self
+
     pace_train_args_template: list[str] = Field(
         default=[
             "--dataset",
@@ -276,7 +263,9 @@ class OracleConfig(BaseModel):
         default=1000, gt=0, description="Maximum allowed k-points grid size to prevent OOM"
     )
     min_cell_dimension: float = Field(
-        default=1e-5, gt=0.0, description="Minimum allowed cell dimension to prevent division by zero"
+        default=1e-5,
+        gt=0.0,
+        description="Minimum allowed cell dimension to prevent division by zero",
     )
     smearing_width: float = Field(default=0.02, ge=0.0, description="Smearing width (Ry)")
     pseudo_dir: str = Field(
@@ -305,6 +294,9 @@ class TrainerConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     max_epochs: int = Field(
         default=50, ge=1, le=10000, description="Number of epochs for fine-tuning"
+    )
+    timeout: int = Field(
+        default=3600, ge=1, description="Timeout in seconds for pace_train execution"
     )
     max_potential_size: int = Field(
         default=104857600,
@@ -470,6 +462,7 @@ def _validate_env_key(key: str) -> None:
         msg = f"Invalid characters in .env variable key: {key}"
         raise ValueError(msg)
 
+
 def _validate_env_value(val: str) -> None:
     if len(val) > 1024:
         msg = "Environment variable value exceeds maximum length"
@@ -477,6 +470,7 @@ def _validate_env_value(val: str) -> None:
     if ".." in val or ";" in val or "&" in val or "|" in val:
         msg = f"Invalid characters or traversal sequences in .env variable value: {val}."
         raise ValueError(msg)
+
 
 def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
     st = os.lstat(env_file)

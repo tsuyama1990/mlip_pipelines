@@ -149,6 +149,19 @@ class TestACETrainer:
             ace_trainer.train(dataset, None, out_dir)
 
     @patch("subprocess.run")
+    def test_train_subprocess_timeout(self, mock_run, ace_trainer, tmp_path):
+        import subprocess
+
+        mock_run.side_effect = subprocess.TimeoutExpired("cmd", 3600)
+
+        dataset = tmp_path / "dataset.extxyz"
+        dataset.write_text("10\ncontent")
+        out_dir = tmp_path / "out"
+
+        with pytest.raises(RuntimeError, match="pace_train execution timed out."):
+            ace_trainer.train(dataset, None, out_dir)
+
+    @patch("subprocess.run")
     def test_train_executable_not_found_2(self, mock_run, ace_trainer, tmp_path):
         mock_run.side_effect = FileNotFoundError("Not found")
 

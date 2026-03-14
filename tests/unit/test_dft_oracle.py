@@ -203,10 +203,11 @@ def test_compute_batch_self_healing_success(dft_oracle, tmp_path, monkeypatch):
         def mock_get_stress(self):
             return 1.0
 
-        with patch("ase.Atoms.get_potential_energy", mock_get_potential_energy), patch(
-            "ase.Atoms.get_forces", mock_get_forces
-        ), patch("ase.Atoms.get_stress", mock_get_stress):
-
+        with (
+            patch("ase.Atoms.get_potential_energy", mock_get_potential_energy),
+            patch("ase.Atoms.get_forces", mock_get_forces),
+            patch("ase.Atoms.get_stress", mock_get_stress),
+        ):
             calc_dir = Path(tempfile.gettempdir()) / "test_calc_dir1"
             results = dft_oracle.compute_batch([atoms], calc_dir)
             assert len(results) == 1
@@ -246,10 +247,11 @@ def test_compute_batch_self_healing_retry_2_success(dft_oracle, tmp_path, monkey
         def mock_get_stress(self):
             return 1.0
 
-        with patch("ase.Atoms.get_potential_energy", mock_get_potential_energy), patch(
-            "ase.Atoms.get_forces", mock_get_forces
-        ), patch("ase.Atoms.get_stress", mock_get_stress):
-
+        with (
+            patch("ase.Atoms.get_potential_energy", mock_get_potential_energy),
+            patch("ase.Atoms.get_forces", mock_get_forces),
+            patch("ase.Atoms.get_stress", mock_get_stress),
+        ):
             calc_dir = Path(tempfile.gettempdir()) / "test_calc_dir2"
             results = dft_oracle.compute_batch([atoms], calc_dir)
             assert len(results) == 1
@@ -280,5 +282,7 @@ def test_compute_batch_total_failure(dft_oracle, tmp_path, monkeypatch):
             "ase.Atoms.get_potential_energy", side_effect=Exception("SCF Failed completely")
         ):
             calc_dir = Path(tempfile.gettempdir()) / "test_calc_dir3"
-            with pytest.raises(OracleConvergenceError, match="Failed to converge structure 0 after 3 retries."):
+            with pytest.raises(
+                OracleConvergenceError, match="Failed to converge structure 0 after 3 retries."
+            ):
                 dft_oracle.compute_batch([atoms], calc_dir)

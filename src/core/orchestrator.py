@@ -44,6 +44,7 @@ class Orchestrator:
         """Scans the potentials directory to find the highest completed iteration."""
         import re
         import shutil
+
         pot_dir = self.config.project_root / "potentials"
         if not pot_dir.exists():
             self.iteration = 0
@@ -266,7 +267,9 @@ class Orchestrator:
             return False
         return True
 
-    def _secure_copy_potential(self, src_pot: Path, pot_dir: Path, iteration: int, tmp_work_dir: Path) -> Path:
+    def _secure_copy_potential(
+        self, src_pot: Path, pot_dir: Path, iteration: int, tmp_work_dir: Path
+    ) -> Path:
         import hashlib
         import os
 
@@ -423,7 +426,10 @@ class Orchestrator:
             raise
 
     def _pre_generate_interface_target(self) -> str | None:
-        if not self.config.system.interface_target or self.iteration != self.config.system.interface_generation_iteration:
+        if (
+            not self.config.system.interface_target
+            or self.iteration != self.config.system.interface_generation_iteration
+        ):
             return None
 
         logging.info("Interface configuration detected. Pre-generating interface target.")
@@ -436,11 +442,18 @@ class Orchestrator:
                 )
                 from ase.io import write
 
-                work_dir_setup = self.config.project_root / "active_learning" / f"iter_{self.iteration:03d}" / "md_run"
+                work_dir_setup = (
+                    self.config.project_root
+                    / "active_learning"
+                    / f"iter_{self.iteration:03d}"
+                    / "md_run"
+                )
                 work_dir_setup.mkdir(parents=True, exist_ok=True)
                 target_file = work_dir_setup / "initial_structure.extxyz"
                 write(str(target_file), initial_struct, format="extxyz")
-                logging.info(f"Generated interface structure with {len(initial_struct)} atoms and saved to {target_file}")
+                logging.info(
+                    f"Generated interface structure with {len(initial_struct)} atoms and saved to {target_file}"
+                )
             else:
                 logging.warning("Structure generator does not support generate_interface")
         except Exception:

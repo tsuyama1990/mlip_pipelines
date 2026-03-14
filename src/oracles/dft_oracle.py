@@ -88,24 +88,34 @@ class DFTManager(AbstractOracle):
 
     def _get_pseudo_dir_path(self) -> Path:
         import os
+
         try:
             raw_pseudo_dir = Path(self.config.pseudo_dir)
             if not raw_pseudo_dir.is_absolute():
-                msg = f"Pseudopotential directory must be an absolute path: {self.config.pseudo_dir}"
+                msg = (
+                    f"Pseudopotential directory must be an absolute path: {self.config.pseudo_dir}"
+                )
                 raise ValueError(msg)
             pseudo_dir_path = raw_pseudo_dir.resolve(strict=True)
 
-            # Directory traversal prevention: whitelist checking (Only home dir allowed)
-            home_dir = Path.home().resolve(strict=True)
-            if os.path.commonpath([str(home_dir), str(pseudo_dir_path)]) != str(home_dir):
-                msg = f"Pseudopotential directory must reside securely within the user's home directory: {pseudo_dir_path}"
-                raise ValueError(msg)
+            # Directory traversal prevention
+            restricted_prefixes = ["/etc", "/bin", "/usr", "/sbin", "/var", "/lib", "/boot", "/root"]
+            for restricted in restricted_prefixes:
+                try:
+                    is_restricted = os.path.commonpath([restricted, str(pseudo_dir_path)]) == restricted
+                except ValueError:
+                    continue
+                if is_restricted:
+                    msg = f"Directory cannot be a system directory: {restricted}"
+                    raise ValueError(msg)
         except FileNotFoundError as e:
             msg = f"Pseudopotential directory not found: {self.config.pseudo_dir}"
             raise FileNotFoundError(msg) from e
         else:
             if not pseudo_dir_path.is_dir():
-                msg = f"Pseudopotential directory is not a valid directory: {self.config.pseudo_dir}"
+                msg = (
+                    f"Pseudopotential directory is not a valid directory: {self.config.pseudo_dir}"
+                )
                 raise ValueError(msg)
             return pseudo_dir_path
 
@@ -115,26 +125,34 @@ class DFTManager(AbstractOracle):
     def _check_upf_stat_and_content(self, fd: int, upf_name: str) -> None:
         import os
         import stat
+
         st = os.fstat(fd)
         if not stat.S_ISREG(st.st_mode):
             self._raise_upf_error(f"Pseudopotential must be a regular file: {upf_name}")
 
         if st.st_uid != os.getuid():
-            self._raise_upf_error(f"Pseudopotential file ownership violation: {upf_name} is not owned by the current user.")
+            self._raise_upf_error(
+                f"Pseudopotential file ownership violation: {upf_name} is not owned by the current user."
+            )
 
-        if st.st_size > 10 * 1024 * 1024: # DoS Protection against massive files
+        if st.st_size > 10 * 1024 * 1024:  # DoS Protection against massive files
             self._raise_upf_error(f"Pseudopotential file too large (>10MB): {upf_name}")
 
         with os.fdopen(fd, "r", encoding="utf-8") as f:
             content = f.read()
 
         if "<UPF" not in content and "PP_INFO" not in content:
-            self._raise_upf_error(f"Invalid UPF format for pseudopotential: {upf_name}. Missing required opening tags.")
+            self._raise_upf_error(
+                f"Invalid UPF format for pseudopotential: {upf_name}. Missing required opening tags."
+            )
         if "</UPF>" not in content and "PP_INFO" not in content:
-            self._raise_upf_error(f"Invalid UPF format for pseudopotential: {upf_name}. Missing required closing tags.")
+            self._raise_upf_error(
+                f"Invalid UPF format for pseudopotential: {upf_name}. Missing required closing tags."
+            )
 
     def _validate_upf_content(self, upf_path: Path, upf_name: str) -> None:
         import os
+
         try:
             fd = os.open(str(upf_path), os.O_RDONLY | os.O_NOFOLLOW)
         except OSError as e:
@@ -152,12 +170,14 @@ class DFTManager(AbstractOracle):
             raise
         except Exception:
             import contextlib
+
             with contextlib.suppress(OSError):
                 os.close(fd)
             raise
 
     def _validate_pseudopotentials(self, symbols: set[str]) -> dict[str, str]:
         import os
+
         pseudos = {}
         pseudo_dir_path = self._get_pseudo_dir_path()
 
@@ -177,7 +197,9 @@ class DFTManager(AbstractOracle):
 
             # Robust pre-resolution TOCTOU validation using commonpath
             try:
-                is_safe = os.path.commonpath([str(pseudo_dir_path), str(upf_path)]) == str(pseudo_dir_path)
+                is_safe = os.path.commonpath([str(pseudo_dir_path), str(upf_path)]) == str(
+                    pseudo_dir_path
+                )
             except ValueError as e:
                 msg = f"Invalid path constructed for pseudopotential: {upf_name}"
                 raise ValueError(msg) from e
@@ -316,10 +338,14 @@ class DFTManager(AbstractOracle):
                 except Exception as e:
                     last_exception = e
                     if attempt < self.config.max_retries:
-                        logging.warning(f"SCF failed for struct {i} attempt {attempt + 1}: {e}. Attempting self-healing...")
+                        logging.warning(
+                            f"SCF failed for struct {i} attempt {attempt + 1}: {e}. Attempting self-healing..."
+                        )
                         self._update_calc_parameters(calc, attempt)
                     else:
-                        logging.warning(f"Failed completely for struct {i} after {self.config.max_retries} retries: {e}")
+                        logging.warning(
+                            f"Failed completely for struct {i} after {self.config.max_retries} retries: {e}"
+                        )
 
             if not success:
                 msg = f"Failed to converge structure {i} after {self.config.max_retries} retries."

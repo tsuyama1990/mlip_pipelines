@@ -30,7 +30,9 @@ def test_system_config_invalid() -> None:
 def test_dynamics_config_valid(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import tempfile
 
-    monkeypatch.setattr("shutil.which", lambda x: "/usr/bin/lmp" if x == "lmp" else "/usr/bin/eonclient")
+    monkeypatch.setattr(
+        "shutil.which", lambda x: "/usr/bin/lmp" if x == "lmp" else "/usr/bin/eonclient"
+    )
     monkeypatch.setattr("os.access", lambda x, y: True)
 
     tmp_dir = Path(tempfile.gettempdir()).resolve(strict=True)
@@ -51,7 +53,9 @@ def test_oracle_config_invalid() -> None:
 def test_project_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import tempfile
 
-    monkeypatch.setattr("shutil.which", lambda x: "/usr/bin/lmp" if x == "lmp" else "/usr/bin/eonclient")
+    monkeypatch.setattr(
+        "shutil.which", lambda x: "/usr/bin/lmp" if x == "lmp" else "/usr/bin/eonclient"
+    )
     monkeypatch.setattr("os.access", lambda x, y: True)
 
     tmp_dir = Path(tempfile.gettempdir()).resolve(strict=True)

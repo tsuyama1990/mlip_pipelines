@@ -18,6 +18,7 @@ class StructureGenerator(AbstractGenerator):
     def generate_local_candidates(self, s0: Atoms, n: int = 20) -> typing.Iterator[Atoms]:
         """Generates candidates via random rattling using streaming generation."""
         from collections.abc import Iterator
+
         if len(s0) > 10000:
             msg = "Structure is too large for rattling (OOM risk)."
             raise ValueError(msg)

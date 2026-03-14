@@ -288,8 +288,21 @@ class PacemakerWrapper(AbstractTrainer):
 
         try:
             _res2: subprocess.CompletedProcess[str] = subprocess.run(  # noqa: S603
-                cmd, check=True, capture_output=True, text=True, shell=False
+                cmd,
+                check=True,
+                capture_output=True,
+                text=True,
+                shell=False,
+                timeout=self.config.timeout,
             )
+        except subprocess.TimeoutExpired as e:
+            import logging
+
+            logging.exception(
+                f"pace_train execution timed out after {self.config.timeout} seconds."
+            )
+            msg = "pace_train execution timed out."
+            raise RuntimeError(msg) from e
         except subprocess.CalledProcessError as e:
             msg = f"pace_train execution failed: {e.stderr}"
             raise RuntimeError(msg) from e
