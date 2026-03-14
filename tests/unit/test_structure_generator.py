@@ -1,5 +1,4 @@
 from ase import Atoms
-from ase.build import bulk
 
 from src.domain_models.config import InterfaceTarget, StructureGeneratorConfig
 from src.generators.structure_generator import StructureGenerator

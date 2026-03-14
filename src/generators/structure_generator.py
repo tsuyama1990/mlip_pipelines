@@ -36,15 +36,17 @@ class StructureGenerator(AbstractGenerator):
 
         return list(_generator())
 
+    def _validate_interface_elements(self, elements: list[str], valid_targets: list[str]) -> None:
+        for elem in elements:
+            if elem not in valid_targets and elem not in chemical_symbols:
+                msg = f"Invalid or unsupported element target for interface generation: {elem}"
+                raise ValueError(msg)
+
     def generate_interface(self, target: InterfaceTarget) -> Atoms:
         """Generates an interface structure based on an InterfaceTarget config."""
         # Security: validate elements before passing to ASE
         valid_targets = self.config.valid_interface_targets
-
-        for elem in [target.element1, target.element2]:
-            if elem not in valid_targets and elem not in chemical_symbols:
-                msg = f"Invalid or unsupported element target for interface generation: {elem}"
-                raise ValueError(msg)
+        self._validate_interface_elements([target.element1, target.element2], valid_targets)
 
         logging.info(
             f"Generating interface between {target.element1} (face {target.face1}) "

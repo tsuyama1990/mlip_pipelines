@@ -391,6 +391,31 @@ class StructureGeneratorConfig(BaseModel):
 
 
 class PolicyConfig(BaseModel):
+
+    @field_validator("fallback_metal_band_gap", "fallback_insulator_band_gap")
+    @classmethod
+    def validate_band_gap(cls, v: float) -> float:
+        if v < 0.0:
+            msg = "Band gap must be non-negative"
+            raise ValueError(msg)
+        return v
+
+    @field_validator("fallback_metal_melting_point", "fallback_insulator_melting_point")
+    @classmethod
+    def validate_melting_point(cls, v: float) -> float:
+        if v <= 0.0:
+            msg = "Melting point must be positive"
+            raise ValueError(msg)
+        return v
+
+    @field_validator("fallback_metal_bulk_modulus", "fallback_insulator_bulk_modulus")
+    @classmethod
+    def validate_bulk_modulus(cls, v: float) -> float:
+        if v <= 0.0:
+            msg = "Bulk modulus must be positive"
+            raise ValueError(msg)
+        return v
+
     model_config = ConfigDict(extra="forbid")
     default_t_max_scale: float = Field(
         default=0.5, ge=0.0, description="Default max temp scale vs melting point"
