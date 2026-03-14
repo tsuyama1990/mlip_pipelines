@@ -320,8 +320,6 @@ class StructureGeneratorConfig(BaseModel):
 
 
 class PolicyConfig(BaseModel):
-
-
     @field_validator("fallback_metal_melting_point", "fallback_insulator_melting_point")
     @classmethod
     def validate_melting_point(cls, v: float) -> float:

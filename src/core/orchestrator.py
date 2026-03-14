@@ -167,7 +167,6 @@ class Orchestrator:
             logging.exception("Oracle convergence failed during initial setup/exploration.")
             raise
 
-
     def _select_candidates(self, halt_info: dict[str, Any]) -> Iterator[list[Atoms]]:
         dump_file = halt_info.get("dump_file")
         if not dump_file:

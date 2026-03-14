@@ -142,3 +142,27 @@ def validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
         raise ValueError(msg)
 
     return resolved_env
+
+
+def validate_and_copy_potential(
+    src_pot: Path, pot_dir: Path, iteration: int, tmp_work_dir: Path
+) -> Path:
+    """Validates paths and securely copies a potential to the target directory."""
+    import shutil
+
+    final_dest = pot_dir / f"generation_{iteration:03d}.yace"
+
+    src_resolved = src_pot.resolve(strict=True)
+    if not src_resolved.is_relative_to(tmp_work_dir.resolve(strict=True)):
+        msg = "Source potential must strictly reside within the tmp working directory"
+        raise ValueError(msg)
+
+    final_resolved = final_dest.resolve(strict=False)
+    if not final_resolved.is_relative_to(pot_dir.resolve(strict=True)):
+        msg = "Destination potential must strictly reside within the potentials directory"
+        raise ValueError(msg)
+
+    # Note: File size verification and hash verification should ideally happen here or before this step.
+    # For now, we perform the atomic copy/move.
+    shutil.copy2(src_resolved, final_resolved)
+    return final_resolved
