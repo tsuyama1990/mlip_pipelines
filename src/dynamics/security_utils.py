@@ -6,7 +6,6 @@ from pathlib import Path
 
 
 def validate_executable_path(
-
     executable_name: str,
     trusted_directories: list[str],
     project_root: str | None = None,
@@ -15,7 +14,6 @@ def validate_executable_path(
     Validates that an executable path is safe to use.
     Returns the resolved absolute path as a string if safe, raises ValueError otherwise.
     """
-
 
     resolved_which = shutil.which(executable_name)
     if resolved_which is None:
@@ -31,7 +29,6 @@ def validate_executable_path(
     if not resolved_bin.is_file() or not os.access(resolved_bin, os.X_OK):
         msg = f"Binary is not an executable file: {resolved_bin}"
         raise ValueError(msg)
-
 
     all_trusted = trusted_directories.copy()
     all_trusted.append(str(Path(sys.prefix) / "bin"))

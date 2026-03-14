@@ -49,10 +49,14 @@ class EONWrapper(AbstractDynamics):
                     raise ValueError(msg)
             # Ensure the potential string itself doesn't contain injected template syntax
             resolved_pot_str = str(resolved_pot)
-            if "{" in resolved_pot_str or "}" in resolved_pot_str or '"' in resolved_pot_str or "'" in resolved_pot_str:
+            if (
+                "{" in resolved_pot_str
+                or "}" in resolved_pot_str
+                or '"' in resolved_pot_str
+                or "'" in resolved_pot_str
+            ):
                 msg = "Potential path contains invalid characters"
                 raise ValueError(msg)
-
 
         pot_str = repr(resolved_pot_str) if potential else "None"
 
@@ -78,6 +82,7 @@ class EONWrapper(AbstractDynamics):
 
     def run_kmc(self, potential: Path | None, work_dir: Path) -> dict[str, Any]:
         """Runs EON client in the specified working directory."""
+        work_dir.mkdir(parents=True, exist_ok=True)
         resolved_work_dir = work_dir.resolve(strict=True)
 
         # Verify that the resolved working directory is within the project root to prevent traversal
@@ -86,8 +91,6 @@ class EONWrapper(AbstractDynamics):
             if not resolved_work_dir.is_relative_to(proj_root):
                 msg = f"Working directory {resolved_work_dir} is outside the allowed project root."
                 raise ValueError(msg)
-
-        resolved_work_dir.mkdir(parents=True, exist_ok=True)
         self._write_config_ini(resolved_work_dir)
         self._write_pace_driver(resolved_work_dir, potential)
 
