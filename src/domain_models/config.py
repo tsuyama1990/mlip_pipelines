@@ -101,14 +101,16 @@ class DynamicsConfig(BaseModel):
     @field_validator("trusted_directories")
     @classmethod
     def validate_trusted_directories(cls, v: list[str]) -> list[str]:
+        import logging
         import os
+        import stat
 
         validated = []
         for path in v:
             try:
                 resolved = Path(os.path.realpath(path)).resolve(strict=True)
             except FileNotFoundError:
-                # Same as TrainerConfig, skip safe missing defaults
+                logging.warning(f"Trusted directory skipped as it does not exist: {path}")
                 continue
             if not resolved.is_absolute():
                 msg = f"trusted_directory must be absolute: {path}"
@@ -116,6 +118,13 @@ class DynamicsConfig(BaseModel):
             if not resolved.exists() or not resolved.is_dir():
                 msg = f"trusted_directory must exist and be a directory: {path}"
                 raise ValueError(msg)
+
+            # Security: verify directory is not world-writable
+            st = resolved.stat()
+            if bool(st.st_mode & stat.S_IWOTH):
+                msg = f"trusted_directory {path} is world-writable, which is insecure."
+                raise ValueError(msg)
+
             validated.append(str(resolved))
         return validated
 
@@ -216,15 +225,16 @@ class TrainerConfig(BaseModel):
     @field_validator("trusted_directories")
     @classmethod
     def validate_trusted_directories(cls, v: list[str]) -> list[str]:
+        import logging
         import os
+        import stat
 
         validated = []
         for path in v:
             try:
                 resolved = Path(os.path.realpath(path)).resolve(strict=True)
             except FileNotFoundError:
-                # In config models it is common for some default directories to not exist on all systems.
-                # We skip missing default directories safely.
+                logging.warning(f"Trusted directory skipped as it does not exist: {path}")
                 continue
 
             if not resolved.is_absolute():
@@ -233,6 +243,13 @@ class TrainerConfig(BaseModel):
             if not resolved.is_dir():
                 msg = f"trusted_directory must be a directory: {path}"
                 raise ValueError(msg)
+
+            # Security: verify directory is not world-writable
+            st = resolved.stat()
+            if bool(st.st_mode & stat.S_IWOTH):
+                msg = f"trusted_directory {path} is world-writable, which is insecure."
+                raise ValueError(msg)
+
             validated.append(str(resolved))
         return validated
 
@@ -383,7 +400,14 @@ class ProjectConfig(BaseSettings):
     @field_validator("project_root", mode="before")
     @classmethod
     def convert_str_to_path(cls, v: str | Path) -> Path:
-        return Path(v)
+        p = Path(v)
+        if ".." in str(p):
+            msg = "Path traversal characters (..) are not allowed in project_root"
+            raise ValueError(msg)
+        if not p.is_absolute():
+            msg = "project_root must be an absolute path"
+            raise ValueError(msg)
+        return p.resolve(strict=True)
 
     system: SystemConfig
     dynamics: DynamicsConfig

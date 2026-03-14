@@ -121,39 +121,58 @@ class Orchestrator:
     def _run_exploration(
         self, current_pot: Path | None, tmp_work_dir: Path
     ) -> dict[str, Any] | str:
+        from src.core.exceptions import DynamicsHaltInterrupt, OracleConvergenceError
+
         try:
             strategy = self._decide_exploration_strategy()
             halt_info = self._execute_exploration(strategy, current_pot, tmp_work_dir)
             return self._detect_halt(halt_info)
-        except Exception as e:
-            logging.exception("Exploration engine failed critically during execution.")
-            # Propagate the error so the orchestrator can cleanly fail this iteration
-            msg = f"Exploration engine failed: {e}"
-            raise RuntimeError(msg) from e
+        except DynamicsHaltInterrupt:
+            logging.exception("Exploration halted due to configured uncertainty thresholds.")
+            raise
+        except OracleConvergenceError:
+            logging.exception("Oracle convergence failed during initial setup/exploration.")
+            raise
 
     def _select_candidates(self, halt_info: dict[str, Any]) -> Iterator[list[Atoms]]:
-        if halt_info.get("is_kmc"):
-            import ase.io
+        dump_file = halt_info.get("dump_file")
+        if not dump_file:
+            logging.error("No dump file provided in halt_info.")
+            return
 
-            high_gamma_atoms = [ase.io.read(halt_info["dump_file"])]
-            if not isinstance(high_gamma_atoms[0], Atoms):
-                high_gamma_atoms = [high_gamma_atoms[0][0]]
-        else:
-            # Cast down to MDInterface because extract_high_gamma_structures is MD-specific
-            from src.dynamics.dynamics_engine import MDInterface
+        dump_path = Path(dump_file)
+        if not dump_path.exists() or not dump_path.is_file():
+            logging.error(f"Dump file missing or invalid: {dump_path}")
+            return
 
-            md_engine = self.md_engine
-            if isinstance(md_engine, MDInterface):
-                high_gamma_atoms = md_engine.extract_high_gamma_structures(
-                    dump_file=halt_info["dump_file"],
-                    threshold=self.config.dynamics.uncertainty_threshold,
-                )
+        try:
+            if halt_info.get("is_kmc"):
+                import ase.io
+
+                high_gamma_atoms = [ase.io.read(dump_path)]
+                if not isinstance(high_gamma_atoms[0], Atoms):
+                    high_gamma_atoms = [high_gamma_atoms[0][0]]
             else:
-                high_gamma_atoms = []
+                # Cast down to MDInterface because extract_high_gamma_structures is MD-specific
+                from src.dynamics.dynamics_engine import MDInterface
 
-        for s0 in high_gamma_atoms:
-            candidates = self.structure_generator.generate_local_candidates(s0, n=20)
-            yield self.trainer.select_local_active_set(candidates, anchor=s0, n=5)
+                md_engine = self.md_engine
+                if isinstance(md_engine, MDInterface):
+                    high_gamma_atoms = md_engine.extract_high_gamma_structures(
+                        dump_file=dump_path,
+                        threshold=self.config.dynamics.uncertainty_threshold,
+                    )
+                else:
+                    high_gamma_atoms = []
+
+            for s0 in high_gamma_atoms:
+                candidates = self.structure_generator.generate_local_candidates(s0, n=20)
+                yield self.trainer.select_local_active_set(candidates, anchor=s0, n=5)
+
+        except Exception as e:
+            logging.exception(f"Failed to extract candidates from dump file {dump_path}")
+            msg = f"Candidate selection failed: {e}"
+            raise RuntimeError(msg) from e
 
     def _compute_dft_and_update_dataset(
         self,
@@ -247,13 +266,23 @@ class Orchestrator:
             msg = "tmp_work_dir is outside the expected base directory"
             raise ValueError(msg)
 
-        final_dest_resolved = final_dest.resolve(strict=False)
         resolved_pot_dir = pot_dir.resolve(strict=True)
-        if not final_dest_resolved.is_relative_to(resolved_pot_dir):
-            msg = "final_dest is outside the expected potentials directory"
+
+        # Verify the parent of the final destination is strictly resolved and valid
+        resolved_parent = final_dest.parent.resolve(strict=True)
+
+        if not resolved_parent.is_relative_to(resolved_pot_dir):
+            msg = "final_dest parent is outside the expected potentials directory"
             raise ValueError(msg)
 
-        fd, tmp_dest = tempfile.mkstemp(dir=str(final_dest_resolved.parent))
+        final_dest_resolved = resolved_parent / final_dest.name
+
+        # Additional path traversal checks on the filename itself
+        if ".." in final_dest.name or "/" in final_dest.name or "\\" in final_dest.name:
+            msg = "Path traversal characters detected in destination filename"
+            raise ValueError(msg)
+
+        fd, tmp_dest = tempfile.mkstemp(dir=str(resolved_parent))
         os.close(fd)
 
         try:
@@ -263,7 +292,7 @@ class Orchestrator:
             Path(tmp_dest).unlink(missing_ok=True)
             raise
 
-        return final_dest
+        return final_dest_resolved
 
     def _validate_tmp_directories(self, tmp_work_dir: Path) -> None:
         expected_dirs = ["training"]
