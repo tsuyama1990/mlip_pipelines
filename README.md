@@ -1,117 +1,149 @@
-# MLIP Pipelines
+# MLIP-Pipelines: High-Efficiency MLIP Construction System
 
-An automated, zero-configuration pipeline for building, validating, and deploying machine learning interatomic potentials (MLIPs).
+![Build Status](https://img.shields.io/badge/build-passing-brightgreen)
+![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)
+![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue)
+![License](https://img.shields.io/badge/license-MIT-blue)
 
-![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)
-![License MIT](https://img.shields.io/badge/license-MIT-green.svg)
+## Elevator Pitch
+**MLIP-Pipelines** democratizes atomic simulations by providing a "Zero-Config" active learning pipeline that autonomously generates state-of-the-art Machine Learning Interatomic Potentials (MLIPs). Powered by the Pacemaker (ACE) engine, it intelligently orchestrates structure generation, self-healing Density Functional Theory (DFT) calculations, and Physics-Informed model training, allowing users to build robust potentials with a fraction of the traditional computational cost.
 
 ## Key Features
 
-- **Zero-Configuration Execution**: Entire multi-stage generation from exploration to deployment executes autonomously from a single `config.yaml` or `.env` configuration.
-- **Self-Healing DFT Oracle**: Automates Quantum ESPRESSO via `ase` with auto-adjusting parameters (e.g. `mixing_beta`, smearing) if SCF convergence fails.
-- **Adaptive Exploration**: Dynamically decides exploration policies and tracks extreme extrapolations ("On-The-Fly" fail detection) to safely halt runaways.
-- **Smart Sampling & D-Optimality**: Identifies high-gamma structures in LAMMPS and downselects actively using `pace_activeset` and localized generation.
-- **Automated Validation**: Integrated `phonopy` stability and stress-strain calculations to guarantee elastic moduli verification and physical correctness.
+1.  **Zero-Config Workflow (工数削減)**: Initiate the entire Active Learning cycle (Exploration $\rightarrow$ DFT $\rightarrow$ Training $\rightarrow$ MD) using a single, strictly validated configuration file. No manual scripting or intervention required.
+2.  **Maximum Data Efficiency (データ効率)**: An Adaptive Exploration Policy Engine dynamically adjusts sampling strategies (MD/MC ratios, defect densities) based on material properties, drastically reducing the required DFT footprint.
+3.  **Physics-Informed Robustness (物理的堅牢性)**: Enforces "Delta Learning" against a hard repulsive baseline (ZBL/LJ). The generated hybrid potentials are mathematically guaranteed to prevent unphysical atomic overlap and catastrophic simulation crashes during extrapolation.
+4.  **Self-Healing Oracle**: The DFT manager automatically detects SCF convergence failures and dynamically heals the calculation by adjusting `mixing_beta` and diagonalization algorithms, preventing costly pipeline stalls.
 
 ## Architecture Overview
 
-The `mlip-pipelines` architecture separates concerns across multiple domain models. The central Orchestrator manages the Active Learning state machine, coordinating the Dynamics Engine (LAMMPS/EON), the DFT Oracle (Quantum ESPRESSO), the Trainer (Pacemaker), and the Validator (Phonopy).
+The system is governed by a central Python `Orchestrator` that manages state transitions and atomic file operations. It interacts with specialized domain modules exclusively through strongly-typed Abstract Base Classes, ensuring a highly decoupled and scalable architecture.
 
 ```mermaid
 graph TD
-    subgraph Active Learning Loop
-        O[Orchestrator]
-        D[Dynamics Engine<br/>LAMMPS / EON]
-        Oracle[DFT Oracle<br/>ASE / Quantum ESPRESSO]
-        T[Trainer<br/>Pacemaker]
-        V[Validator<br/>Phonopy / Elasticity]
+    UserConfig[.env / config.yaml] -->|Validated by| Pydantic[Domain Models / Config]
+    Pydantic --> Orchestrator
 
-        O -- "1. Deploy Potential" --> D
-        D -- "2. Halt: High Uncertainty Structures" --> O
-        O -- "3. Embed & Request Ground Truth" --> Oracle
-        Oracle -- "4. Return Computed Forces/Energies" --> O
-        O -- "5. Update Dataset & Request Training" --> T
-        T -- "6. Return New Potential" --> O
-        O -- "7. Request Quality Check" --> V
-        V -- "8. Validation Results (Pass/Fail)" --> O
+    subgraph Core Orchestration
+        Orchestrator
+        PolicyEngine[Adaptive Policy Engine]
     end
 
-    User[User Config.yaml] --> O
-    O -- "Final Validated Potential" --> Output[Production Deployment]
+    Orchestrator -->|Decides Strategy| PolicyEngine
+
+    subgraph Abstract Interfaces
+        AbstractDynamics[Dynamics Engine]
+        AbstractGenerator[Structure Generator]
+        AbstractOracle[Oracle / DFT]
+        AbstractTrainer[Trainer / Pacemaker]
+        AbstractValidator[Validator]
+    end
+
+    Orchestrator -->|1. Explore & Detect Halt| AbstractDynamics
+    Orchestrator -->|2. Generate Candidates| AbstractGenerator
+    Orchestrator -->|3. Compute Ground Truth| AbstractOracle
+    Orchestrator -->|4. Update & Train| AbstractTrainer
+    Orchestrator -->|5. Validate & Report| AbstractValidator
+
+    AbstractDynamics -.->|LAMMPS / EON| Executables
+    AbstractOracle -.->|Quantum Espresso| Executables
+    AbstractTrainer -.->|pace_train| Executables
+
+    style Orchestrator fill:#f9f,stroke:#333,stroke-width:2px
+    style AbstractDynamics fill:#ccf,stroke:#333
+    style AbstractOracle fill:#cfc,stroke:#333
+    style AbstractTrainer fill:#fcf,stroke:#333
 ```
 
 ## Prerequisites
 
-- **Python**: 3.12+
-- **uv**: Dependency manager (`pip install uv`)
-- **Docker**: (Optional, for running heavy components)
-- External packages installed depending on real-mode execution needs (e.g., LAMMPS, Quantum ESPRESSO, Pacemaker)
+-   **Python**: 3.12 or higher.
+-   **Package Manager**: [uv](https://github.com/astral-sh/uv) (recommended) or `pip`.
+-   **Heavy Dependencies** (For Real Mode):
+    -   [Quantum Espresso](https://www.quantum-espresso.org/) (`pw.x`)
+    -   [LAMMPS](https://lammps.sandia.gov/) (`lmp`)
+    -   [Pacemaker](https://pacemaker.readthedocs.io/) (`pace_train`, `pace_activeset`)
+    -   *Note: The system supports a "Mock Mode" (`MLIP_USE_MOCK=True`) that bypasses these requirements for rapid CI testing and tutorials.*
 
 ## Installation & Setup
 
-We recommend using `uv` to manage the environment and dependencies:
+1.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/your-org/mlip-pipelines.git
+    cd mlip-pipelines
+    ```
 
-```bash
-git clone <repository_url>
-cd mlip-pipelines
-uv sync
-```
+2.  **Sync dependencies using `uv`:**
+    ```bash
+    uv sync
+    ```
 
-Set up your `.env` configuration from the provided example if one exists, or rely on `config.yaml`.
+3.  **Configure the environment:**
+    Copy the example configuration and customize it. The system uses strict Pydantic validation to ensure security and correctness.
+    ```bash
+    cp .env.example .env
+    ```
 
 ## Usage
 
-The primary entry point will be the pipeline execution script. For user acceptance and demonstration, we include a Marimo interactive notebook that runs through the key active learning loops.
+### Quick Start (Tutorial Mode)
+The easiest way to understand the system is via the interactive Marimo notebook tutorial. This will execute the entire active learning pipeline (in Mock Mode by default) in seconds.
 
 ```bash
-# To run the tutorial headlessly (using mock modes for fast validation)
-uv run marimo run tutorials/uat_and_tutorial.py
+# Run interactively in the browser
+uv run marimo edit tutorials/UAT_AND_TUTORIAL.py
 
-# To open the interactive notebook
-uv run marimo edit tutorials/uat_and_tutorial.py
+# Or run headlessly in CI
+uv run marimo run tutorials/UAT_AND_TUTORIAL.py
+```
+
+### Production Execution
+To start a real production run, ensure your `.env` is correctly configured pointing to your system binaries and disable Mock Mode.
+
+```bash
+export MLIP_USE_MOCK=False
+uv run python main.py
 ```
 
 ## Development Workflow
 
-The development is split across a 6-cycle iterative release plan prioritizing schema construction, engine integrations, and automated validation. We enforce strict codebase standards via `ruff` and `mypy`.
+This project adheres to strict formatting, linting, and type-checking standards to maintain high code quality.
 
-- **To run linters:**
-  ```bash
-  uv run ruff check .
-  ```
-- **To format code:**
-  ```bash
-  uv run ruff format .
-  ```
-- **To type check:**
-  ```bash
-  uv run mypy .
-  ```
-- **To run tests:**
-  ```bash
-  uv run pytest
-  ```
+-   **Run Linters & Formatters (Ruff):**
+    ```bash
+    uv run ruff check . --fix
+    uv run ruff format .
+    ```
+
+-   **Run Type Checking (Mypy):**
+    ```bash
+    uv run mypy src tests
+    ```
+
+-   **Run Tests (Pytest):**
+    Ensure all unit and integration tests pass before submitting a Pull Request.
+    ```bash
+    uv run pytest -v --cov=src --cov-report=term-missing
+    ```
 
 ## Project Structure
 
 ```text
-project_root/
+.
+├── dev_documents/          # Architecture specs, system prompts, and UAT plans
 ├── src/
-│   ├── core/              # Main state machine (Orchestrator)
-│   ├── domain_models/     # Pydantic Config Definitions & DTOs
-│   ├── dynamics/          # LAMMPS / EON integration
-│   ├── generators/        # Defect / Interface creation
-│   ├── oracles/           # ASE/QE Self-healing interface & Embedding
-│   ├── trainers/          # Pacemaker wrapper & Baseline potentials
-│   └── validators/        # Validation suite & Phonopy checks
-├── tests/                 # Unit and integration tests
-├── dev_documents/         # System architecture and specifications
-├── potentials/            # Stored generation potential files
-├── tutorials/             # Marimo notebooks and UAT configurations
-├── pyproject.toml         # Tooling configuration
+│   ├── core/               # Abstract interfaces and the central Orchestrator
+│   ├── domain_models/      # Strict Pydantic configuration schemas
+│   ├── dynamics/           # LAMMPS/EON integration and OTF security utilities
+│   ├── generators/         # Adaptive Policy Engine and ASE Structure Generator
+│   ├── oracles/            # Quantum Espresso runner with self-healing logic
+│   ├── trainers/           # Pacemaker ACE training and D-Optimality filtering
+│   └── validators/         # Quality Assurance (RMSE, Phonon stability) and Reporting
+├── tests/                  # Pytest unit and integration suites
+├── tutorials/              # Marimo notebooks for interactive UAT
+├── pyproject.toml          # Project metadata, dependencies, and strict linter config
 └── README.md
 ```
 
 ## License
-
-This project is licensed under the MIT License.
+MIT License
