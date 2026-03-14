@@ -21,10 +21,9 @@ def _check_allowed_base_dirs(resolved_str: str, path_str: str) -> None:
     import tempfile
     home_dir = str(Path.home().resolve(strict=True))
     tmp_dir = str(Path(tempfile.gettempdir()).resolve(strict=True))
-    cwd_dir = str(Path.cwd().resolve(strict=True))
 
     is_safe = False
-    for safe_base in [home_dir, tmp_dir, cwd_dir]:
+    for safe_base in [home_dir, tmp_dir]:
         try:
             if os.path.commonpath([safe_base, resolved_str]) == safe_base:
                 is_safe = True
@@ -33,7 +32,7 @@ def _check_allowed_base_dirs(resolved_str: str, path_str: str) -> None:
             pass
 
     if not is_safe:
-        msg = f"Directory {path_str} must reside securely within an allowed base directory (home, tmp, cwd)."
+        msg = f"Directory {path_str} must reside securely within an allowed base directory (home, tmp)."
         raise ValueError(msg)
 
     restricted_prefixes = ["/etc", "/bin", "/usr", "/sbin", "/var", "/lib", "/boot", "/root"]
@@ -460,6 +459,54 @@ class PolicyConfig(BaseModel):
     )
 
 
+def _validate_env_key(key: str) -> None:
+    if not key.startswith("MLIP_"):
+        msg = f"Unauthorized environment variable injected via .env: {key}. Only MLIP_ prefixes are allowed."
+        raise ValueError(msg)
+    if len(key) > 64:
+        msg = "Environment variable key exceeds maximum length"
+        raise ValueError(msg)
+    if not re.match(r"^[A-Z0-9_]+$", key):
+        msg = f"Invalid characters in .env variable key: {key}"
+        raise ValueError(msg)
+
+def _validate_env_value(val: str) -> None:
+    if len(val) > 1024:
+        msg = "Environment variable value exceeds maximum length"
+        raise ValueError(msg)
+    if ".." in val or ";" in val or "&" in val or "|" in val:
+        msg = f"Invalid characters or traversal sequences in .env variable value: {val}."
+        raise ValueError(msg)
+
+def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
+    st = os.lstat(env_file)
+    if stat.S_ISLNK(st.st_mode):
+        msg = ".env file must not be a symlink."
+        raise ValueError(msg)
+
+    resolved_env = env_file.resolve(strict=True)
+
+    if resolved_env.parent != expected_base.resolve(strict=True):
+        msg = f".env file must reside directly in the allowed base directory: {expected_base}"
+        raise ValueError(msg)
+
+    st = os.lstat(resolved_env)
+
+    if st.st_size > 10 * 1024:
+        msg = ".env file exceeds maximum allowed size (10KB)."
+        raise ValueError(msg)
+
+    if st.st_uid != os.getuid():
+        msg = ".env file is not owned by the current user."
+        raise ValueError(msg)
+
+    if bool(st.st_mode & stat.S_IRWXO) or bool(st.st_mode & stat.S_IRWXG):
+        msg = ".env file has insecure permissions. It must not be group or world readable/writable."
+        raise ValueError(msg)
+
+    return resolved_env
+
+
 class ProjectConfig(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -472,55 +519,6 @@ class ProjectConfig(BaseSettings):
     project_root: Path = Field(..., description="Root directory of the project")
     use_mock: bool = Field(default=False, description="Enable mock mode for CI testing")
 
-    @classmethod
-    def _validate_env_key(cls, key: str) -> None:
-        if not key.startswith("MLIP_"):
-            msg = f"Unauthorized environment variable injected via .env: {key}. Only MLIP_ prefixes are allowed."
-            raise ValueError(msg)
-        if len(key) > 64:
-            msg = "Environment variable key exceeds maximum length"
-            raise ValueError(msg)
-        if not re.match(r"^[A-Z0-9_]+$", key):
-            msg = f"Invalid characters in .env variable key: {key}"
-            raise ValueError(msg)
-
-    @classmethod
-    def _validate_env_value(cls, val: str) -> None:
-        if len(val) > 1024:
-            msg = "Environment variable value exceeds maximum length"
-            raise ValueError(msg)
-        if ".." in val or ";" in val or "&" in val or "|" in val:
-            msg = f"Invalid characters or traversal sequences in .env variable value: {val}."
-            raise ValueError(msg)
-
-    @classmethod
-    def _validate_env_file_security(cls, env_file: Path, expected_base: Path) -> Path:
-        if env_file.is_symlink():
-            msg = ".env file must not be a symlink."
-            raise ValueError(msg)
-
-        resolved_env = env_file.resolve(strict=True)
-
-        if resolved_env.parent != expected_base.resolve(strict=True):
-            msg = f".env file must reside directly in the allowed base directory: {expected_base}"
-            raise ValueError(msg)
-
-        st = os.lstat(resolved_env)
-
-        if st.st_size > 10 * 1024:
-            msg = ".env file exceeds maximum allowed size (10KB)."
-            raise ValueError(msg)
-
-        if st.st_uid != os.getuid():
-            msg = ".env file is not owned by the current user."
-            raise ValueError(msg)
-
-        if bool(st.st_mode & stat.S_IRWXO) or bool(st.st_mode & stat.S_IRWXG):
-            msg = ".env file has insecure permissions. It must not be group or world readable/writable."
-            raise ValueError(msg)
-
-        return resolved_env
-
     @model_validator(mode="before")
     @classmethod
     def validate_env_content(cls, values: dict[str, Any]) -> dict[str, Any]:
@@ -528,7 +526,7 @@ class ProjectConfig(BaseSettings):
         env_file = expected_base / ".env"
 
         if env_file.exists():
-            resolved_env = cls._validate_env_file_security(env_file, expected_base)
+            resolved_env = _validate_env_file_security(env_file, expected_base)
 
             from dotenv import dotenv_values
 
@@ -538,8 +536,8 @@ class ProjectConfig(BaseSettings):
             for key, val in env_vars.items():
                 if val is None:
                     continue
-                cls._validate_env_key(key)
-                cls._validate_env_value(val)
+                _validate_env_key(key)
+                _validate_env_value(val)
 
                 # We inject the parsed values directly into the configuration dict
                 clean_key = key.replace("MLIP_", "").lower()

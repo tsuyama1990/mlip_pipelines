@@ -95,13 +95,10 @@ class DFTManager(AbstractOracle):
                 raise ValueError(msg)
             pseudo_dir_path = raw_pseudo_dir.resolve(strict=True)
 
-            # Directory traversal prevention: whitelist checking
-            import tempfile
+            # Directory traversal prevention: whitelist checking (Only home dir allowed)
             home_dir = Path.home().resolve(strict=True)
-            tmp_dir = Path(tempfile.gettempdir()).resolve(strict=True)
-            if (os.path.commonpath([str(home_dir), str(pseudo_dir_path)]) != str(home_dir) and
-                os.path.commonpath([str(tmp_dir), str(pseudo_dir_path)]) != str(tmp_dir)):
-                msg = f"Pseudopotential directory must reside securely within the user's home directory or temp directory: {pseudo_dir_path}"
+            if os.path.commonpath([str(home_dir), str(pseudo_dir_path)]) != str(home_dir):
+                msg = f"Pseudopotential directory must reside securely within the user's home directory: {pseudo_dir_path}"
                 raise ValueError(msg)
         except FileNotFoundError as e:
             msg = f"Pseudopotential directory not found: {self.config.pseudo_dir}"
@@ -112,54 +109,52 @@ class DFTManager(AbstractOracle):
                 raise ValueError(msg)
             return pseudo_dir_path
 
-    def _validate_upf_content(self, upf_path: Path, upf_name: str) -> None:
+    def _raise_upf_error(self, message: str) -> None:
+        raise ValueError(message)
+
+    def _check_upf_stat_and_content(self, fd: int, upf_name: str) -> None:
         import os
         import stat
+        st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode):
+            self._raise_upf_error(f"Pseudopotential must be a regular file: {upf_name}")
+
+        if st.st_uid != os.getuid():
+            self._raise_upf_error(f"Pseudopotential file ownership violation: {upf_name} is not owned by the current user.")
+
+        if st.st_size > 10 * 1024 * 1024: # DoS Protection against massive files
+            self._raise_upf_error(f"Pseudopotential file too large (>10MB): {upf_name}")
+
+        with os.fdopen(fd, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        if "<UPF" not in content and "PP_INFO" not in content:
+            self._raise_upf_error(f"Invalid UPF format for pseudopotential: {upf_name}. Missing required opening tags.")
+        if "</UPF>" not in content and "PP_INFO" not in content:
+            self._raise_upf_error(f"Invalid UPF format for pseudopotential: {upf_name}. Missing required closing tags.")
+
+    def _validate_upf_content(self, upf_path: Path, upf_name: str) -> None:
+        import os
         try:
             fd = os.open(str(upf_path), os.O_RDONLY | os.O_NOFOLLOW)
         except OSError as e:
             msg = f"Failed to securely open pseudopotential (possibly a symlink): {upf_name}"
             raise FileNotFoundError(msg) from e
 
-        # Ensure fd is tracked for cleanup until os.fdopen takes ownership
-        fd_owned_by_fdopen = False
         try:
-            st = os.fstat(fd)
-            is_reg = stat.S_ISREG(st.st_mode)
-            is_owned = st.st_uid == os.getuid()
-
-            if not is_reg:
-                msg = f"Pseudopotential must be a regular file: {upf_name}"
-                raise ValueError(msg)
-
-            if not is_owned:
-                msg = f"Pseudopotential file ownership violation: {upf_name} is not owned by the current user."
-                raise ValueError(msg)
-
-            with os.fdopen(fd, "r", encoding="utf-8") as f:
-                fd_owned_by_fdopen = True
-                content = f.read()
-
-            has_open = "<UPF" in content or "PP_INFO" in content
-            has_close = "</UPF>" in content or "PP_INFO" in content
-
-            if not has_open:
-                msg = f"Invalid UPF format for pseudopotential: {upf_name}. Missing required opening tags."
-                raise ValueError(msg)
-            if not has_close:
-                msg = f"Invalid UPF format for pseudopotential: {upf_name}. Missing required closing tags."
-                raise ValueError(msg)
-
+            self._check_upf_stat_and_content(fd, upf_name)
         except UnicodeDecodeError as e:
             msg = f"File is corrupted or not utf-8 text: {upf_name}"
             raise ValueError(msg) from e
-        except Exception:
+        except ValueError:
+            # Re-raise correctly if _check_upf_stat_and_content threw.
+            # Note: os.fdopen() closes fd when context manager exits.
             raise
-        finally:
-            if not fd_owned_by_fdopen:
-                import contextlib
-                with contextlib.suppress(OSError):
-                    os.close(fd)
+        except Exception:
+            import contextlib
+            with contextlib.suppress(OSError):
+                os.close(fd)
+            raise
 
     def _validate_pseudopotentials(self, symbols: set[str]) -> dict[str, str]:
         import os
@@ -279,6 +274,7 @@ class DFTManager(AbstractOracle):
 
     def compute_batch(self, structures: list[Atoms], calc_dir: Path) -> list[Atoms]:
         """Runs DFT on a batch of structures with self-healing."""
+        import os
         import tempfile
 
         from src.core.exceptions import OracleConvergenceError
@@ -287,7 +283,11 @@ class DFTManager(AbstractOracle):
         tmp_base = Path(tempfile.gettempdir()).resolve(strict=True)
         resolved_calc_dir = calc_dir.resolve(strict=False)
 
-        if not resolved_calc_dir.is_relative_to(tmp_base):
+        # TOCTOU symlink protection: ensure the resolved absolute path starts strictly
+        # from tmp_base, mitigating symlink aliases before mkdir
+        resolved_str = os.path.realpath(str(resolved_calc_dir))
+        tmp_base_str = os.path.realpath(str(tmp_base))
+        if os.path.commonpath([tmp_base_str, resolved_str]) != tmp_base_str:
             msg = f"Security Violation: Oracle compute batches must be executed inside a trusted temporary directory, not {calc_dir}"
             raise ValueError(msg)
 
