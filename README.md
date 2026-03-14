@@ -65,10 +65,10 @@ The primary entry point will be the pipeline execution script. For user acceptan
 
 ```bash
 # To run the tutorial headlessly (using mock modes for fast validation)
-uv run python tutorials/UAT_AND_TUTORIAL.py
+uv run marimo run tutorials/uat_and_tutorial.py
 
 # To open the interactive notebook
-uv run marimo edit tutorials/UAT_AND_TUTORIAL.py
+uv run marimo edit tutorials/uat_and_tutorial.py
 ```
 
 ## Development Workflow

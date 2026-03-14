@@ -24,12 +24,12 @@ class DynamicsConfig(BaseModel):
     temperature: float = Field(default=300.0, ge=0.0, description="Temperature for MD exploration")
     pressure: float = Field(default=0.0, description="Pressure for NPT MD exploration")
     lmp_binary: str = Field(
-        default="lmp", description="Binary name or path for LAMMPS", pattern=r"^[a-zA-Z0-9_-]+$"
+        default="lmp", description="Binary name or path for LAMMPS", pattern=r"^[/a-zA-Z0-9_.-]+$"
     )
     eon_binary: str = Field(
         default="eonclient",
         description="Binary name or path for EON client",
-        pattern=r"^[a-zA-Z0-9_-]+$",
+        pattern=r"^[/a-zA-Z0-9_.-]+$",
     )
     trusted_directories: list[str] = Field(
         default=["/usr/bin", "/usr/local/bin", "/opt/homebrew/bin"],
@@ -113,7 +113,10 @@ write_data {work_dir}/data.lammps
         default="dimer", description="EON Process Search configuration parameter"
     )
     project_root: str | None = Field(default=None, description="Project root directory for resolving binary paths")
-    safe_env_keys: list[str] = Field(default=["PATH"], description="Whitelist of safe environment variables to pass to subprocesses")
+    safe_env_keys: list[str] = Field(
+        default=["OMP_NUM_THREADS", "MKL_NUM_THREADS"],
+        description="Whitelist of safe environment variables to pass to subprocesses"
+    )
     eon_config_template: str = Field(
         default="""[Main]
 job = {eon_job}
@@ -352,6 +355,7 @@ class ProjectConfig(BaseSettings):
     )
 
     project_root: Path = Field(..., description="Root directory of the project")
+    use_mock: bool = Field(default=False, description="Enable mock mode for CI testing")
 
     @model_validator(mode="before")
     @classmethod

@@ -41,15 +41,16 @@ class EONWrapper(AbstractDynamics):
 
         resolved_pot_str = ""
         if potential:
-            resolved_pot = Path(os.path.realpath(potential)).resolve(strict=True)
+            resolved_pot = Path(os.path.normpath(os.path.realpath(potential))).resolve(strict=True)
             if self.config.project_root is not None:
-                root = Path(os.path.realpath(self.config.project_root)).resolve(strict=True)
+                root = Path(os.path.normpath(os.path.realpath(self.config.project_root))).resolve(strict=True)
                 if not resolved_pot.is_relative_to(root):
                     msg = f"Potential path must be within the project root: {resolved_pot}"
                     raise ValueError(msg)
             # Ensure the potential string itself doesn't contain injected template syntax
             resolved_pot_str = str(resolved_pot)
-            if "{" in resolved_pot_str or "}" in resolved_pot_str or '"' in resolved_pot_str or "'" in resolved_pot_str:
+            # Stricter checks for potential path characters
+            if not re.match(r"^[/a-zA-Z0-9_.-]+$", resolved_pot_str) or "\x00" in resolved_pot_str:
                 msg = "Potential path contains invalid characters"
                 raise ValueError(msg)
 
@@ -58,7 +59,12 @@ class EONWrapper(AbstractDynamics):
 
         # Ensure executable doesn't break python logic
 
-        executable = sys.executable
+        # Secure executable validation
+        executable = os.path.realpath(sys.executable)
+        exec_path = Path(executable).resolve(strict=False)
+        if not exec_path.is_file():
+            msg = "Invalid python executable path"
+            raise ValueError(msg)
         if not re.match(r"^[/a-zA-Z0-9_.-]+$", executable):
             msg = "Invalid python executable path"
             raise ValueError(msg)
@@ -78,6 +84,7 @@ class EONWrapper(AbstractDynamics):
 
     def run_kmc(self, potential: Path | None, work_dir: Path) -> dict[str, Any]:
         """Runs EON client in the specified working directory."""
+        work_dir.mkdir(parents=True, exist_ok=True)
         resolved_work_dir = work_dir.resolve(strict=True)
 
         # Verify that the resolved working directory is within the project root to prevent traversal
@@ -86,8 +93,6 @@ class EONWrapper(AbstractDynamics):
             if not resolved_work_dir.is_relative_to(proj_root):
                 msg = f"Working directory {resolved_work_dir} is outside the allowed project root."
                 raise ValueError(msg)
-
-        resolved_work_dir.mkdir(parents=True, exist_ok=True)
         self._write_config_ini(resolved_work_dir)
         self._write_pace_driver(resolved_work_dir, potential)
 
@@ -107,10 +112,38 @@ class EONWrapper(AbstractDynamics):
 
             cmd: list[str] = [eon_bin]
 
+            # Strictly validate the resolved EON binary path before execution
+            eon_bin_path = Path(os.path.realpath(eon_bin)).resolve(strict=True)
+            if not eon_bin_path.is_file():
+                msg = "EON binary is not a valid file."
+                raise ValueError(msg)
+            if not os.access(eon_bin_path, os.X_OK):
+                msg = "EON binary is not executable."
+                raise ValueError(msg)
+
+            # Verify the binary is within trusted directories
+            is_trusted = False
+            for td in self.config.trusted_directories:
+                td_path = Path(os.path.realpath(td)).resolve(strict=False)
+                if eon_bin_path.is_relative_to(td_path):
+                    is_trusted = True
+                    break
+
+            if not is_trusted:
+                msg = "EON binary is not within trusted directories."
+                raise ValueError(msg)
+
             # We use check=False to capture return code 100 gracefully
             # Create a minimal safe environment whitelist to prevent sensitive credential leaks
-            safe_env_keys = self.config.safe_env_keys
-            env: dict[str, str] = {k: os.environ[k] for k in safe_env_keys if k in os.environ}
+            env: dict[str, str] = {}
+            for k in self.config.safe_env_keys:
+                if k in os.environ:
+                    val = os.environ[k]
+                    # strictly validate environment value chars to prevent injection
+                    if not re.match(r"^[a-zA-Z0-9_./\-:]+$", val):
+                        msg = f"Environment variable {k} contains unsafe characters."
+                        raise ValueError(msg)
+                    env[k] = val
 
             # Safely invoke EON client using direct list execution through subprocess (shell=False)
             res: subprocess.CompletedProcess[bytes] = subprocess.run(  # noqa: S603

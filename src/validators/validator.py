@@ -22,28 +22,43 @@ class Validator:
         return check_phonopy_stability(atoms, calc)
 
     def _check_dependencies(self) -> None:
-        try:
-            from pyacemaker.calculator import pyacemaker  # noqa: F401
-        except ImportError as e:
-            msg = "pyacemaker dependency missing. pyacemaker is required for validation."
-            raise ImportError(msg) from e
+        # Attempt to import dependencies for strict runtime safety
+        import os
+        use_mock = os.environ.get("USE_MOCK", "False") == "True"
 
-        try:
-            import phonopy  # noqa: F401
-        except ImportError as e:
-            msg = "phonopy dependency missing. phonopy is required for validation."
-            raise ImportError(msg) from e
+        if not use_mock:
+            try:
+                from pyacemaker.calculator import pyacemaker  # noqa: F401
+            except ImportError as e:
+                msg = "pyacemaker dependency missing. pyacemaker is required for validation."
+                raise ImportError(msg) from e
+
+            try:
+                import phonopy  # noqa: F401
+            except ImportError as e:
+                msg = "phonopy dependency missing. phonopy is required for validation."
+                raise ImportError(msg) from e
 
     def _check_file_format(self, resolved_path: Path) -> None:
+        import os
+
+        # Verify file exists before reading
+        if not resolved_path.exists():
+            msg = f"Potential file not found: {resolved_path}"
+            raise FileNotFoundError(msg)
+
         if not resolved_path.is_file():
-            msg = f"Potential file not found or is not a file: {resolved_path}"
+            msg = f"Potential file is not a file: {resolved_path}"
             raise FileNotFoundError(msg)
 
         if not str(resolved_path).endswith(".yace"):
             msg = f"Potential file must have .yace extension: {resolved_path}"
             raise ValueError(msg)
 
-        with Path.open(resolved_path) as f:
+        # Enforce canonical path
+        strict_path = Path(os.path.normpath(os.path.realpath(resolved_path))).resolve(strict=True)
+
+        with Path.open(strict_path) as f:
             content = f.read(100)
 
         if "elements" not in content and "version" not in content:
