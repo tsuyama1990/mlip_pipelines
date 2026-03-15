@@ -182,6 +182,9 @@ def test_run_kmc_subprocess_fail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
         def kill(self):
             pass
 
+        def poll(self) -> int | None:
+            return self.returncode
+
         def __enter__(self) -> "MockProc":
             return self
 
@@ -232,6 +235,9 @@ def test_run_kmc_subprocess_halted(tmp_path: Path, monkeypatch: pytest.MonkeyPat
 
         def kill(self):
             pass
+
+        def poll(self) -> int | None:
+            return self.returncode
 
         def __enter__(self) -> "MockProc":
             return self
@@ -321,7 +327,7 @@ def test_get_validated_eon_bin_not_executable(tmp_path: Path, monkeypatch: pytes
 
 
 def test_build_safe_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    config = DynamicsConfig(project_root=str(tmp_path), trusted_directories=[])
+    config = DynamicsConfig(project_root=str(tmp_path), trusted_directories=["/usr/bin", "/bin", "/usr/lib"])
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = EONWrapper(config, sys_config)
 
@@ -333,9 +339,9 @@ def test_build_safe_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
     env = engine._build_safe_env()
     assert env["PATH"] == os.pathsep.join(
-        [str(Path("/usr/bin").resolve()), str(Path("/bin").resolve())]
+        [Path("/usr/bin").resolve().as_posix(), Path("/bin").resolve().as_posix()]
     )
-    assert env["LD_LIBRARY_PATH"] == str(Path("/usr/lib").resolve())
+    assert env["LD_LIBRARY_PATH"] == Path("/usr/lib").resolve().as_posix()
     assert env["OMP_NUM_THREADS"] == "4"
 
 
@@ -372,6 +378,9 @@ def test_run_exploration_eon(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
         def kill(self):
             pass
+
+        def poll(self) -> int | None:
+            return self.returncode
 
         def __enter__(self) -> "MockProc":
             return self
@@ -453,6 +462,9 @@ def test_run_kmc_timeout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
         def __init__(self) -> None:
             self.count = 0
+
+        def poll(self) -> int | None:
+            return self.returncode
 
         def communicate(self, *args: Any, **kwargs: Any) -> tuple[bytes, bytes]:
             if self.count == 0:
