@@ -1,4 +1,5 @@
 import abc
+import typing
 from pathlib import Path
 from typing import Any
 
@@ -54,5 +55,5 @@ class AbstractGenerator(abc.ABC):
     """Abstract Base Class for Structure Generators."""
 
     @abc.abstractmethod
-    def generate_local_candidates(self, s0: Atoms, n: int = 20) -> list[Atoms]:
+    def generate_local_candidates(self, s0: Atoms, n: int = 20) -> typing.Iterator[Atoms]:
         """Generates perturbed candidates around a structure."""

@@ -1,117 +1,67 @@
 # MLIP Pipelines
 
-An automated, zero-configuration pipeline for building, validating, and deploying machine learning interatomic potentials (MLIPs).
+A robust automated machine learning interatomic potential (MLIP) generator and validator framework.
 
-![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)
-![License MIT](https://img.shields.io/badge/license-MIT-green.svg)
+## Overview
+
+MLIP Pipelines orchestrates the complex workflow required to actively learn and deploy machine learning potentials. It autonomously explores configuration space using molecular dynamics, identifies regions of high uncertainty, queries an external DFT oracle for ground truth, trains updated potentials, and rigidly validates their physical accuracy and stability before deployment.
 
 ## Key Features
 
-- **Zero-Configuration Execution**: Entire multi-stage generation from exploration to deployment executes autonomously from a single `config.yaml` or `.env` configuration.
-- **Self-Healing DFT Oracle**: Automates Quantum ESPRESSO via `ase` with auto-adjusting parameters (e.g. `mixing_beta`, smearing) if SCF convergence fails.
-- **Adaptive Exploration**: Dynamically decides exploration policies and tracks extreme extrapolations ("On-The-Fly" fail detection) to safely halt runaways.
-- **Smart Sampling & D-Optimality**: Identifies high-gamma structures in LAMMPS and downselects actively using `pace_activeset` and localized generation.
-- **Automated Validation**: Integrated `phonopy` stability and stress-strain calculations to guarantee elastic moduli verification and physical correctness.
+- **Active Learning Orchestration**: Fully automated loop from data generation to potential deployment.
+- **Adaptive Exploration Policies**: Dynamically adjusts sampling strategies (MD vs MC, temperature scaling, defect introduction) based on material features.
+- **Robust DFT Oracle Interface**: Integrates with standard atomistic simulation tools (VASP via ASE) to compute ground truth properties with built-in retry and failure handling.
+- **Advanced Validator Phase **: Employs strict quality assurance gates. Tests deployed potentials against held-out datasets (Energy/Force RMSE) and validates physical stability criteria (Born stability, Phonon dispersion) using external packages (`phonopy`, ASE).
+- **Automated HTML Reporting**: Generates comprehensive validation reports post-training to monitor potential quality and stability metrics.
+- **Security & Sandboxing**: Strict validation of paths, configurations, and environment variables to prevent injection and traversal attacks.
 
-## Architecture Overview
+## Installation
 
-The `mlip-pipelines` architecture separates concerns across multiple domain models. The central Orchestrator manages the Active Learning state machine, coordinating the Dynamics Engine (LAMMPS/EON), the DFT Oracle (Quantum ESPRESSO), the Trainer (Pacemaker), and the Validator (Phonopy).
-
-```mermaid
-graph TD
-    subgraph Active Learning Loop
-        O[Orchestrator]
-        D[Dynamics Engine<br/>LAMMPS / EON]
-        Oracle[DFT Oracle<br/>ASE / Quantum ESPRESSO]
-        T[Trainer<br/>Pacemaker]
-        V[Validator<br/>Phonopy / Elasticity]
-
-        O -- "1. Deploy Potential" --> D
-        D -- "2. Halt: High Uncertainty Structures" --> O
-        O -- "3. Embed & Request Ground Truth" --> Oracle
-        Oracle -- "4. Return Computed Forces/Energies" --> O
-        O -- "5. Update Dataset & Request Training" --> T
-        T -- "6. Return New Potential" --> O
-        O -- "7. Request Quality Check" --> V
-        V -- "8. Validation Results (Pass/Fail)" --> O
-    end
-
-    User[User Config.yaml] --> O
-    O -- "Final Validated Potential" --> Output[Production Deployment]
-```
-
-## Prerequisites
-
-- **Python**: 3.12+
-- **uv**: Dependency manager (`pip install uv`)
-- **Docker**: (Optional, for running heavy components)
-- External packages installed depending on real-mode execution needs (e.g., LAMMPS, Quantum ESPRESSO, Pacemaker)
-
-## Installation & Setup
-
-We recommend using `uv` to manage the environment and dependencies:
+Ensure you have Python >= 3.12 installed, along with `uv` for dependency management.
 
 ```bash
-git clone <repository_url>
-cd mlip-pipelines
 uv sync
 ```
 
-Set up your `.env` configuration from the provided example if one exists, or rely on `config.yaml`.
+This will set up a virtual environment `.venv` with all necessary dependencies.
 
 ## Usage
 
-The primary entry point will be the pipeline execution script. For user acceptance and demonstration, we include a Marimo interactive notebook that runs through the key active learning loops.
+To run the pipeline or interact with the modules programmatically:
 
-```bash
-# To run the tutorial headlessly (using mock modes for fast validation)
-uv run marimo run tutorials/uat_and_tutorial.py
+```python
+from pathlib import Path
+from src.core.orchestrator import Orchestrator
+from src.domain_models.config import ProjectConfig, SystemConfig
 
-# To open the interactive notebook
-uv run marimo edit tutorials/uat_and_tutorial.py
+# 1. Define your project configuration
+config = ProjectConfig(
+    project_root=Path.cwd(),
+    system=SystemConfig(elements=["Fe"]),
+    # ... configure Dynamics, Oracle, Trainer, and Validator here ...
+)
+
+# 2. Initialize the Orchestrator
+orchestrator = Orchestrator(config)
+
+# 3. Run an Active Learning Cycle
+result = orchestrator.run_cycle()
+
+print(f"Cycle completed. Potential deployed at: {result}")
 ```
 
-## Development Workflow
-
-The development is split across a 6-cycle iterative release plan prioritizing schema construction, engine integrations, and automated validation. We enforce strict codebase standards via `ruff` and `mypy`.
-
-- **To run linters:**
-  ```bash
-  uv run ruff check .
-  ```
-- **To format code:**
-  ```bash
-  uv run ruff format .
-  ```
-- **To type check:**
-  ```bash
-  uv run mypy .
-  ```
-- **To run tests:**
-  ```bash
-  uv run pytest
-  ```
-
-## Project Structure
+## Directory Structure
 
 ```text
-project_root/
+mlip-pipelines/
 ├── src/
-│   ├── core/              # Main state machine (Orchestrator)
-│   ├── domain_models/     # Pydantic Config Definitions & DTOs
-│   ├── dynamics/          # LAMMPS / EON integration
-│   ├── generators/        # Defect / Interface creation
-│   ├── oracles/           # ASE/QE Self-healing interface & Embedding
-│   ├── trainers/          # Pacemaker wrapper & Baseline potentials
-│   └── validators/        # Validation suite & Phonopy checks
-├── tests/                 # Unit and integration tests
-├── dev_documents/         # System architecture and specifications
-├── potentials/            # Stored generation potential files
-├── tutorials/             # Marimo notebooks and UAT configurations
-├── pyproject.toml         # Tooling configuration
-└── README.md
+│   ├── core/           # Central Orchestrator
+│   ├── domain_models/  # Pydantic schemas for data and config validation
+│   ├── dynamics/       # Molecular dynamics and active sampling engines
+│   ├── generators/     # Structure generation and adaptive policies
+│   ├── oracles/        # Interface to DFT calculations
+│   ├── trainers/       # ACE model training wrappers
+│   └── validators/     # Quality assurance and reporting
+├── tests/              # Comprehensive test suites (unit, e2e, uat)
+└── pyproject.toml      # Project configuration and dependency definitions
 ```
-
-## License
-
-This project is licensed under the MIT License.

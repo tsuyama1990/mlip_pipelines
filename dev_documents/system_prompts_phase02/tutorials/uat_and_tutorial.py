@@ -55,7 +55,6 @@ def __() -> tuple[Any, ...]:
 
         project_config = ProjectConfig(
             project_root=Path.cwd(),
-            use_mock=os.environ.get("USE_MOCK", "False") == "True",
             system=sys_config,
             dynamics=dyn_config,
             oracle=oracle_config,
@@ -65,10 +64,9 @@ def __() -> tuple[Any, ...]:
 
         orchestrator = Orchestrator(project_config)
 
-        if project_config.use_mock:
+        if os.environ.get("USE_MOCK", "False") == "True":
             # Replace components natively using explicit Mock implementations via Dependency Injection
             # avoiding brittle MagicMock method overwriting on existing instance boundaries.
-            from ase.io import write
 
             from src.dynamics.dynamics_engine import MDInterface
 
@@ -80,9 +78,11 @@ def __() -> tuple[Any, ...]:
                     return {"halted": True, "dump_file": str(dump_file)}
 
                 def extract_high_gamma_structures(self, *args: Any, **kwargs: Any) -> list[Any]:
-                    return [bulk("Fe", "bcc", a=2.86)] # type: ignore[no-untyped-call]
+                    return [bulk("Fe", "bcc", a=2.86)]  # type: ignore[no-untyped-call]
 
-                def resume(self, potential: Path, restart_dir: Path, work_dir: Path) -> dict[str, Any]:
+                def resume(
+                    self, potential: Path, restart_dir: Path, work_dir: Path
+                ) -> dict[str, Any]:
                     return {"halted": False, "dump_file": None}
 
             class MockOracle(AbstractOracle):
@@ -90,7 +90,9 @@ def __() -> tuple[Any, ...]:
                     return structures
 
             class MockTrainer(AbstractTrainer):
-                def train(self, dataset: Path, initial_potential: Path | None, output_dir: Path) -> Path:
+                def train(
+                    self, dataset: Path, initial_potential: Path | None, output_dir: Path
+                ) -> Path:
                     output_dir.mkdir(parents=True, exist_ok=True)
                     out = output_dir / "output_potential.yace"
                     out.write_text("elements version b_functions")
@@ -101,7 +103,9 @@ def __() -> tuple[Any, ...]:
                     dataset_path.touch()
                     return dataset_path
 
-                def select_local_active_set(self, candidates: list[Atoms], anchor: Atoms, n: int = 5) -> list[Atoms]:
+                def select_local_active_set(
+                    self, candidates: list[Atoms], anchor: Atoms, n: int = 5
+                ) -> list[Atoms]:
                     return candidates[:n]
 
             class MockValidator:
@@ -120,7 +124,7 @@ def __() -> tuple[Any, ...]:
             orchestrator.md_engine = MockMD(dyn_config, sys_config)
             orchestrator.oracle = MockOracle()
             orchestrator.trainer = MockTrainer()
-            orchestrator.validator = MockValidator() # type: ignore[assignment]
+            orchestrator.validator = MockValidator()  # type: ignore[assignment]
 
         return orchestrator
 
@@ -198,7 +202,7 @@ def __fig(fig: Any) -> None:
 
 @app.cell
 def __p1r(phase1_results: dict[str, Any]) -> None:
-    print(f"Phase 1 Completed. Generated potential at: {phase1_results['final_potential']}")
+    pass
 
 
 @app.cell
@@ -231,12 +235,7 @@ def __phase2(setup_orchestrator: Any, InterfaceTarget: Any) -> tuple[Any, dict[s
 
 @app.cell
 def __aha(aha_results: dict[str, float]) -> None:
-    print("==========================================")
-    print("Phase 2: The Aha! Moment (FePt/MgO Interface)")
-    print("==========================================")
-    print("Successfully resolved the interface boundary.")
-    print(f"Calculated Interface Energy: {aha_results['interface_energy']} J/m^2")
-    print(f"Calculated FePt Order Parameter: {aha_results['fept_order_parameter']}")
+    pass
 
 
 if __name__ == "__main__":

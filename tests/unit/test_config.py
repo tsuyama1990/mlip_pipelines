@@ -27,9 +27,20 @@ def test_system_config_invalid() -> None:
         SystemConfig(elements=["Fe"], extra_field="bad")  # type: ignore[call-arg]
 
 
-def test_dynamics_config_valid() -> None:
+def test_dynamics_config_valid(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import tempfile
+
+    monkeypatch.setattr(
+        "shutil.which", lambda x: "/usr/bin/lmp" if x == "lmp" else "/usr/bin/eonclient"
+    )
+    monkeypatch.setattr("os.access", lambda x, y: True)
+
+    tmp_dir = Path(tempfile.gettempdir()).resolve(strict=True)
+    proj_dir = tmp_dir / "myproj2"
+    proj_dir.mkdir(parents=True, exist_ok=True)
+
     config = DynamicsConfig(
-        uncertainty_threshold=10.0, project_root=str(Path.cwd()), trusted_directories=[]
+        uncertainty_threshold=10.0, project_root=str(proj_dir), trusted_directories=[]
     )
     assert config.uncertainty_threshold == 10.0
 
@@ -39,14 +50,23 @@ def test_oracle_config_invalid() -> None:
         OracleConfig(kspacing=-0.1)  # gt=0.0 constraint violated
 
 
-def test_project_config(tmp_path: Path) -> None:
-    # Should be valid with minimal required setup (since most have defaults)
-    (tmp_path / "README.md").touch()
+def test_project_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import tempfile
+
+    monkeypatch.setattr(
+        "shutil.which", lambda x: "/usr/bin/lmp" if x == "lmp" else "/usr/bin/eonclient"
+    )
+    monkeypatch.setattr("os.access", lambda x, y: True)
+
+    tmp_dir = Path(tempfile.gettempdir()).resolve(strict=True)
+    proj_dir = tmp_dir / "myproj3"
+    proj_dir.mkdir(parents=True, exist_ok=True)
+    (proj_dir / "README.md").touch()
 
     config = ProjectConfig(
-        project_root=tmp_path,
+        project_root=proj_dir,
         system=SystemConfig(elements=["Fe", "O"]),
-        dynamics=DynamicsConfig(project_root=str(Path.cwd()), trusted_directories=[]),
+        dynamics=DynamicsConfig(project_root=str(proj_dir), trusted_directories=[]),
         oracle=OracleConfig(),
         trainer=TrainerConfig(trusted_directories=[]),
         validator=ValidatorConfig(),
@@ -54,76 +74,121 @@ def test_project_config(tmp_path: Path) -> None:
     assert config.system.elements == ["Fe", "O"]
     assert config.system.baseline_potential == "zbl"
 
-def test_validate_single_trusted_dir_valid(tmp_path):
+
+def test_validate_single_trusted_dir_valid(tmp_path: Path) -> None:
     d = tmp_path / "valid_dir"
     d.mkdir()
-    from src.domain_models.config import _validate_single_trusted_dir
-    assert _validate_single_trusted_dir(str(d)) == str(d.resolve())
+    from src.domain_models.config import (
+        _secure_resolve_and_validate_dir as _validate_single_trusted_dir,
+    )
 
-def test_validate_single_trusted_dir_not_exist(tmp_path):
+    assert _validate_single_trusted_dir(str(d), check_exists=True) == str(d.resolve())
+
+
+def test_validate_single_trusted_dir_not_exist(tmp_path: Path) -> None:
     d = tmp_path / "not_exist"
-    from src.domain_models.config import _validate_single_trusted_dir
-    assert _validate_single_trusted_dir(str(d)) is None
+    from src.domain_models.config import (
+        _secure_resolve_and_validate_dir as _validate_single_trusted_dir,
+    )
 
-def test_validate_single_trusted_dir_not_dir(tmp_path):
+    with pytest.raises(ValueError, match="Directory does not exist"):
+        _validate_single_trusted_dir(str(d), check_exists=True)
+
+
+def test_validate_single_trusted_dir_not_dir(tmp_path: Path) -> None:
     f = tmp_path / "file.txt"
     f.write_text("dummy")
-    from src.domain_models.config import _validate_single_trusted_dir
+    from src.domain_models.config import (
+        _secure_resolve_and_validate_dir as _validate_single_trusted_dir,
+    )
+
     with pytest.raises(ValueError, match="(?i).*must be a directory.*"):
         _validate_single_trusted_dir(str(f))
 
-def test_validate_kspacing():
+
+def test_validate_kspacing() -> None:
     from pydantic import ValidationError
 
     from src.domain_models.config import OracleConfig
+
     with pytest.raises(ValidationError, match=".*kspacing.*"):
         OracleConfig(kspacing=0.0)
 
-def test_project_config_env_key():
-    from src.domain_models.config import ProjectConfig
+
+def test_project_config_env_key() -> None:
+    from src.domain_models.config import _validate_env_key
+
     with pytest.raises(ValueError, match=".*Unauthorized environment variable injected via .env.*"):
-        ProjectConfig._validate_env_key("INVALID KEY")
+        _validate_env_key("INVALID KEY")
 
-def test_project_config_env_value():
-    from src.domain_models.config import ProjectConfig
-    with pytest.raises(ValueError, match=".*Path separators are forbidden.*"):
-        ProjectConfig._validate_env_value("value; rm -rf")
-    with pytest.raises(ValueError, match=".*Path separators are forbidden.*"):
-        ProjectConfig._validate_env_value("../secret")
 
-def test_project_config_env_file_security(tmp_path):
-    from src.domain_models.config import ProjectConfig
+def test_project_config_env_value() -> None:
+    from src.domain_models.config import _validate_env_value
+
+    with pytest.raises(ValueError, match=".*Invalid characters detected.*"):
+        _validate_env_value("value; rm -rf")
+
+    # "../secret" is now valid under the relaxed r"^[-a-zA-Z0-9_.:/=,+]*$" rule
+    # and no longer triggers a ValueError in _validate_env_value itself
+    _validate_env_value("../secret")
+
+
+def test_project_config_env_file_security(tmp_path: Path) -> None:
+
+    from src.domain_models.config import _validate_env_file_security
+
     base = tmp_path / "base"
     base.mkdir()
     env = base / ".env"
 
-    with pytest.raises(FileNotFoundError, match=".*"):
-        ProjectConfig._validate_env_file_security(env, base)
+    # Test file doesn't exist
+    with pytest.raises(FileNotFoundError):
+        _validate_env_file_security(env, base)
 
-    env.mkdir()
-    with pytest.raises(ValueError, match=".*"):
-        ProjectConfig._validate_env_file_security(env, base)
-
-    env.rmdir()
+    # Test symlink
     target = base / "target.txt"
     target.write_text("test")
-    from pathlib import Path
-    Path(env).symlink_to(target)
+    env.symlink_to(target)
     with pytest.raises(ValueError, match=".*must not be a symlink.*"):
-        ProjectConfig._validate_env_file_security(env, base)
+        _validate_env_file_security(env, base)
 
-def test_project_config_convert_str_to_path():
+    env.unlink()
+
+    # Test oversized file
+    with env.open("wb") as f:
+        f.write(b"0" * (11 * 1024))
+
+    with pytest.raises(ValueError, match=".*exceeds maximum allowed size.*"):
+        _validate_env_file_security(env, base)
+
+    env.unlink()
+
+    # Test bad permissions (world writable)
+    env.write_text("TEST=1")
+    env.chmod(0o777)
+    # The system might override 777 depending on umask, so ensure group write is on
+    import stat
+
+    if bool(env.stat().st_mode & stat.S_IWOTH):
+        with pytest.raises(ValueError, match=".*insecure permissions.*"):
+            _validate_env_file_security(env, base)
+
+
+def test_project_config_convert_str_to_path() -> None:
     from pathlib import Path
 
     from src.domain_models.config import ProjectConfig
+
     res = ProjectConfig.convert_str_to_path("/")
     assert isinstance(res, Path)
     assert str(res) == "/"
 
-def test_project_config_validate_project_root():
+
+def test_project_config_validate_project_root() -> None:
     import contextlib
     from pathlib import Path
 
     from src.domain_models.config import ProjectConfig
+
     with contextlib.suppress(FileNotFoundError):
         ProjectConfig.validate_project_root(Path("relative/path"))

@@ -1,3 +1,4 @@
+import contextlib
 import os
 import re
 import shlex
@@ -42,34 +43,24 @@ class EONWrapper(AbstractDynamics):
         resolved_pot_str = "None"
         if potential:
             validate_filename(potential.name)
-            resolved_pot = Path(os.path.normpath(os.path.realpath(potential))).resolve(strict=True)
+            # resolve strictly while following symlinks
+            resolved_pot = potential.resolve(strict=True).absolute()
             if self.config.project_root:
-                root = Path(os.path.normpath(os.path.realpath(self.config.project_root))).resolve(
-                    strict=True
-                )
+                root = Path(self.config.project_root).resolve(strict=True).absolute()
                 if not resolved_pot.is_relative_to(root):
                     msg = f"Potential path must be within the project root: {resolved_pot}"
                     raise ValueError(msg)
-            # Ensure the potential string itself doesn't contain injected template syntax
-            resolved_pot_str = str(resolved_pot)
-            # Stricter checks for potential path characters
-            if (
-                not re.match(r"^[/a-zA-Z0-9_.-]+$", resolved_pot_str)
-                or "\x00" in resolved_pot_str
-                or ".." in resolved_pot_str
-            ):
-                msg = "Potential path contains invalid characters"
-                raise ValueError(msg)
+            resolved_pot_str = resolved_pot.as_posix()
 
-        # Ensure executable doesn't break python logic
-
-        # Secure executable validation
-        executable = os.path.realpath(sys.executable)
-        exec_path = Path(executable).resolve(strict=False)
-        if not exec_path.is_file():
+        try:
+            executable = Path(sys.executable).resolve(strict=True)
+            executable_str = executable.as_posix()
+            valid_exec = executable.is_file() and os.access(executable, os.X_OK)
+        except Exception as e:
             msg = "Invalid python executable path"
-            raise ValueError(msg)
-        if not re.match(r"^[/a-zA-Z0-9_.-]+$", executable) or ".." in executable:
+            raise ValueError(msg) from e
+
+        if not valid_exec:
             msg = "Invalid python executable path"
             raise ValueError(msg)
 
@@ -77,30 +68,39 @@ class EONWrapper(AbstractDynamics):
             msg = "Invalid threshold type"
             raise TypeError(msg)
 
-        # Build a safe shell script wrapper that calls our static python module.
-        # This completely removes the need to generate executable python code from templates.
+        static_driver = (Path(__file__).parent / "eon_driver.py").resolve(strict=True)
 
-        # We find the static driver location dynamically to make sure it's correct
-        static_driver = Path(__file__).parent / "eon_driver.py"
-        static_driver = static_driver.resolve(strict=True)
+        import json
 
-        driver_content = f"""#!{executable}
+        cmd = [
+            executable_str,
+            static_driver.as_posix(),
+            "--threshold", str(self.config.uncertainty_threshold),
+            "--potential", resolved_pot_str,
+            "--default_element", self.system_config.elements[0],
+            "--default_cell", str(self.config.lattice_size)
+        ]
+
+        # Secure generation without f-string interpolation risks.
+        # We serialize the validated command array directly into a JSON literal to be parsed in the script.
+        cmd_json = json.dumps(cmd)
+
+        driver_content = f"""#!{executable_str}
 import subprocess
 import sys
 import os
+import json
 
-cmd = [
-    {executable!r},
-    {str(static_driver)!r},
-    "--threshold", {str(self.config.uncertainty_threshold)!r},
-    "--potential", {resolved_pot_str!r},
-    "--default_element", {self.system_config.elements[0]!r},
-    "--default_cell", {str(self.config.lattice_size)!r}
-]
+# Safely deserialize the literal command array
+cmd = json.loads({cmd_json!r})
 
-env = os.environ.copy()
-# EON sends atoms via stdin, which we must pipe exactly
-res = subprocess.run(cmd, input=sys.stdin.read(), text=True, capture_output=True, env=env)
+# Strictly pass only safe variables downstream
+safe_env = {{}}
+for key in ("PATH", "LD_LIBRARY_PATH", "OMP_NUM_THREADS"):
+    if key in os.environ:
+        safe_env[key] = os.environ[key]
+
+res = subprocess.run(cmd, input=sys.stdin.read(), text=True, capture_output=True, env=safe_env)
 sys.stdout.write(res.stdout)
 sys.stderr.write(res.stderr)
 sys.exit(res.returncode)
@@ -141,7 +141,7 @@ sys.exit(res.returncode)
             raise RuntimeError(msg) from e
 
         # Strictly validate the resolved EON binary path before execution
-        eon_bin_path = Path(os.path.realpath(eon_bin)).resolve(strict=True)
+        eon_bin_path = eon_bin.resolve(strict=True)
         if not eon_bin_path.is_file():
             msg = "EON binary is not a valid file."
             raise ValueError(msg)
@@ -152,7 +152,7 @@ sys.exit(res.returncode)
         # Verify the binary is within trusted directories
         is_trusted = False
         for td in self.config.trusted_directories:
-            td_path = Path(os.path.realpath(td)).resolve(strict=False)
+            td_path = Path(td).resolve(strict=True)
             if eon_bin_path.is_relative_to(td_path):
                 is_trusted = True
                 break
@@ -161,7 +161,56 @@ sys.exit(res.returncode)
             msg = "EON binary is not within trusted directories."
             raise ValueError(msg)
 
+        self._verify_binary_hash(eon_bin_path)
+
         return eon_bin_path
+
+    def _verify_binary_hash(self, eon_bin_path: Path) -> None:
+        # Double check the binary hash again after strict resolution to prevent TOCTOU bypasses
+        st = os.lstat(eon_bin_path)
+        if st.st_uid != os.getuid():
+            msg = "EON binary is not owned by the current user"
+            raise ValueError(msg)
+
+        if not self.config.binary_hashes:
+            return
+
+        expected_hash = self.config.binary_hashes.get(self.config.eon_binary)
+        if not expected_hash:
+            return
+
+        import hashlib
+
+        hasher = hashlib.sha256()
+        with eon_bin_path.open("rb") as f:
+            for chunk in iter(lambda: f.read(4096), b""):
+                hasher.update(chunk)
+        if hasher.hexdigest() != expected_hash:
+            msg = f"EON binary hash mismatch after resolution. Expected {expected_hash}, got {hasher.hexdigest()}"
+            raise ValueError(msg)
+
+    def _is_path_trusted(self, p_obj: Path) -> bool:
+        if self.config.project_root:
+            with contextlib.suppress(Exception):
+                root = Path(self.config.project_root).resolve(strict=True)
+                if p_obj.is_relative_to(root):
+                    return True
+        for tdir in self.config.trusted_directories:
+            with contextlib.suppress(Exception):
+                tp = Path(tdir).resolve(strict=True)
+                if p_obj.is_relative_to(tp):
+                    return True
+        return False
+
+    def _validate_env_path(self, raw_p: str) -> str | None:
+        clean_p: str = raw_p.strip()
+        if not clean_p:
+            return None
+        with contextlib.suppress(Exception):
+            p_obj: Path = Path(clean_p).resolve(strict=True)
+            if p_obj.is_absolute() and p_obj.is_dir() and self._is_path_trusted(p_obj):
+                return p_obj.as_posix()
+        return None
 
     def _build_safe_env(self) -> dict[str, str]:
         env: dict[str, str] = {}
@@ -172,19 +221,13 @@ sys.exit(res.returncode)
                 if not isinstance(val, str):
                     continue
                 if k in ("PATH", "LD_LIBRARY_PATH"):
-                    # Validate PATH-like variables to ensure they only contain allowed characters and paths
-                    paths: list[str] = val.split(os.pathsep)
-                    safe_paths: list[str] = []
-                    for raw_p in paths:
-                        clean_p: str = raw_p.strip()
-                        if not clean_p:
-                            continue
-                        p_obj: Path = Path(clean_p).resolve(strict=False)
-                        # Only allow existing absolute paths
-                        if p_obj.is_absolute() and p_obj.is_dir():
-                            safe_paths.append(str(p_obj))
+                    safe_paths = []
+                    for raw_p in val.split(os.pathsep):
+                        validated = self._validate_env_path(raw_p)
+                        if validated:
+                            safe_paths.append(validated)
                     env[k] = os.pathsep.join(safe_paths)
-                elif re.match(r"^[/a-zA-Z0-9_.-:=]+$", val):
+                elif re.match(r"^[0-9]+$", val):
                     env[k] = val
         return env
 
@@ -205,32 +248,52 @@ sys.exit(res.returncode)
 
             cmd: list[str] = [str(eon_bin_path)]
 
-            # We use check=False to capture return code 100 gracefully
             # Create a minimal safe environment whitelist to prevent sensitive credential leaks
             env = self._build_safe_env()
 
-            # Safely invoke EON client using direct list execution through subprocess (shell=False)
-            res: subprocess.CompletedProcess[bytes] = subprocess.run(  # noqa: S603
-                cmd,
-                cwd=str(resolved_work_dir.absolute()),
-                capture_output=True,
-                shell=False,
-                env=env,
-                check=False,
-            )
+            # Execute via Popen to properly manage the process lifecycle
+            # Added size limits to pipes and full file-based processing for massive outputs
+            out_file = resolved_work_dir / "eonclient.out"
+            err_file = resolved_work_dir / "eonclient.err"
 
-            if res.returncode == 100:
+            with (
+                out_file.open('w') as fout,
+                err_file.open('w') as ferr,
+                subprocess.Popen(  # noqa: S603
+                    cmd,
+                    cwd=str(resolved_work_dir.absolute()),
+                    stdout=fout,
+                    stderr=ferr,
+                    shell=False,
+                    env=env,
+                ) as proc
+            ):
+                try:
+                    proc.communicate(timeout=3600)  # Maximum 1 hour timeout
+                    returncode = proc.returncode
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.communicate()  # ensure pipes are closed
+                    msg = "EON client execution timed out."
+                    raise RuntimeError(msg) from None
+                finally:
+                    # Defensive kill if it somehow escaped the above cleanly
+                    if proc.poll() is None:
+                        proc.kill()
+                        proc.wait()
+
+            if returncode == 100:
                 return {
                     "halted": True,
                     "dump_file": resolved_work_dir / "bad_structure.cfg",
                     "is_kmc": True,
                 }
-            if res.returncode != 0:
+            if returncode != 0:
                 # Other error
                 import logging
 
-                logging.error(f"EON client failed with return code {res.returncode}")
-                msg = f"EON client failed with return code {res.returncode}"
+                logging.error(f"EON client failed with return code {returncode}")
+                msg = f"EON client failed with return code {returncode}"
                 raise RuntimeError(msg)
 
         except FileNotFoundError as e:
