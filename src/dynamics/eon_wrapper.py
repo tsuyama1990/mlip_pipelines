@@ -42,34 +42,24 @@ class EONWrapper(AbstractDynamics):
         resolved_pot_str = "None"
         if potential:
             validate_filename(potential.name)
-            resolved_pot = Path(os.path.normpath(os.path.realpath(potential))).resolve(strict=True)
+            resolved_pot = potential.resolve(strict=True)
             if self.config.project_root:
-                root = Path(os.path.normpath(os.path.realpath(self.config.project_root))).resolve(
-                    strict=True
-                )
+                root = Path(self.config.project_root).resolve(strict=True)
                 if not resolved_pot.is_relative_to(root):
                     msg = f"Potential path must be within the project root: {resolved_pot}"
                     raise ValueError(msg)
-            # Ensure the potential string itself doesn't contain injected template syntax
             resolved_pot_str = str(resolved_pot)
-            # Stricter checks for potential path characters
-            if (
-                not re.match(r"^[/a-zA-Z0-9_.-]+$", resolved_pot_str)
-                or "\x00" in resolved_pot_str
-                or ".." in resolved_pot_str
-            ):
+            if not re.match(r"^[/a-zA-Z0-9_.-]+$", resolved_pot_str) or "\x00" in resolved_pot_str or ".." in resolved_pot_str:
                 msg = "Potential path contains invalid characters"
                 raise ValueError(msg)
 
-        # Ensure executable doesn't break python logic
-
-        # Secure executable validation
-        executable = os.path.realpath(sys.executable)
-        exec_path = Path(executable).resolve(strict=False)
-        if not exec_path.is_file():
+        executable = Path(sys.executable)
+        executable_str = str(executable)
+        if not re.match(r"^[/a-zA-Z0-9_.-]+$", executable_str) or ".." in executable_str:
             msg = "Invalid python executable path"
             raise ValueError(msg)
-        if not re.match(r"^[/a-zA-Z0-9_.-]+$", executable) or ".." in executable:
+        executable = executable.resolve(strict=True)
+        if not executable.is_file():
             msg = "Invalid python executable path"
             raise ValueError(msg)
 
@@ -77,20 +67,15 @@ class EONWrapper(AbstractDynamics):
             msg = "Invalid threshold type"
             raise TypeError(msg)
 
-        # Build a safe shell script wrapper that calls our static python module.
-        # This completely removes the need to generate executable python code from templates.
+        static_driver = (Path(__file__).parent / "eon_driver.py").resolve(strict=True)
 
-        # We find the static driver location dynamically to make sure it's correct
-        static_driver = Path(__file__).parent / "eon_driver.py"
-        static_driver = static_driver.resolve(strict=True)
-
-        driver_content = f"""#!{executable}
+        driver_content = f"""#!{executable_str}
 import subprocess
 import sys
 import os
 
 cmd = [
-    {executable!r},
+    {executable_str!r},
     {str(static_driver)!r},
     "--threshold", {str(self.config.uncertainty_threshold)!r},
     "--potential", {resolved_pot_str!r},
@@ -98,9 +83,13 @@ cmd = [
     "--default_cell", {str(self.config.lattice_size)!r}
 ]
 
-env = os.environ.copy()
-# EON sends atoms via stdin, which we must pipe exactly
-res = subprocess.run(cmd, input=sys.stdin.read(), text=True, capture_output=True, env=env)
+# Strictly pass only safe variables downstream
+safe_env = {{}}
+for key in ("PATH", "LD_LIBRARY_PATH", "OMP_NUM_THREADS"):
+    if key in os.environ:
+        safe_env[key] = os.environ[key]
+
+res = subprocess.run(cmd, input=sys.stdin.read(), text=True, capture_output=True, env=safe_env)
 sys.stdout.write(res.stdout)
 sys.stderr.write(res.stderr)
 sys.exit(res.returncode)
@@ -141,7 +130,7 @@ sys.exit(res.returncode)
             raise RuntimeError(msg) from e
 
         # Strictly validate the resolved EON binary path before execution
-        eon_bin_path = Path(os.path.realpath(eon_bin)).resolve(strict=True)
+        eon_bin_path = eon_bin.resolve(strict=True)
         if not eon_bin_path.is_file():
             msg = "EON binary is not a valid file."
             raise ValueError(msg)
@@ -152,7 +141,7 @@ sys.exit(res.returncode)
         # Verify the binary is within trusted directories
         is_trusted = False
         for td in self.config.trusted_directories:
-            td_path = Path(os.path.realpath(td)).resolve(strict=False)
+            td_path = Path(td).resolve(strict=True)
             if eon_bin_path.is_relative_to(td_path):
                 is_trusted = True
                 break
@@ -205,32 +194,40 @@ sys.exit(res.returncode)
 
             cmd: list[str] = [str(eon_bin_path)]
 
-            # We use check=False to capture return code 100 gracefully
             # Create a minimal safe environment whitelist to prevent sensitive credential leaks
             env = self._build_safe_env()
 
-            # Safely invoke EON client using direct list execution through subprocess (shell=False)
-            res: subprocess.CompletedProcess[bytes] = subprocess.run(  # noqa: S603
+            # Execute via Popen to properly manage the process lifecycle
+
+            with subprocess.Popen(  # noqa: S603
                 cmd,
                 cwd=str(resolved_work_dir.absolute()),
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 shell=False,
                 env=env,
-                check=False,
-            )
+            ) as proc:
+                try:
+                    out, err = proc.communicate(timeout=3600)  # Maximum 1 hour timeout
+                    returncode = proc.returncode
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.communicate()  # ensure pipes are closed
+                    msg = "EON client execution timed out."
+                    raise RuntimeError(msg) from None
 
-            if res.returncode == 100:
+            if returncode == 100:
                 return {
                     "halted": True,
                     "dump_file": resolved_work_dir / "bad_structure.cfg",
                     "is_kmc": True,
                 }
-            if res.returncode != 0:
+            if returncode != 0:
                 # Other error
                 import logging
 
-                logging.error(f"EON client failed with return code {res.returncode}")
-                msg = f"EON client failed with return code {res.returncode}"
+                logging.error(f"EON client failed with return code {returncode}")
+                msg = f"EON client failed with return code {returncode}"
                 raise RuntimeError(msg)
 
         except FileNotFoundError as e:

@@ -431,3 +431,52 @@ def test_extract_high_gamma_structures_no_structures(
 
     with pytest.raises(ValueError, match="No structures read from dump file"):
         engine.extract_high_gamma_structures(dump_file, 5.0)
+
+
+def test_extract_high_gamma_structures_single_structure(tmp_path: Path):
+    config = DynamicsConfig(trusted_directories=[], project_root=str(tmp_path))
+    sys_config = SystemConfig(elements=["Fe", "Pt"])
+    engine = MDInterface(config, sys_config)
+
+    dump_file = tmp_path / "dump.lammps"
+    dump_content = """ITEM: TIMESTEP
+0
+ITEM: NUMBER OF ATOMS
+1
+ITEM: BOX BOUNDS pp pp pp
+0.0 10.0
+0.0 10.0
+0.0 10.0
+ITEM: ATOMS id type x y z c_pace_gamma
+1 1 0.0 0.0 0.0 1.0
+"""
+    dump_file.write_text(dump_content)
+    structures = engine.extract_high_gamma_structures(dump_file, 5.0)
+    assert len(structures) == 1
+
+
+def test_extract_high_gamma_structures_single_structure_missing_file(tmp_path: Path):
+    config = DynamicsConfig(trusted_directories=[], project_root=str(tmp_path))
+    sys_config = SystemConfig(elements=["Fe", "Pt"])
+    engine = MDInterface(config, sys_config)
+
+    with pytest.raises(FileNotFoundError):
+        engine.extract_high_gamma_structures(tmp_path / "notexist.lammps", 5.0)
+
+
+def test_resume_missing_file(tmp_path: Path):
+    config = DynamicsConfig(trusted_directories=[], project_root=str(tmp_path))
+    sys_config = SystemConfig(elements=["Fe", "Pt"])
+    engine = MDInterface(config, sys_config)
+
+    with pytest.raises(FileNotFoundError):
+        engine.resume(tmp_path / "notexist.yace", tmp_path, tmp_path)
+
+
+def test_extract_high_gamma_structures_single_structure_missing_file_2(tmp_path: Path):
+    config = DynamicsConfig(trusted_directories=[], project_root=str(tmp_path))
+    sys_config = SystemConfig(elements=["Fe", "Pt"])
+    engine = MDInterface(config, sys_config)
+
+    with pytest.raises(FileNotFoundError):
+        engine.extract_high_gamma_structures(tmp_path / "notexist.lammps", 5.0)

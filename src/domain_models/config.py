@@ -117,12 +117,12 @@ class DynamicsConfig(BaseModel):
     temperature: float = Field(default=300.0, ge=0.0, description="Temperature for MD exploration")
     pressure: float = Field(default=0.0, description="Pressure for NPT MD exploration")
     lmp_binary: str = Field(
-        default="lmp", description="Binary name or path for LAMMPS", pattern=r"^[a-zA-Z0-9_-]+$"
+        default="lmp", description="Binary name or path for LAMMPS", pattern=r"^[/a-zA-Z0-9_.-]+$"
     )
     eon_binary: str = Field(
         default="eonclient",
         description="Binary name or path for EON client",
-        pattern=r"^[a-zA-Z0-9_-]+$",
+        pattern=r"^[/a-zA-Z0-9_.-]+$",
     )
 
     @field_validator("lmp_binary", "eon_binary")
