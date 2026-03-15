@@ -103,7 +103,7 @@ def write_bad_structure(path: str, atoms: "Atoms") -> None:
 
     # Specific temporary directory whitelist
     allowed_dir = Path(tempfile.gettempdir()) / "mlip_bad_structures"
-    allowed_dir.mkdir(parents=True, exist_ok=True)
+    allowed_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
     allowed_dir = allowed_dir.resolve(strict=True)
 
     import os

@@ -284,8 +284,9 @@ def test_extra_forbid() -> None:
 
 
 def test_distillation_config_path_validation() -> None:
-    from src.domain_models.config import DistillationConfig
     from pydantic import ValidationError
+
+    from src.domain_models.config import DistillationConfig
 
     # Valid string name
     config = DistillationConfig(mace_model_path="mace-mp-0-large")
@@ -304,8 +305,9 @@ def test_distillation_config_path_validation() -> None:
         DistillationConfig(mace_model_path="../hidden_model.pt")
 
 def test_loop_strategy_consistency() -> None:
-    from src.domain_models.config import LoopStrategyConfig
     from pydantic import ValidationError
+
+    from src.domain_models.config import LoopStrategyConfig
 
     config = LoopStrategyConfig(use_tiered_oracle=True, incremental_update=True)
     assert config.incremental_update is True
