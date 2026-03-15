@@ -281,3 +281,34 @@ def test_extra_forbid() -> None:
 
     with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
         CutoutConfig(core_radius=4.0, buffer_radius=5.0, invalid_field=True) # type: ignore[call-arg]
+
+
+def test_distillation_config_path_validation() -> None:
+    from src.domain_models.config import DistillationConfig
+    from pydantic import ValidationError
+
+    # Valid string name
+    config = DistillationConfig(mace_model_path="mace-mp-0-large")
+    assert config.mace_model_path == "mace-mp-0-large"
+
+    # Valid path
+    config = DistillationConfig(mace_model_path="/absolute/path/to/my_model.pt")
+    assert config.mace_model_path == "/absolute/path/to/my_model.pt"
+
+    # Invalid string name
+    with pytest.raises(ValidationError, match="Unknown model name or unsupported extension"):
+        DistillationConfig(mace_model_path="unknown-model")
+
+    # Invalid path traversal
+    with pytest.raises(ValidationError, match="Path traversal sequences"):
+        DistillationConfig(mace_model_path="../hidden_model.pt")
+
+def test_loop_strategy_consistency() -> None:
+    from src.domain_models.config import LoopStrategyConfig
+    from pydantic import ValidationError
+
+    config = LoopStrategyConfig(use_tiered_oracle=True, incremental_update=True)
+    assert config.incremental_update is True
+
+    with pytest.raises(ValidationError, match="incremental_update cannot be True when use_tiered_oracle is False"):
+        LoopStrategyConfig(use_tiered_oracle=False, incremental_update=True)

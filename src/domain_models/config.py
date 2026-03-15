@@ -555,6 +555,19 @@ class DistillationConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_thresholds_and_samples(self) -> "DistillationConfig":
+        valid_foundational_names = ["mace-mp-0-medium", "mace-mp-0-large", "mace-mp-0-small"]
+
+        # Check if it's a known model name
+        if self.mace_model_path not in valid_foundational_names:
+            # If it's a path, validate it
+            if ".." in self.mace_model_path:
+                msg = f"Path traversal sequences (..) are not allowed in mace_model_path: {self.mace_model_path}"
+                raise ValueError(msg)
+            # Extension check
+            if not self.mace_model_path.endswith(".model") and not self.mace_model_path.endswith(".pt"):
+                msg = f"Unknown model name or unsupported extension in mace_model_path: {self.mace_model_path}. Must be one of {valid_foundational_names} or end in .pt/.model"
+                raise ValueError(msg)
+
         if self.uncertainty_threshold <= 0.0:
             msg = "uncertainty_threshold must be strictly positive"
             raise ValueError(msg)
@@ -639,6 +652,13 @@ class LoopStrategyConfig(BaseModel):
         default="LJ", description="Baseline physical potential type (e.g., LJ)"
     )
     thresholds: ActiveLearningThresholds = Field(default_factory=ActiveLearningThresholds)
+
+    @model_validator(mode="after")
+    def validate_strategy_consistency(self) -> "LoopStrategyConfig":
+        if self.incremental_update and not self.use_tiered_oracle:
+            msg = "incremental_update cannot be True when use_tiered_oracle is False"
+            raise ValueError(msg)
+        return self
 
 
 class ProjectConfig(BaseSettings):
