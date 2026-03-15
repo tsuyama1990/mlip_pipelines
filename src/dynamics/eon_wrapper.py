@@ -1,3 +1,4 @@
+import contextlib
 import os
 import re
 import shlex
@@ -188,6 +189,29 @@ sys.exit(res.returncode)
             msg = f"EON binary hash mismatch after resolution. Expected {expected_hash}, got {hasher.hexdigest()}"
             raise ValueError(msg)
 
+    def _is_path_trusted(self, p_obj: Path) -> bool:
+        if self.config.project_root:
+            with contextlib.suppress(Exception):
+                root = Path(self.config.project_root).resolve(strict=True)
+                if p_obj.is_relative_to(root):
+                    return True
+        for tdir in self.config.trusted_directories:
+            with contextlib.suppress(Exception):
+                tp = Path(tdir).resolve(strict=True)
+                if p_obj.is_relative_to(tp):
+                    return True
+        return False
+
+    def _validate_env_path(self, raw_p: str) -> str | None:
+        clean_p: str = raw_p.strip()
+        if not clean_p:
+            return None
+        with contextlib.suppress(Exception):
+            p_obj: Path = Path(clean_p).resolve(strict=True)
+            if p_obj.is_absolute() and p_obj.is_dir() and self._is_path_trusted(p_obj):
+                return p_obj.as_posix()
+        return None
+
     def _build_safe_env(self) -> dict[str, str]:
         env: dict[str, str] = {}
         safe_keys = ("PATH", "LD_LIBRARY_PATH", "OMP_NUM_THREADS")
@@ -197,40 +221,11 @@ sys.exit(res.returncode)
                 if not isinstance(val, str):
                     continue
                 if k in ("PATH", "LD_LIBRARY_PATH"):
-                    # Validate PATH-like variables to ensure they only contain allowed characters and paths
-                    paths: list[str] = val.split(os.pathsep)
-                    safe_paths: list[str] = []
-                    for raw_p in paths:
-                        clean_p: str = raw_p.strip()
-                        if not clean_p:
-                            continue
-                        # Use strictly validated paths to avoid path manipulation
-                        try:
-                            p_obj: Path = Path(clean_p).resolve(strict=True)
-                            # Only allow existing absolute directories
-                            if p_obj.is_absolute() and p_obj.is_dir():
-                                # Security: path must be inside project_root or trusted_dirs
-                                is_trusted = False
-                                if self.config.project_root:
-                                    try:
-                                        root = Path(self.config.project_root).resolve(strict=True)
-                                        if p_obj.is_relative_to(root):
-                                            is_trusted = True
-                                    except Exception:
-                                        pass
-                                if not is_trusted:
-                                    for tdir in self.config.trusted_directories:
-                                        try:
-                                            tp = Path(tdir).resolve(strict=True)
-                                            if p_obj.is_relative_to(tp):
-                                                is_trusted = True
-                                                break
-                                        except Exception:
-                                            continue
-                                if is_trusted:
-                                    safe_paths.append(p_obj.as_posix())
-                        except Exception:
-                            continue
+                    safe_paths = []
+                    for raw_p in val.split(os.pathsep):
+                        validated = self._validate_env_path(raw_p)
+                        if validated:
+                            safe_paths.append(validated)
                     env[k] = os.pathsep.join(safe_paths)
                 elif re.match(r"^[0-9]+$", val):
                     env[k] = val

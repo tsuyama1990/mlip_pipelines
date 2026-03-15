@@ -29,10 +29,10 @@ class FeatureExtractor:
             return self._try_load_mlip(elements)
         except ImportError:
             logging.info("matgl/chgnet not available or not used. Using rule-based fallback.")
-            return self._mock_extraction(elements)
+            return self._rule_based_extraction(elements)
 
         # Normally wouldn't reach here in UAT mode
-        return self._mock_extraction(elements)
+        return self._rule_based_extraction(elements)
 
     def _try_load_mlip(self, elements: list[str]) -> MaterialFeatures:
         import importlib.util
@@ -46,7 +46,7 @@ class FeatureExtractor:
         msg2 = "matgl or chgnet not available"
         raise ImportError(msg2)
 
-    def _mock_extraction(self, elements: list[str]) -> MaterialFeatures:
+    def _rule_based_extraction(self, elements: list[str]) -> MaterialFeatures:
         """Rule-based fallback for generating MaterialFeatures without heavy MLIPs."""
         # Check for transition metals
         transition_metals = [

@@ -550,7 +550,6 @@ class ProjectConfig(BaseSettings):
     )
 
     project_root: Path = Field(..., description="Root directory of the project")
-    use_mock: bool = Field(default=False, description="Enable mock mode for CI testing")
 
     @model_validator(mode="before")
     @classmethod
