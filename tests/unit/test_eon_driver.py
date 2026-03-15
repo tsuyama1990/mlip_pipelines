@@ -17,14 +17,16 @@ def test_read_coordinates_empty_stdin(monkeypatch: pytest.MonkeyPatch):
     assert atoms.get_cell()[0][0] == 5.0
 
 
-def test_write_bad_structure(tmp_path: Path):
+def test_write_bad_structure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     path = tmp_path / "bad.cfg"
     atoms = Atoms("Fe", positions=[[0, 0, 0]])
+    monkeypatch.setattr(Path, "cwd", lambda: tmp_path)
     eon_driver.write_bad_structure(str(path), atoms)
     assert path.exists()
 
 
-def test_write_bad_structure_invalid_path(capsys: pytest.CaptureFixture):
+def test_write_bad_structure_invalid_path(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture, tmp_path: Path):
+    monkeypatch.setattr(Path, "cwd", lambda: tmp_path)
     with pytest.raises(SystemExit) as e:
         eon_driver.write_bad_structure("../bad.cfg", Atoms("Fe"))
     assert e.value.code == 100

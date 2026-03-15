@@ -1,63 +1,38 @@
 <<<<<<< SEARCH
-def read_coordinates_from_stdin(default_element: str, default_cell: float) -> "Atoms":
+def write_bad_structure(path: str, atoms: "Atoms") -> None:
+    # Security: path validation
+    base_name = Path(path).name
+    if not re.match(r"^[a-zA-Z0-9_.-]+$", base_name) or ".." in path:
+        sys.stderr.write(f"Invalid path for writing bad structure: {path}\n")
+        sys.exit(100)
+
     try:
-        import io
+        from ase.io import write
 
-        from ase import Atoms
-        from ase.data import chemical_symbols
-        from ase.io import read
-    except ImportError:
-        sys.stderr.write("ase is not available.\n")
-        sys.exit(100)
-
-    lines: list[str] = sys.stdin.readlines()
-    if not lines:
-        sys.stderr.write("Empty stdin received, falling back to configurable default structure.\n")
-        return Atoms(
-            default_element,
-            positions=[[0, 0, 0]],
-            cell=[default_cell, default_cell, default_cell],
-            pbc=True,
-        )
-
-    content = "".join(lines)
-    if len(content) > 10 * 1024 * 1024:
-        sys.stderr.write("Input stream exceeds maximum allowed size (10MB).\n")
-        sys.exit(100)
+        write(path, atoms, format="extxyz")
+    except Exception as e:
+        sys.stderr.write(f"Failed to write bad structure: {e}\n")
 =======
-def read_coordinates_from_stdin(default_element: str, default_cell: float) -> "Atoms":
-    try:
-        import io
+def write_bad_structure(path: str, atoms: "Atoms") -> None:
+    import os
+    # Security: path validation
+    resolved_path = Path(os.path.realpath(path)).resolve(strict=False)
 
-        from ase import Atoms
-        from ase.data import chemical_symbols
-        from ase.io import read
-    except ImportError:
-        sys.stderr.write("ase is not available.\n")
+    # Must only be able to write to the current working directory or its children
+    current_work_dir = Path.cwd().resolve(strict=True)
+    if not resolved_path.is_relative_to(current_work_dir):
+        sys.stderr.write(f"Invalid path for writing bad structure: {path} is not within {current_work_dir}\n")
         sys.exit(100)
 
-    max_size = 10 * 1024 * 1024
-    content_chunks = []
-    current_size = 0
+    base_name = resolved_path.name
+    if not re.match(r"^[a-zA-Z0-9_.-]+$", base_name) or ".." in str(resolved_path):
+        sys.stderr.write(f"Invalid path for writing bad structure: {path}\n")
+        sys.exit(100)
 
-    while True:
-        chunk = sys.stdin.read(4096)
-        if not chunk:
-            break
-        current_size += len(chunk)
-        if current_size > max_size:
-            sys.stderr.write(f"Input stream exceeds maximum allowed size ({max_size} bytes).\n")
-            sys.exit(100)
-        content_chunks.append(chunk)
+    try:
+        from ase.io import write
 
-    content = "".join(content_chunks)
-
-    if not content.strip():
-        sys.stderr.write("Empty stdin received, falling back to configurable default structure.\n")
-        return Atoms(
-            default_element,
-            positions=[[0, 0, 0]],
-            cell=[default_cell, default_cell, default_cell],
-            pbc=True,
-        )
+        write(str(resolved_path), atoms, format="extxyz")
+    except Exception as e:
+        sys.stderr.write(f"Failed to write bad structure: {e}\n")
 >>>>>>> REPLACE
