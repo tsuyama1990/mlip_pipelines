@@ -564,7 +564,9 @@ class DistillationConfig(BaseModel):
                 msg = f"Path traversal sequences (..) are not allowed in mace_model_path: {self.mace_model_path}"
                 raise ValueError(msg)
             # Extension check
-            if not self.mace_model_path.endswith(".model") and not self.mace_model_path.endswith(".pt"):
+            if not self.mace_model_path.endswith(".model") and not self.mace_model_path.endswith(
+                ".pt"
+            ):
                 msg = f"Unknown model name or unsupported extension in mace_model_path: {self.mace_model_path}. Must be one of {valid_foundational_names} or end in .pt/.model"
                 raise ValueError(msg)
 

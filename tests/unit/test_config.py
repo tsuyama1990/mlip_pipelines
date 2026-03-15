@@ -193,11 +193,14 @@ def test_project_config_validate_project_root() -> None:
     with contextlib.suppress(FileNotFoundError):
         ProjectConfig.validate_project_root(Path("relative/path"))
 
+
 def test_distillation_config_valid() -> None:
     from src.domain_models.config import DistillationConfig
+
     config = DistillationConfig(uncertainty_threshold=0.1, sampling_structures_per_system=500)
     assert config.uncertainty_threshold == 0.1
     assert config.sampling_structures_per_system == 500
+
 
 def test_distillation_config_invalid() -> None:
     from pydantic import ValidationError
@@ -207,15 +210,23 @@ def test_distillation_config_invalid() -> None:
     with pytest.raises(ValidationError, match="uncertainty_threshold must be strictly positive"):
         DistillationConfig(uncertainty_threshold=0.0)
 
-    with pytest.raises(ValidationError, match="sampling_structures_per_system must be an integer strictly greater than zero"):
+    with pytest.raises(
+        ValidationError,
+        match="sampling_structures_per_system must be an integer strictly greater than zero",
+    ):
         DistillationConfig(sampling_structures_per_system=-10)
+
 
 def test_active_learning_thresholds_valid() -> None:
     from src.domain_models.config import ActiveLearningThresholds
-    config = ActiveLearningThresholds(threshold_call_dft=0.1, threshold_add_train=0.05, smooth_steps=5)
+
+    config = ActiveLearningThresholds(
+        threshold_call_dft=0.1, threshold_add_train=0.05, smooth_steps=5
+    )
     assert config.threshold_call_dft == 0.1
     assert config.threshold_add_train == 0.05
     assert config.smooth_steps == 5
+
 
 def test_active_learning_thresholds_invalid() -> None:
     from pydantic import ValidationError
@@ -228,11 +239,14 @@ def test_active_learning_thresholds_invalid() -> None:
     with pytest.raises(ValidationError, match="smooth_steps must be strictly greater than zero"):
         ActiveLearningThresholds(smooth_steps=0)
 
+
 def test_cutout_config_valid() -> None:
     from src.domain_models.config import CutoutConfig
+
     config = CutoutConfig(core_radius=3.0, buffer_radius=4.0)
     assert config.core_radius == 3.0
     assert config.buffer_radius == 4.0
+
 
 def test_cutout_config_invalid() -> None:
     from pydantic import ValidationError
@@ -248,10 +262,13 @@ def test_cutout_config_invalid() -> None:
     with pytest.raises(ValidationError, match="must be strictly greater than core radius"):
         CutoutConfig(core_radius=5.0, buffer_radius=3.0)
 
+
 def test_project_config_legacy_compat(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import tempfile
 
-    monkeypatch.setattr("shutil.which", lambda x: "/usr/bin/lmp" if x == "lmp" else "/usr/bin/eonclient")
+    monkeypatch.setattr(
+        "shutil.which", lambda x: "/usr/bin/lmp" if x == "lmp" else "/usr/bin/eonclient"
+    )
     monkeypatch.setattr("os.access", lambda x, y: True)
 
     tmp_dir = Path(tempfile.gettempdir()).resolve(strict=True)
@@ -266,7 +283,7 @@ def test_project_config_legacy_compat(tmp_path: Path, monkeypatch: pytest.Monkey
         dynamics=DynamicsConfig(project_root=str(proj_dir), trusted_directories=[]),
         oracle=OracleConfig(),
         trainer=TrainerConfig(trusted_directories=[]),
-        validator=ValidatorConfig()
+        validator=ValidatorConfig(),
     )
 
     # Assert defaults were correctly applied
@@ -274,18 +291,20 @@ def test_project_config_legacy_compat(tmp_path: Path, monkeypatch: pytest.Monkey
     assert config.cutout_config.core_radius == 3.0
     assert config.loop_strategy.use_tiered_oracle is True
 
+
 def test_extra_forbid() -> None:
     from pydantic import ValidationError
 
     from src.domain_models.config import CutoutConfig
 
     with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
-        CutoutConfig(core_radius=4.0, buffer_radius=5.0, invalid_field=True) # type: ignore[call-arg]
+        CutoutConfig(core_radius=4.0, buffer_radius=5.0, invalid_field=True)  # type: ignore[call-arg]
 
 
 def test_distillation_config_path_validation() -> None:
-    from src.domain_models.config import DistillationConfig
     from pydantic import ValidationError
+
+    from src.domain_models.config import DistillationConfig
 
     # Valid string name
     config = DistillationConfig(mace_model_path="mace-mp-0-large")
@@ -303,12 +322,16 @@ def test_distillation_config_path_validation() -> None:
     with pytest.raises(ValidationError, match="Path traversal sequences"):
         DistillationConfig(mace_model_path="../hidden_model.pt")
 
+
 def test_loop_strategy_consistency() -> None:
-    from src.domain_models.config import LoopStrategyConfig
     from pydantic import ValidationError
+
+    from src.domain_models.config import LoopStrategyConfig
 
     config = LoopStrategyConfig(use_tiered_oracle=True, incremental_update=True)
     assert config.incremental_update is True
 
-    with pytest.raises(ValidationError, match="incremental_update cannot be True when use_tiered_oracle is False"):
+    with pytest.raises(
+        ValidationError, match="incremental_update cannot be True when use_tiered_oracle is False"
+    ):
         LoopStrategyConfig(use_tiered_oracle=False, incremental_update=True)

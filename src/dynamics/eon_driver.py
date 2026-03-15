@@ -31,7 +31,7 @@ def _read_stdin_safely(max_size: int) -> str:
         # Basic fast-fail validation for valid characters typically found in extxyz/xyz files
         # Only allow alphanumeric, spaces, dots, hyphens, plus signs, commas, e/E for scientific notation.
         # Quotes, equals, and other complex punctuation are rejected for strict security.
-        if not re.match(r'^[a-zA-Z0-9\s\.\-\+\,eE]*$', chunk):
+        if not re.match(r"^[a-zA-Z0-9\s\.\-\+\,eE]*$", chunk):
             sys.stderr.write("Invalid characters detected in input stream.\n")
             sys.exit(100)
 
@@ -126,8 +126,9 @@ def write_bad_structure(path: str, atoms: "Atoms") -> None:
 
         # Write atomically avoiding race conditions
         fd = os.open(resolved_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
-        with os.fdopen(fd, 'w') as f:
+        with os.fdopen(fd, "w") as f:
             from ase.io import write
+
             write(f, atoms, format="extxyz")
 
     except FileExistsError:
