@@ -247,18 +247,22 @@ sys.exit(res.returncode)
         clean_p: str = raw_p.strip()
         if not clean_p or ".." in clean_p:
             return None
-        with contextlib.suppress(Exception):
+
+        try:
             p_obj: Path = Path(clean_p)
             if not p_obj.is_absolute():
                 return None
+
+            import stat
+            st = os.lstat(p_obj)
+            if stat.S_ISLNK(st.st_mode):
+                return None
+
             resolved = p_obj.resolve(strict=True)
             if resolved.is_absolute() and resolved.is_dir() and self._is_path_trusted(resolved):
                 return resolved.as_posix()
-        return None
-        with contextlib.suppress(Exception):
-            p_obj: Path = Path(clean_p).resolve(strict=True)
-            if p_obj.is_absolute() and p_obj.is_dir() and self._is_path_trusted(p_obj):
-                return p_obj.as_posix()
+        except Exception:
+            return None
         return None
 
     def _build_safe_env(self) -> dict[str, str]:
