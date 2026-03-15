@@ -540,6 +540,141 @@ def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
     return resolved_env
 
 
+class DistillationConfig(BaseModel):
+    """Phase 1: Zero-Shot Distillation configuration."""
+
+    model_config = ConfigDict(extra="forbid")
+    enable: bool = Field(default=True, description="Enable distillation phase")
+    mace_model_path: str = Field(
+        default="mace-mp-0-medium", description="Path or name of the MACE foundation model"
+    )
+    uncertainty_threshold: float = Field(default=0.05, description="MACE confidence threshold")
+    sampling_structures_per_system: int = Field(
+        default=1000, description="Number of structures to sample per system"
+    )
+
+    @model_validator(mode="after")
+    def validate_thresholds_and_samples(self) -> "DistillationConfig":
+        valid_foundational_names = ["mace-mp-0-medium", "mace-mp-0-large", "mace-mp-0-small"]
+
+        # Check if it's a known model name
+        if self.mace_model_path not in valid_foundational_names:
+            # If it's a path, validate it
+            if ".." in self.mace_model_path:
+                msg = f"Path traversal sequences (..) are not allowed in mace_model_path: {self.mace_model_path}"
+                raise ValueError(msg)
+            # Extension check
+            if not self.mace_model_path.endswith(".model") and not self.mace_model_path.endswith(
+                ".pt"
+            ):
+                msg = f"Unknown model name or unsupported extension in mace_model_path: {self.mace_model_path}. Must be one of {valid_foundational_names} or end in .pt/.model"
+                raise ValueError(msg)
+            # Existence check for custom models
+            import stat
+            from pathlib import Path
+
+            try:
+                st = Path(self.mace_model_path).stat()
+                if not stat.S_ISREG(st.st_mode):
+                    msg = f"Model file does not exist or is not a file: {self.mace_model_path}"
+                    raise ValueError(msg)
+            except OSError as e:
+                msg = f"Model file does not exist or is not a file: {self.mace_model_path}"
+                raise ValueError(msg) from e
+
+        if self.uncertainty_threshold <= 0.0:
+            msg = "uncertainty_threshold must be strictly positive"
+            raise ValueError(msg)
+        if self.sampling_structures_per_system <= 0:
+            msg = "sampling_structures_per_system must be an integer strictly greater than zero"
+            raise ValueError(msg)
+        return self
+
+
+class ActiveLearningThresholds(BaseModel):
+    """Two-tier thresholds inspired by FLARE."""
+
+    model_config = ConfigDict(extra="forbid")
+    threshold_call_dft: float = Field(
+        default=0.05, description="Global threshold to halt MD and call DFT"
+    )
+    threshold_add_train: float = Field(
+        default=0.02, description="Local threshold to select atoms for training"
+    )
+    smooth_steps: int = Field(
+        default=3, description="Number of consecutive steps exceeding threshold required to halt"
+    )
+
+    @model_validator(mode="after")
+    def validate_thresholds(self) -> "ActiveLearningThresholds":
+        if self.threshold_call_dft < self.threshold_add_train:
+            msg = (
+                f"Global halt threshold ({self.threshold_call_dft}) must be strictly greater than "
+                f"or equal to local training addition threshold ({self.threshold_add_train}) "
+                "to prevent infinite loops."
+            )
+            raise ValueError(msg)
+        if self.smooth_steps <= 0:
+            msg = "smooth_steps must be strictly greater than zero"
+            raise ValueError(msg)
+        return self
+
+
+class CutoutConfig(BaseModel):
+    """Phase 3: Intelligent cutout and passivation configuration."""
+
+    model_config = ConfigDict(extra="forbid")
+    core_radius: float = Field(default=3.0, description="Radius for core atoms (force weight 1.0)")
+    buffer_radius: float = Field(
+        default=4.0, description="Radius for buffer layer (force weight 0.0)"
+    )
+    enable_pre_relaxation: bool = Field(
+        default=True, description="Enable MACE pre-relaxation of buffer"
+    )
+    enable_passivation: bool = Field(
+        default=True, description="Enable automatic surface passivation"
+    )
+    passivation_element: str = Field(default="H", description="Element used for passivation")
+
+    @model_validator(mode="after")
+    def validate_radii(self) -> "CutoutConfig":
+        if self.core_radius <= 0.0:
+            msg = "core_radius must be strictly positive"
+            raise ValueError(msg)
+        if self.buffer_radius <= 0.0:
+            msg = "buffer_radius must be strictly positive"
+            raise ValueError(msg)
+        if self.buffer_radius <= self.core_radius:
+            msg = (
+                f"Buffer radius ({self.buffer_radius}) must be strictly greater than "
+                f"core radius ({self.core_radius}) to ensure a valid physical buffer zone exists."
+            )
+            raise ValueError(msg)
+        return self
+
+
+class LoopStrategyConfig(BaseModel):
+    """High-level Active Learning loop strategy configuration."""
+
+    model_config = ConfigDict(extra="forbid")
+    use_tiered_oracle: bool = Field(default=True, description="Enable tiered oracle logic")
+    incremental_update: bool = Field(default=True, description="Enable incremental delta learning")
+    replay_buffer_size: int = Field(
+        default=500, description="Size of history replay buffer to prevent catastrophic forgetting"
+    )
+    baseline_potential_type: str = Field(
+        default="LJ", description="Baseline physical potential type (e.g., LJ)"
+    )
+    thresholds: ActiveLearningThresholds = Field(default_factory=ActiveLearningThresholds)
+
+    @model_validator(mode="after")
+    def validate_strategy_consistency(self) -> "LoopStrategyConfig":
+        if self.incremental_update and not self.use_tiered_oracle:
+            msg = "incremental_update cannot be True when use_tiered_oracle is False"
+            raise ValueError(msg)
+        return self
+
+
 class ProjectConfig(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -607,6 +742,9 @@ class ProjectConfig(BaseSettings):
     validator: ValidatorConfig
     structure_generator: StructureGeneratorConfig = Field(default_factory=StructureGeneratorConfig)
     policy: PolicyConfig = Field(default_factory=PolicyConfig)
+    distillation_config: DistillationConfig = Field(default_factory=DistillationConfig)
+    cutout_config: CutoutConfig = Field(default_factory=CutoutConfig)
+    loop_strategy: LoopStrategyConfig = Field(default_factory=LoopStrategyConfig)
 
     @field_validator("project_root")
     @classmethod
