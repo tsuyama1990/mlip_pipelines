@@ -62,12 +62,8 @@ def _check_ownership_and_perms(resolved: Path, path_str: str) -> None:
 
 
 def _secure_resolve_and_validate_dir(path_str: str, check_exists: bool = True) -> str:
+    # Use realpath for canonicalization
     import os
-    import stat
-
-    if ".." in path_str:
-        msg = f"Path traversal sequences not allowed: {path_str}"
-        raise ValueError(msg)
 
     canonical_path = Path(os.path.realpath(path_str))
 
@@ -76,34 +72,18 @@ def _secure_resolve_and_validate_dir(path_str: str, check_exists: bool = True) -
         raise ValueError(msg)
 
     if check_exists:
-        try:
-            # Atomic check against symlink TOCTOU attacks
-            fd = os.open(
-                str(canonical_path), os.O_RDONLY | os.O_NOFOLLOW | getattr(os, "O_DIRECTORY", 0)
-            )
-        except OSError as e:
-            msg = f"Directory does not exist, is a symlink, or cannot be opened: {path_str}"
-            raise ValueError(msg) from e
+        if not canonical_path.exists():
+            msg = f"Directory does not exist: {path_str}"
+            raise ValueError(msg)
 
-        import contextlib
-
-        with contextlib.suppress(OSError):
-            st = os.fstat(fd)
-            os.close(fd)
-
-            if not stat.S_ISDIR(st.st_mode):
-                msg = f"Path must be a directory: {path_str}"
-                raise ValueError(msg)
-
-            if st.st_uid != os.getuid():
-                msg = f"Directory {path_str} is not owned by the current user (uid={os.getuid()}). This is insecure."
-                raise ValueError(msg)
-
-            if bool(st.st_mode & stat.S_IWOTH):
-                msg = f"Directory {path_str} is world-writable, which is insecure."
-                raise ValueError(msg)
+        if not canonical_path.is_dir():
+            msg = f"Path must be a directory: {path_str}"
+            raise ValueError(msg)
 
     _check_allowed_base_dirs(str(canonical_path), path_str)
+
+    if check_exists:
+        _check_ownership_and_perms(canonical_path, path_str)
 
     return str(canonical_path)
 
@@ -490,44 +470,22 @@ def _validate_env_key(key: str) -> None:
 
 
 def _validate_env_value(val: str) -> None:
-    if len(val) > 4096:
+    if len(val) > 1024:
         msg = "Environment variable value exceeds maximum length"
         raise ValueError(msg)
 
     # Strictly whitelist allowed characters to prevent shell/JSON injection
-    # Allows alphanumerics, underscores, dots, and hyphens
-    if not re.match(r"^[a-zA-Z0-9_.-]*$", val):
+    # Allows alphanumerics, underscores, dots, hyphens, colons, slashes, equals, plus, commas, asterisks
+    if not re.match(r"^[-a-zA-Z0-9_.:/=,+]*$", val):
         msg = "Invalid characters detected in .env variable value."
         raise ValueError(msg)
 
 
 def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
-    import contextlib
-    import os
-    import stat
-
-    if ".." in str(env_file):
-        msg = f"Path traversal sequences not allowed: {env_file}"
+    st = os.lstat(env_file)
+    if stat.S_ISLNK(st.st_mode):
+        msg = ".env file must not be a symlink."
         raise ValueError(msg)
-
-    try:
-        # Atomic check against symlink TOCTOU attacks
-        fd = os.open(str(env_file), os.O_RDONLY | os.O_NOFOLLOW)
-    except OSError as e:
-        msg = ".env file must not be a symlink or does not exist."
-        raise ValueError(msg) from e
-
-    with contextlib.suppress(OSError):
-        st = os.fstat(fd)
-        os.close(fd)
-
-        if not stat.S_ISREG(st.st_mode):
-            msg = ".env file must be a regular file."
-            raise ValueError(msg)
-
-        if bool(st.st_mode & stat.S_IWOTH):
-            msg = ".env file has insecure permissions. It must not be world writable."
-            raise ValueError(msg)
 
     resolved_env = env_file.resolve(strict=True)
 
@@ -535,6 +493,49 @@ def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
     if not str(resolved_env).startswith(str(expected_base.resolve(strict=True))):
         msg = f".env file must reside within the allowed base directory: {expected_base}"
         raise ValueError(msg)
+
+    st = os.lstat(resolved_env)
+
+    if st.st_size > 1024:
+        msg = ".env file exceeds maximum allowed size (1KB)."
+        raise ValueError(msg)
+
+    if st.st_uid != os.getuid():
+        msg = ".env file is not owned by the current user."
+        raise ValueError(msg)
+
+    if bool(st.st_mode & stat.S_IRWXO) or bool(st.st_mode & stat.S_IRWXG):
+        msg = ".env file has insecure permissions. It must not be group or world readable/writable."
+        raise ValueError(msg)
+
+    # Content validation for malicious patterns before parsing
+    with Path.open(resolved_env, "r", encoding="utf-8") as f:
+        for line in f:
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+
+            # Simple check to see if the key starts with MLIP_ and lacks injection symbols
+            if "=" in stripped:
+                key, val = stripped.split("=", 1)
+                key = key.strip()
+                if not key.startswith("MLIP_"):
+                    msg = f"All .env file keys must start with 'MLIP_'. Found invalid key: {key}"
+                    raise ValueError(msg)
+
+                val = val.strip()
+                if (
+                    ".." in val
+                    or ";" in val
+                    or "&" in val
+                    or "|" in val
+                    or "$" in val
+                    or "`" in val
+                    or "{" in val
+                    or "}" in val
+                ):
+                    msg = f"Invalid characters or traversal sequences in .env file content: {val}"
+                    raise ValueError(msg)
 
     return resolved_env
 
@@ -563,9 +564,7 @@ class DistillationConfig(BaseModel):
                 msg = f"Path traversal sequences (..) are not allowed in mace_model_path: {self.mace_model_path}"
                 raise ValueError(msg)
             # Extension check
-            if not self.mace_model_path.endswith(".model") and not self.mace_model_path.endswith(
-                ".pt"
-            ):
+            if not self.mace_model_path.endswith(".model") and not self.mace_model_path.endswith(".pt"):
                 msg = f"Unknown model name or unsupported extension in mace_model_path: {self.mace_model_path}. Must be one of {valid_foundational_names} or end in .pt/.model"
                 raise ValueError(msg)
 
@@ -671,37 +670,6 @@ class ProjectConfig(BaseSettings):
         env_file_encoding="utf-8",
     )
 
-    def __init__(self, **kwargs: Any) -> None:
-        if "_env_file" in kwargs:
-            env_file_raw = kwargs["_env_file"]
-            if env_file_raw is not None:
-                env_file_path = Path(env_file_raw)
-                expected_base = Path.cwd().resolve(strict=True)
-
-                if ".." in str(env_file_path):
-                    msg = "Path traversal sequences are not allowed in .env file path"
-                    raise ValueError(msg)
-
-                import contextlib
-                import os
-
-                try:
-                    fd = os.open(str(env_file_path), os.O_RDONLY | os.O_NOFOLLOW)
-                    with contextlib.suppress(OSError):
-                        os.close(fd)
-                except OSError as e:
-                    msg = ".env file path must not be a symlink."
-                    raise ValueError(msg) from e
-
-                try:
-                    resolved = env_file_path.resolve(strict=True)
-                    if not resolved.is_relative_to(expected_base):
-                        msg = f".env file must reside within the project root {expected_base}"
-                        raise ValueError(msg)
-                except FileNotFoundError:
-                    pass
-        super().__init__(**kwargs)
-
     project_root: Path = Field(..., description="Root directory of the project")
 
     @model_validator(mode="before")
@@ -724,10 +692,20 @@ class ProjectConfig(BaseSettings):
                 _validate_env_key(key)
                 _validate_env_value(val)
 
-                # We inject the parsed values directly into the configuration dict as strings.
-                # Pydantic handles type conversion automatically according to the target fields.
+                # We inject the parsed values directly into the configuration dict
                 clean_key = key.replace("MLIP_", "").lower()
-                values[clean_key] = val
+                if val.lower() in ("true", "1", "yes"):
+                    values[clean_key] = True
+                elif val.lower() in ("false", "0", "no"):
+                    values[clean_key] = False
+                else:
+                    try:
+                        if "." in val:
+                            values[clean_key] = float(val)
+                        else:
+                            values[clean_key] = int(val)
+                    except ValueError:
+                        values[clean_key] = val
 
         return values
 

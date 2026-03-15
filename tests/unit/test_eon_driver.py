@@ -11,13 +11,12 @@ def test_read_coordinates_empty_stdin(monkeypatch: pytest.MonkeyPatch):
 
     monkeypatch.setattr(sys.stdin, "read", lambda size=0: "")
 
-
-    with pytest.raises(SystemExit):
+    with pytest.raises(SystemExit) as e:
         eon_driver.read_coordinates_from_stdin("Fe", 5.0)
+    assert e.value.code == 100
 
 
 def test_write_bad_structure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
-
     import tempfile
 
     path = tmp_path / "mlip_bad_structures" / "bad.cfg"
@@ -26,7 +25,7 @@ def test_write_bad_structure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     # We need to mock gettempdir because write_bad_structure writes there now
     monkeypatch.setattr(tempfile, "gettempdir", lambda: str(tmp_path))
 
-    eon_driver.write_bad_structure("bad.cfg", atoms)
+    eon_driver.write_bad_structure(str(path), atoms)
 
     expected_written_path = tmp_path / "mlip_bad_structures" / "bad.cfg"
     assert expected_written_path.exists()
@@ -39,12 +38,11 @@ def test_write_bad_structure_invalid_path(
 
     monkeypatch.setattr(tempfile, "gettempdir", lambda: str(tmp_path))
 
-
-    with pytest.raises(SystemExit):
+    with pytest.raises(SystemExit) as e:
         eon_driver.write_bad_structure("../bad.cfg", Atoms("Fe"))
+    assert e.value.code == 100
     out, err = capsys.readouterr()
-    assert "Invalid characters in filename" in err
-
+    assert "Invalid filename" in err
 
 def test_write_bad_structure_invalid_path_chars(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture, tmp_path: Path
@@ -74,9 +72,9 @@ def test_read_coordinates_invalid_input(
     import sys
 
     monkeypatch.setattr(sys.stdin, "read", mock_read)
-
-    with pytest.raises(SystemExit):
+    with pytest.raises(SystemExit) as e:
         eon_driver.read_coordinates_from_stdin("Fe", 5.0)
+    assert e.value.code == 100
 
 
 def test_main_invalid_potential(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture):
@@ -89,7 +87,7 @@ def test_main_invalid_potential(monkeypatch: pytest.MonkeyPatch, capsys: pytest.
         eon_driver.main()
     assert e.value.code == 100
     out, err = capsys.readouterr()
-    assert "Potential path contains invalid traversal characters" in err
+    assert "Potential path contains invalid characters" in err
 
 
 def test_main_invalid_element(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture):
@@ -227,7 +225,7 @@ Fe       0.00000000       0.00000000       0.00000000
             "--threshold",
             "5.0",
             "--potential",
-            "None",
+                "None",
             "--default_element",
             "Fe",
             "--default_cell",
@@ -289,11 +287,11 @@ def test_read_coordinates_from_stdin_no_ase(
 
     monkeypatch.setattr(builtins, "__import__", mock_import)
 
-
-    with pytest.raises(SystemExit):
+    with pytest.raises(SystemExit) as e:
         eon_driver.read_coordinates_from_stdin("Fe", 5.0)
+    assert e.value.code == 100
     out, err = capsys.readouterr()
-    assert "Empty stdin received" in err
+    assert "ase is not available" in err
 
 
 def test_main_no_pyacemaker(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture):
@@ -308,7 +306,7 @@ def test_main_no_pyacemaker(monkeypatch: pytest.MonkeyPatch, capsys: pytest.Capt
             "--threshold",
             "5.0",
             "--potential",
-            "None",
+                "None",
             "--default_element",
             "Fe",
             "--default_cell",
@@ -349,7 +347,7 @@ def test_main_no_pyacemaker(monkeypatch: pytest.MonkeyPatch, capsys: pytest.Capt
 
 
 def test_read_coordinates_from_stdin_with_list(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
-    content = "2\n\nFe 0.0 0.0 0.0\nFe 0.5 0.5 0.5\n2\n\nFe 0.1 0.1 0.1\nFe 0.6 0.6 0.6\n"
+    content = '2\n\nFe 0.0 0.0 0.0\nFe 0.5 0.5 0.5\n2\n\nFe 0.1 0.1 0.1\nFe 0.6 0.6 0.6\n'
     import sys
 
     calls = [0]

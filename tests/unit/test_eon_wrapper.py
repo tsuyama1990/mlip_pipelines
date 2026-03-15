@@ -327,9 +327,7 @@ def test_get_validated_eon_bin_not_executable(tmp_path: Path, monkeypatch: pytes
 
 
 def test_build_safe_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    config = DynamicsConfig(
-        project_root=str(tmp_path), trusted_directories=["/usr/bin", "/bin", "/usr/lib"]
-    )
+    config = DynamicsConfig(project_root=str(tmp_path), trusted_directories=["/usr/bin", "/bin", "/usr/lib"])
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = EONWrapper(config, sys_config)
 
@@ -340,8 +338,9 @@ def test_build_safe_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("OMP_NUM_THREADS", "4")
 
     env = engine._build_safe_env()
-    assert Path("/bin").resolve().as_posix() in env["PATH"]
-    assert Path("/usr/bin").resolve().as_posix() in env["PATH"]
+    assert env["PATH"] == os.pathsep.join(
+        [Path("/usr/bin").resolve().as_posix(), Path("/bin").resolve().as_posix()]
+    )
     assert env["LD_LIBRARY_PATH"] == Path("/usr/lib").resolve().as_posix()
     assert env["OMP_NUM_THREADS"] == "4"
 
