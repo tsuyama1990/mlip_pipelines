@@ -25,9 +25,9 @@ class MACEManager(BaseOracle):
             # In MACE, mace_mp returns a MACECalculator if requested model is mace-mp-X
             self._calc = mace_mp(
                 model=self.config.distillation_config.mace_model_path,
-                dispersion=False,
-                default_dtype="float32",
-                device="cpu",  # Assume CPU unless configured otherwise (could be expanded)
+                dispersion=self.config.distillation_config.dispersion,
+                default_dtype=self.config.distillation_config.default_dtype,
+                device=self.config.distillation_config.device,
                 return_raw_model=False,
             )
         return self._calc

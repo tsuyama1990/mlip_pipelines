@@ -552,6 +552,9 @@ class DistillationConfig(BaseModel):
     sampling_structures_per_system: int = Field(
         default=1000, description="Number of structures to sample per system"
     )
+    device: str = Field(default="cpu", description="Device to run MACE on (e.g., cpu, cuda)")
+    default_dtype: str = Field(default="float32", description="Default dtype for MACE (e.g., float32, float64)")
+    dispersion: bool = Field(default=False, description="Enable dispersion correction in MACE")
 
     @model_validator(mode="after")
     def validate_thresholds_and_samples(self) -> "DistillationConfig":

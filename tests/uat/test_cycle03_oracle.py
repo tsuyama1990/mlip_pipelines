@@ -1,9 +1,7 @@
-import os
 import sys
-
-sys.path.insert(0, os.getcwd())
-
 from pathlib import Path
+
+sys.path.insert(0, str(Path.cwd()))
 from unittest.mock import patch
 
 import pytest
@@ -153,7 +151,7 @@ def test_uat_03_03_exceeding_physical_constraints():
 
 # NEW CYCLE 03 TIERED ORACLE UATS
 
-import marimo
+import marimo  # noqa: E402
 
 __generated_with = "0.20.4"
 app = marimo.App(width="medium")
@@ -161,11 +159,12 @@ app = marimo.App(width="medium")
 @app.cell
 def __() -> tuple:
     import sys
-    import os
-    sys.path.insert(0, os.getcwd())
-
     from pathlib import Path
+
+    sys.path.insert(0, str(Path.cwd()))
+
     from ase import Atoms
+
     from src.oracles.base import BaseOracle
     from src.oracles.tiered_oracle import TieredOracle
 
@@ -186,7 +185,7 @@ def __() -> tuple:
             return results
 
     class MockFallbackOracle(BaseOracle):
-        def __init__(self):
+        def __init__(self) -> None:
             self.call_count = 0
 
         def compute_batch(self, structures: list[Atoms], calc_dir: Path) -> list[Atoms]:
