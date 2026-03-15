@@ -55,3 +55,20 @@ class ValidationReport(BaseModel):
         ..., description="Whether phonons are stable (no imaginary frequencies)"
     )
     mechanically_stable: bool = Field(..., description="Whether it meets Born criteria")
+
+
+class ValidationScore(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    rmse_energy: float = Field(..., description="Energy RMSE in eV/atom")
+    rmse_forces: float = Field(..., description="Force RMSE in eV/A")
+    rmse_stress: float = Field(..., description="Stress RMSE in GPa")
+    born_stable: bool = Field(..., description="Whether it passes Born stability criteria")
+    phonon_stable: bool = Field(..., description="Whether it has no imaginary phonon frequencies")
+
+
+class CutoutResult(BaseModel):
+    model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
+    cluster: Atoms = Field(..., description="The extracted ASE Atoms cluster")
+    passivation_atoms_added: int = Field(
+        default=0, ge=0, description="Number of passivation atoms added"
+    )

@@ -192,3 +192,92 @@ def test_project_config_validate_project_root() -> None:
 
     with contextlib.suppress(FileNotFoundError):
         ProjectConfig.validate_project_root(Path("relative/path"))
+
+def test_distillation_config_valid() -> None:
+    from src.domain_models.config import DistillationConfig
+    config = DistillationConfig(uncertainty_threshold=0.1, sampling_structures_per_system=500)
+    assert config.uncertainty_threshold == 0.1
+    assert config.sampling_structures_per_system == 500
+
+def test_distillation_config_invalid() -> None:
+    from pydantic import ValidationError
+
+    from src.domain_models.config import DistillationConfig
+
+    with pytest.raises(ValidationError, match="uncertainty_threshold must be strictly positive"):
+        DistillationConfig(uncertainty_threshold=0.0)
+
+    with pytest.raises(ValidationError, match="sampling_structures_per_system must be an integer strictly greater than zero"):
+        DistillationConfig(sampling_structures_per_system=-10)
+
+def test_active_learning_thresholds_valid() -> None:
+    from src.domain_models.config import ActiveLearningThresholds
+    config = ActiveLearningThresholds(threshold_call_dft=0.1, threshold_add_train=0.05, smooth_steps=5)
+    assert config.threshold_call_dft == 0.1
+    assert config.threshold_add_train == 0.05
+    assert config.smooth_steps == 5
+
+def test_active_learning_thresholds_invalid() -> None:
+    from pydantic import ValidationError
+
+    from src.domain_models.config import ActiveLearningThresholds
+
+    with pytest.raises(ValidationError, match="must be strictly greater than or equal to"):
+        ActiveLearningThresholds(threshold_call_dft=0.01, threshold_add_train=0.05)
+
+    with pytest.raises(ValidationError, match="smooth_steps must be strictly greater than zero"):
+        ActiveLearningThresholds(smooth_steps=0)
+
+def test_cutout_config_valid() -> None:
+    from src.domain_models.config import CutoutConfig
+    config = CutoutConfig(core_radius=3.0, buffer_radius=4.0)
+    assert config.core_radius == 3.0
+    assert config.buffer_radius == 4.0
+
+def test_cutout_config_invalid() -> None:
+    from pydantic import ValidationError
+
+    from src.domain_models.config import CutoutConfig
+
+    with pytest.raises(ValidationError, match="core_radius must be strictly positive"):
+        CutoutConfig(core_radius=0.0, buffer_radius=4.0)
+
+    with pytest.raises(ValidationError, match="buffer_radius must be strictly positive"):
+        CutoutConfig(core_radius=3.0, buffer_radius=-1.0)
+
+    with pytest.raises(ValidationError, match="must be strictly greater than core radius"):
+        CutoutConfig(core_radius=5.0, buffer_radius=3.0)
+
+def test_project_config_legacy_compat(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import tempfile
+
+    monkeypatch.setattr("shutil.which", lambda x: "/usr/bin/lmp" if x == "lmp" else "/usr/bin/eonclient")
+    monkeypatch.setattr("os.access", lambda x, y: True)
+
+    tmp_dir = Path(tempfile.gettempdir()).resolve(strict=True)
+    proj_dir = tmp_dir / "myproj4"
+    proj_dir.mkdir(parents=True, exist_ok=True)
+    (proj_dir / "README.md").touch()
+
+    # Missing new fields (legacy config equivalent)
+    config = ProjectConfig(
+        project_root=proj_dir,
+        system=SystemConfig(elements=["Fe"]),
+        dynamics=DynamicsConfig(project_root=str(proj_dir), trusted_directories=[]),
+        oracle=OracleConfig(),
+        trainer=TrainerConfig(trusted_directories=[]),
+        validator=ValidatorConfig()
+    )
+
+    # Assert defaults were correctly applied
+    assert config.distillation_config.enable is True
+    assert config.cutout_config.core_radius == 3.0
+    assert config.loop_strategy.use_tiered_oracle is True
+
+def test_extra_forbid() -> None:
+    from pydantic import ValidationError
+
+    from src.domain_models.config import CutoutConfig
+
+    with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+        CutoutConfig(core_radius=4.0, buffer_radius=5.0, invalid_field=True) # type: ignore[call-arg]
