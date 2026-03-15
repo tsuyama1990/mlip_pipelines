@@ -216,3 +216,4 @@ dev_documents/project_state_local.json
 active_learning/
 potentials/
 data/
+.ac_cdd/.env
