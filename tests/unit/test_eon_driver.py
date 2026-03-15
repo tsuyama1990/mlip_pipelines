@@ -25,7 +25,9 @@ def test_write_bad_structure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     assert path.exists()
 
 
-def test_write_bad_structure_invalid_path(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture, tmp_path: Path):
+def test_write_bad_structure_invalid_path(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture, tmp_path: Path
+):
     monkeypatch.setattr(Path, "cwd", lambda: tmp_path)
     with pytest.raises(SystemExit) as e:
         eon_driver.write_bad_structure("../bad.cfg", Atoms("Fe"))

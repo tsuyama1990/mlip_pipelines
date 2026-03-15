@@ -49,7 +49,11 @@ class EONWrapper(AbstractDynamics):
                     msg = f"Potential path must be within the project root: {resolved_pot}"
                     raise ValueError(msg)
             resolved_pot_str = str(resolved_pot)
-            if not re.match(r"^[/a-zA-Z0-9_.-]+$", resolved_pot_str) or "\x00" in resolved_pot_str or ".." in resolved_pot_str:
+            if (
+                not re.match(r"^[/a-zA-Z0-9_.-]+$", resolved_pot_str)
+                or "\x00" in resolved_pot_str
+                or ".." in resolved_pot_str
+            ):
                 msg = "Potential path contains invalid characters"
                 raise ValueError(msg)
 

@@ -98,13 +98,16 @@ def read_coordinates_from_stdin(default_element: str, default_cell: float) -> "A
 
 def write_bad_structure(path: str, atoms: "Atoms") -> None:
     import os
+
     # Security: path validation
     resolved_path = Path(os.path.realpath(path)).resolve(strict=False)
 
     # Must only be able to write to the current working directory or its children
     current_work_dir = Path.cwd().resolve(strict=True)
     if not resolved_path.is_relative_to(current_work_dir):
-        sys.stderr.write(f"Invalid path for writing bad structure: {path} is not within {current_work_dir}\n")
+        sys.stderr.write(
+            f"Invalid path for writing bad structure: {path} is not within {current_work_dir}\n"
+        )
         sys.exit(100)
 
     base_name = resolved_path.name
