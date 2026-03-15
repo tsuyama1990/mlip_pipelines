@@ -31,6 +31,9 @@ def _(mo, os, Path) -> tuple: # type: ignore
     use_mock = os.getenv("MLIP_USE_MOCK", "True").lower() in ("true", "1", "yes")
     mo.md(f"**Mock Mode**: `{'Enabled' if use_mock else 'Disabled'}`")
 
+    # We use a temporary directory for the tutorial output
+    import atexit
+    import shutil
     import tempfile
 
     from src.core.orchestrator import Orchestrator
@@ -43,9 +46,8 @@ def _(mo, os, Path) -> tuple: # type: ignore
         TrainerConfig,
         ValidatorConfig,
     )
-
-    # We use a temporary directory for the tutorial output
     tutorial_dir = Path(tempfile.mkdtemp(prefix="mlip_tutorial_"))
+    atexit.register(lambda: shutil.rmtree(tutorial_dir, ignore_errors=True))
 
     # "Zero-Config" initialization: Just specify elements and baseline
     system_cfg = SystemConfig(elements=["Fe", "Pt"], baseline_potential="zbl")
@@ -97,10 +99,31 @@ def _(Orchestrator, config, use_mock, mo) -> tuple: # type: ignore
     if use_mock:
         import sys
         import unittest.mock
+        from typing import Any, ClassVar
 
-        # Mock heavy external dependencies to allow rapid execution
-        mock_pyacemaker = type("pyacemaker", (), {"pyacemaker": True})
-        sys.modules["pyacemaker.calculator"] = mock_pyacemaker # type: ignore
+        from ase import Atoms
+        from ase.calculators.calculator import Calculator
+
+        # Proper Calculator Mock
+        class MockPaceCalculator:
+            name = 'pace'
+            implemented_properties: ClassVar[list[str]] = ['energy', 'forces', 'free_energy']
+            def __init__(self, **kwargs: Any) -> None:
+                self.results: dict[str, Any] = {}
+            def calculate(self, atoms: Any = None, properties: Any = None, system_changes: Any = None) -> None:
+                self.results = {}
+                self.results['energy'] = -10.0 * len(atoms) if atoms else 0.0
+                if atoms:
+                    import numpy as np
+                    self.results['forces'] = np.zeros((len(atoms), 3))
+
+        # Setup module structure
+        mock_module = type("pyacemaker", (), {"pyacemaker": True})
+        mock_calc = type("calculator", (), {"PyACEMakerCalculator": MockPaceCalculator})
+        setattr(mock_module, "calculator", mock_calc)
+        sys.modules["pyacemaker"] = mock_module  # type: ignore
+        sys.modules["pyacemaker.calculator"] = mock_calc  # type: ignore
+
 
         # Patch the orchestrator's run_cycle method if we don't have all binaries
         import importlib.util
@@ -116,19 +139,39 @@ def _(Orchestrator, config, use_mock, mo) -> tuple: # type: ignore
         )
 
         if not can_run:
-            mo.md("⚠️ Heavy dependencies missing. Simulating AL loop...")
+            mo.md("⚠️ Heavy dependencies missing. Simulating realistic AL loop phases...")
+            import time
 
-            # Create dummy potentials dir and yace file
+            from ase.build import bulk
+
+            # Phase 1: Exploration
+            mo.md("* Phase 1: **Exploration** (Simulated MD run)... Found uncertain structure (γ > threshold)*")
+            time.sleep(0.5)
+
+            # Phase 2: Selection
+            mo.md("* Phase 2: **Selection**... Extracted local cluster around defect.*")
+            time.sleep(0.5)
+
+            # Phase 3: Calculation (Oracle)
+            mo.md("* Phase 3: **Calculation**... Mock DFT converged.*")
+            time.sleep(0.5)
+
+            # Phase 4: Training
+            mo.md("* Phase 4: **Training**... Optimized ACE parameters.*")
+            time.sleep(0.5)
+
+            # Create potentials dir and dummy yace file
             pot_dir = config.project_root / "potentials"
             pot_dir.mkdir(exist_ok=True, parents=True)
-            dummy_yace = pot_dir / "generation_001.yace"
+            dummy_yace = pot_dir / f"generation_{orchestrator.iteration + 1:03d}.yace"
             dummy_yace.touch()
 
             # Simulate state changes
-            orchestrator.iteration = 1
+            orchestrator.iteration += 1
             result_path = str(dummy_yace)
 
-            mo.md(f"**Mock Cycle Completed!** Potential created at: `{result_path}`")
+            mo.md(f"**Mock AL Cycle Completed!** Iteration: {orchestrator.iteration}. Potential created at: `{result_path}`")
+
         else:
             mo.md("Running actual cycle (with reduced parameters)...")
             try:
@@ -189,33 +232,26 @@ def _(config, use_mock, mo, tutorial_dir) -> tuple: # type: ignore
     report_path = tutorial_dir / "validation_report.html"
 
     if use_mock:
-        # Generate a dummy HTML report to show the UI
-        html_content = """
-        <html>
-            <head><title>MLIP Validation Report</title></head>
-            <body style="font-family: sans-serif; padding: 20px;">
-                <h1>Quality Assurance: Validation Report</h1>
-                <h2>Test Set RMSE</h2>
-                <ul>
-                    <li><strong>Energy RMSE:</strong> 0.0015 eV/atom <span style="color: green;">(PASS)</span></li>
-                    <li><strong>Force RMSE:</strong> 0.042 eV/A <span style="color: green;">(PASS)</span></li>
-                    <li><strong>Stress RMSE:</strong> 0.08 GPa <span style="color: green;">(PASS)</span></li>
-                </ul>
-                <h2>Mechanical Stability</h2>
-                <ul>
-                    <li><strong>Born Criteria:</strong> <span style="color: green;">Stable</span></li>
-                    <li><strong>Elastic Constants:</strong> C11=250 GPa, C12=150 GPa, C44=100 GPa</li>
-                </ul>
-                <h2>Phonon Dispersion</h2>
-                <p>No imaginary frequencies detected.</p>
-                <div style="width: 100%; height: 200px; background-color: #f0f0f0; border: 1px solid #ccc; display: flex; align-items: center; justify-content: center;">
-                    <span style="color: #666;">[Mock Phonon Dispersion Plot]</span>
-                </div>
-            </body>
-        </html>
-        """
-        report_path.write_text(html_content, encoding="utf-8")
-        mo.md("Generated mock validation report.")
+        # Generate a realistic-looking report dynamically
+        import time
+
+        from src.domain_models.dtos import ValidationReport
+
+        # Simulate validation processing
+        time.sleep(1.0)
+
+        # Create a mock validation report based on the configured thresholds to demonstrate success
+        mock_report = ValidationReport(
+            passed=True,
+            energy_rmse=validator.config.energy_rmse_threshold * 0.8,
+            force_rmse=validator.config.force_rmse_threshold * 0.7,
+            stress_rmse=validator.config.stress_rmse_threshold * 0.9,
+            phonon_stable=True,
+            mechanically_stable=True
+        )
+        reporter.generate_html_report(mock_report, report_path)
+        mo.md("Generated dynamic mock validation report based on configuration thresholds.")
+
     else:
         # In real mode, we would call validator.validate_potential(result_path)
         # and reporter.generate_report(...)
