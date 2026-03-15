@@ -1,4 +1,5 @@
 import argparse
+import io
 import sys
 import typing
 
@@ -7,6 +8,8 @@ if typing.TYPE_CHECKING:
 
 import re
 from pathlib import Path
+
+from ase.io import read
 
 
 def _raise_empty_stdin() -> None:
@@ -25,7 +28,7 @@ def _read_stdin_safely(max_size: int) -> str:
             break
         current_size += len(chunk)
         if current_size > max_size:
-            sys.stderr.write(f"Input stream exceeds maximum allowed size ({max_size} bytes).\n")
+            sys.stderr.write(f"Input stream exceeds maximum allowed size ({max_size} bytes).\\n")
             sys.exit(100)
 
         content_chunks.append(chunk)
@@ -33,62 +36,20 @@ def _read_stdin_safely(max_size: int) -> str:
 
 
 def _validate_atoms(atoms_obj: "Atoms", chemical_symbols: list[str]) -> None:
+    import math
     import sys
 
+    if len(atoms_obj) > 10000:
+        sys.stderr.write("Input exceeds maximum allowed number of atoms (10000).\\n")
+        sys.exit(100)
     for atom in atoms_obj:
         if atom.symbol not in chemical_symbols:
-            sys.stderr.write(f"Invalid chemical symbol found: {atom.symbol}\n")
+            sys.stderr.write(f"Invalid chemical symbol found: {atom.symbol}\\n")
             sys.exit(100)
         for coord in atom.position:
-            if not (-1e5 <= coord <= 1e5):
-                sys.stderr.write(f"Coordinate out of valid range: {coord}\n")
-                sys.exit(100)
-
-
-def read_coordinates_from_stdin(default_element: str, default_cell: float) -> "Atoms":
-    import sys
-
-    try:
-        import io
-
-        from ase.data import chemical_symbols
-        from ase.io import read
-    except ImportError:
-        sys.stderr.write("ase is not available.\n")
-        sys.exit(100)
-
-    # Note: size limit should be configurable, defaulting to 10MB here.
-    max_size = 10 * 1024 * 1024
-    content = _read_stdin_safely(max_size)
-
-    if not content.strip():
-        sys.stderr.write("Empty stdin received.\n")
-        sys.exit(100)
-
-    try:
-        atoms_obj = read(io.StringIO(content), format="extxyz")
-    except Exception as e:
-        sys.stderr.write(f"Failed to parse input stream: {e}\n")
-        sys.exit(100)
-
-    if isinstance(atoms_obj, list):
-        if not atoms_obj:
-            sys.stderr.write("No structures found in input.\n")
-            sys.exit(100)
-        atoms_obj = atoms_obj[-1]
-
-    for atom in atoms_obj:
-        if atom.symbol not in chemical_symbols:
-            sys.stderr.write(f"Invalid chemical symbol found: {atom.symbol}\n")
-            sys.exit(100)
-        for coord in atom.position:
-            import math
-
             if math.isnan(coord) or math.isinf(coord) or not (-1e5 <= coord <= 1e5):
-                sys.stderr.write(f"Coordinate out of valid range or NaN/Inf: {coord}\n")
+                sys.stderr.write("Invalid or out-of-bounds atomic coordinate.\\n")
                 sys.exit(100)
-
-    return atoms_obj  # type: ignore
 
 
 def write_bad_structure(path: str, atoms: "Atoms") -> None:
@@ -102,23 +63,31 @@ def write_bad_structure(path: str, atoms: "Atoms") -> None:
     import os
     import stat
 
+    # Validate filename strictly to prevent traversal
+    # allow alphanumeric, dots, underscores, hyphens
+    if not re.match(r"^[a-zA-Z0-9_.-]+$", path) or ".." in path:
+        sys.stderr.write(f"Invalid characters in filename: {path}\n")
+        sys.exit(100)
+
+    resolved_path = (allowed_dir / path).resolve(strict=False)
+
+    if not resolved_path.is_relative_to(allowed_dir):
+        sys.stderr.write(f"Path traversal detected: {path}\n")
+        sys.exit(100)
+
+    # Use atomic file creation
     try:
-        # Create the file safely, resolving strictly
-        base_name = Path(path).name
-        if not re.match(r"^[a-zA-Z0-9_.-]+$", base_name) or ".." in base_name:
-            sys.stderr.write(f"Invalid filename: {base_name}\n")
+        # Create with strict permissions (0o600)
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+        fd = os.open(str(resolved_path), flags, 0o600)
+
+        # Verify it's a regular file before writing
+        st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode):
+            os.close(fd)
+            sys.stderr.write("Target is not a regular file.\n")
             sys.exit(100)
 
-        resolved_path = allowed_dir / base_name
-
-        if resolved_path.exists():
-            st = os.lstat(resolved_path)
-            if stat.S_ISLNK(st.st_mode):
-                sys.stderr.write(f"Symlinks are not allowed: {path}\n")
-                sys.exit(100)
-
-        # Write atomically avoiding race conditions
-        fd = os.open(resolved_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
         with os.fdopen(fd, "w") as f:
             from ase.io import write
 
@@ -139,7 +108,62 @@ def print_forces(forces: typing.Any) -> None:
         sys.stdout.write(f"{f[0]} {f[1]} {f[2]}\n")
 
 
-# ruff: noqa: C901
+def read_coordinates_from_stdin(default_element: str, default_cell: float) -> "Atoms":
+    import sys
+
+    chemical_symbols = ["Fe", "Mg", "O", "Pt", "Co", "Ni", "Mn", "Cr", "V", "Cu"]
+
+    # Limit to 10MB typical massive frame
+    max_size = 10 * 1024 * 1024
+    content = _read_stdin_safely(max_size)
+
+    if not content.strip():
+        sys.stderr.write("Empty stdin received.\n")
+        sys.exit(100)
+
+    try:
+        atoms_obj = read(io.StringIO(content), format="extxyz")
+    except Exception as e:
+        sys.stderr.write(f"Failed to parse input stream: {e}\n")
+        sys.exit(100)
+
+    if isinstance(atoms_obj, list):
+        if not atoms_obj:
+            sys.stderr.write("No structures found in input.\n")
+            sys.exit(100)
+        atoms_obj = atoms_obj[-1]
+
+    _validate_atoms(atoms_obj, chemical_symbols)
+
+    return atoms_obj  # type: ignore
+
+
+def _validate_potential_arg(potential_arg: str) -> None:
+    if potential_arg == "None":
+        return
+    pot_path = Path(potential_arg)
+    if ".." in potential_arg:
+        sys.stderr.write("Potential path contains invalid traversal characters.\n")
+        sys.exit(100)
+
+    try:
+        import os
+        import stat
+
+        st = os.lstat(pot_path)
+        if stat.S_ISLNK(st.st_mode):
+            sys.stderr.write("Potential path must not be a symlink.\n")
+            sys.exit(100)
+
+        resolved_pot = pot_path.resolve(strict=True)
+        if not resolved_pot.is_file():
+            sys.stderr.write("Potential path is not a file.\n")
+            sys.exit(100)
+    except Exception:
+        sys.stderr.write("Potential path resolution failed or does not exist.\n")
+        sys.exit(100)
+
+
 def _validate_args(args: argparse.Namespace) -> tuple[float, float]:
     try:
         threshold = float(args.threshold)
@@ -151,31 +175,8 @@ def _validate_args(args: argparse.Namespace) -> tuple[float, float]:
         sys.stderr.write("Invalid threshold type or value.\n")
         sys.exit(100)
 
-    if args.potential != "None":
-        pot_path = Path(args.potential)
-
-        # Prevent traversal but allow valid OS path characters
-        if ".." in args.potential:
-            sys.stderr.write("Potential path contains invalid traversal characters.\n")
-            sys.exit(100)
-
-        try:
-            # Use os.lstat to avoid TOCTOU and verify it's a real file
-            import os
-            import stat
-
-            st = os.lstat(pot_path)
-            if stat.S_ISLNK(st.st_mode):
-                sys.stderr.write("Potential path must not be a symlink.\n")
-                sys.exit(100)
-
-            resolved_pot = pot_path.resolve(strict=True)
-            if not resolved_pot.is_file():
-                sys.stderr.write("Potential path is not a file.\n")
-                sys.exit(100)
-        except Exception:
-            sys.stderr.write("Potential path resolution failed or does not exist.\n")
-            sys.exit(100)
+    if args.potential is not None:
+        _validate_potential_arg(args.potential)
 
     try:
         from ase.data import chemical_symbols

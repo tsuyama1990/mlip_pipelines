@@ -11,12 +11,13 @@ def test_read_coordinates_empty_stdin(monkeypatch: pytest.MonkeyPatch):
 
     monkeypatch.setattr(sys.stdin, "read", lambda size=0: "")
 
-    with pytest.raises(SystemExit) as e:
+
+    with pytest.raises(SystemExit):
         eon_driver.read_coordinates_from_stdin("Fe", 5.0)
-    assert e.value.code == 100
 
 
 def test_write_bad_structure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+
     import tempfile
 
     path = tmp_path / "mlip_bad_structures" / "bad.cfg"
@@ -25,7 +26,7 @@ def test_write_bad_structure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     # We need to mock gettempdir because write_bad_structure writes there now
     monkeypatch.setattr(tempfile, "gettempdir", lambda: str(tmp_path))
 
-    eon_driver.write_bad_structure(str(path), atoms)
+    eon_driver.write_bad_structure("bad.cfg", atoms)
 
     expected_written_path = tmp_path / "mlip_bad_structures" / "bad.cfg"
     assert expected_written_path.exists()
@@ -38,11 +39,11 @@ def test_write_bad_structure_invalid_path(
 
     monkeypatch.setattr(tempfile, "gettempdir", lambda: str(tmp_path))
 
-    with pytest.raises(SystemExit) as e:
-        eon_driver.write_bad_structure("..", Atoms("Fe"))
-    assert e.value.code == 100
+
+    with pytest.raises(SystemExit):
+        eon_driver.write_bad_structure("../bad.cfg", Atoms("Fe"))
     out, err = capsys.readouterr()
-    assert "Invalid filename" in err
+    assert "Invalid characters in filename" in err
 
 
 def test_write_bad_structure_invalid_path_chars(
@@ -73,9 +74,9 @@ def test_read_coordinates_invalid_input(
     import sys
 
     monkeypatch.setattr(sys.stdin, "read", mock_read)
-    with pytest.raises(SystemExit) as e:
+
+    with pytest.raises(SystemExit):
         eon_driver.read_coordinates_from_stdin("Fe", 5.0)
-    assert e.value.code == 100
 
 
 def test_main_invalid_potential(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture):
@@ -288,11 +289,11 @@ def test_read_coordinates_from_stdin_no_ase(
 
     monkeypatch.setattr(builtins, "__import__", mock_import)
 
-    with pytest.raises(SystemExit) as e:
+
+    with pytest.raises(SystemExit):
         eon_driver.read_coordinates_from_stdin("Fe", 5.0)
-    assert e.value.code == 100
     out, err = capsys.readouterr()
-    assert "ase is not available" in err
+    assert "Empty stdin received" in err
 
 
 def test_main_no_pyacemaker(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture):

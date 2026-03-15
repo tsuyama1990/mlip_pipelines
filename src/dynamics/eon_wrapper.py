@@ -33,6 +33,12 @@ class EONWrapper(AbstractDynamics):
 
     def _validate_potential_path(self, potential: Path) -> str:
         validate_filename(potential.name)
+
+        if ".." in str(potential):
+            msg = "Potential path contains invalid traversal characters."
+            raise ValueError(msg)
+
+        import os
         import stat
 
         try:
@@ -46,7 +52,7 @@ class EONWrapper(AbstractDynamics):
             raise ValueError(msg)
 
         try:
-            resolved_pot = potential.resolve(strict=True)
+            resolved_pot = Path(os.path.realpath(potential))
         except Exception as e:
             msg = f"Failed to resolve potential path: {e}"
             raise ValueError(msg) from e
@@ -56,7 +62,7 @@ class EONWrapper(AbstractDynamics):
             raise ValueError(msg)
 
         if self.config.project_root:
-            root = Path(self.config.project_root).resolve(strict=True)
+            root = Path(os.path.realpath(self.config.project_root))
             if not resolved_pot.is_relative_to(root):
                 msg = f"Potential path must be within the project root: {resolved_pot}"
                 raise ValueError(msg)
@@ -91,13 +97,14 @@ class EONWrapper(AbstractDynamics):
         static_driver = (Path(__file__).parent / "eon_driver.py").resolve(strict=True)
 
         import json
+
         config_data = {
             "executable": executable_str,
             "static_driver": static_driver.as_posix(),
             "threshold": self.config.uncertainty_threshold,
             "potential": resolved_pot_str,
             "default_element": self.system_config.elements[0],
-            "default_cell": self.config.lattice_size
+            "default_cell": self.config.lattice_size,
         }
 
         with Path.open(config_path, "w") as f:
@@ -277,9 +284,12 @@ sys.exit(res.returncode)
 
     def _validate_env_thread_count(self, val: str) -> str | None:
         if re.match(r"^[0-9]+$", val):
+            import os
+
             try:
                 threads = int(val)
-                if 1 <= threads <= 1024:
+                max_threads = os.cpu_count() or 64
+                if 1 <= threads <= max_threads:
                     return val
             except ValueError:
                 pass

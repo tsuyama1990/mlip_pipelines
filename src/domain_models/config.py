@@ -62,8 +62,12 @@ def _check_ownership_and_perms(resolved: Path, path_str: str) -> None:
 
 
 def _secure_resolve_and_validate_dir(path_str: str, check_exists: bool = True) -> str:
-    # Use realpath for canonicalization
     import os
+    import stat
+
+    if ".." in path_str:
+        msg = f"Path traversal sequences not allowed: {path_str}"
+        raise ValueError(msg)
 
     canonical_path = Path(os.path.realpath(path_str))
 
@@ -72,18 +76,34 @@ def _secure_resolve_and_validate_dir(path_str: str, check_exists: bool = True) -
         raise ValueError(msg)
 
     if check_exists:
-        if not canonical_path.exists():
-            msg = f"Directory does not exist: {path_str}"
-            raise ValueError(msg)
+        try:
+            # Atomic check against symlink TOCTOU attacks
+            fd = os.open(
+                str(canonical_path), os.O_RDONLY | os.O_NOFOLLOW | getattr(os, "O_DIRECTORY", 0)
+            )
+        except OSError as e:
+            msg = f"Directory does not exist, is a symlink, or cannot be opened: {path_str}"
+            raise ValueError(msg) from e
 
-        if not canonical_path.is_dir():
-            msg = f"Path must be a directory: {path_str}"
-            raise ValueError(msg)
+        import contextlib
+
+        with contextlib.suppress(OSError):
+            st = os.fstat(fd)
+            os.close(fd)
+
+            if not stat.S_ISDIR(st.st_mode):
+                msg = f"Path must be a directory: {path_str}"
+                raise ValueError(msg)
+
+            if st.st_uid != os.getuid():
+                msg = f"Directory {path_str} is not owned by the current user (uid={os.getuid()}). This is insecure."
+                raise ValueError(msg)
+
+            if bool(st.st_mode & stat.S_IWOTH):
+                msg = f"Directory {path_str} is world-writable, which is insecure."
+                raise ValueError(msg)
 
     _check_allowed_base_dirs(str(canonical_path), path_str)
-
-    if check_exists:
-        _check_ownership_and_perms(canonical_path, path_str)
 
     return str(canonical_path)
 
@@ -470,34 +490,50 @@ def _validate_env_key(key: str) -> None:
 
 
 def _validate_env_value(val: str) -> None:
-    if len(val) > 1024:
+    if len(val) > 4096:
         msg = "Environment variable value exceeds maximum length"
         raise ValueError(msg)
 
     # Strictly whitelist allowed characters to prevent shell/JSON injection
-    # Allows alphanumerics and underscores only
-    if not re.match(r"^[a-zA-Z0-9_]*$", val):
+    # Allows alphanumerics, underscores, dots, and hyphens
+    if not re.match(r"^[a-zA-Z0-9_.-]*$", val):
         msg = "Invalid characters detected in .env variable value."
         raise ValueError(msg)
 
 
 def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
-    st = os.lstat(env_file)
-    if stat.S_ISLNK(st.st_mode):
-        msg = ".env file must not be a symlink."
+    import contextlib
+    import os
+    import stat
+
+    if ".." in str(env_file):
+        msg = f"Path traversal sequences not allowed: {env_file}"
         raise ValueError(msg)
+
+    try:
+        # Atomic check against symlink TOCTOU attacks
+        fd = os.open(str(env_file), os.O_RDONLY | os.O_NOFOLLOW)
+    except OSError as e:
+        msg = ".env file must not be a symlink or does not exist."
+        raise ValueError(msg) from e
+
+    with contextlib.suppress(OSError):
+        st = os.fstat(fd)
+        os.close(fd)
+
+        if not stat.S_ISREG(st.st_mode):
+            msg = ".env file must be a regular file."
+            raise ValueError(msg)
+
+        if bool(st.st_mode & stat.S_IWOTH):
+            msg = ".env file has insecure permissions. It must not be world writable."
+            raise ValueError(msg)
 
     resolved_env = env_file.resolve(strict=True)
 
     # Verify the canonicalized path sits within the trusted base directory
     if not str(resolved_env).startswith(str(expected_base.resolve(strict=True))):
         msg = f".env file must reside within the allowed base directory: {expected_base}"
-        raise ValueError(msg)
-
-    st = os.lstat(resolved_env)
-
-    if bool(st.st_mode & stat.S_IWOTH):
-        msg = ".env file has insecure permissions. It must not be world writable."
         raise ValueError(msg)
 
     return resolved_env
@@ -645,6 +681,17 @@ class ProjectConfig(BaseSettings):
                 if ".." in str(env_file_path):
                     msg = "Path traversal sequences are not allowed in .env file path"
                     raise ValueError(msg)
+
+                import contextlib
+                import os
+
+                try:
+                    fd = os.open(str(env_file_path), os.O_RDONLY | os.O_NOFOLLOW)
+                    with contextlib.suppress(OSError):
+                        os.close(fd)
+                except OSError as e:
+                    msg = ".env file path must not be a symlink."
+                    raise ValueError(msg) from e
 
                 try:
                     resolved = env_file_path.resolve(strict=True)
