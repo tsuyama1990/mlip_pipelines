@@ -10,7 +10,7 @@ from typing import Any
 
 from ase import Atoms
 
-from src.core import AbstractDynamics, AbstractGenerator, AbstractOracle, AbstractTrainer
+from src.core import AbstractDynamics, AbstractGenerator, AbstractTrainer, BaseOracle
 from src.core.exceptions import DynamicsHaltInterrupt, OracleConvergenceError
 from src.domain_models.config import ProjectConfig
 from src.domain_models.dtos import ExplorationStrategy, MaterialFeatures
@@ -19,6 +19,8 @@ from src.dynamics.eon_wrapper import EONWrapper
 from src.generators.adaptive_policy import AdaptiveExplorationPolicyEngine
 from src.generators.structure_generator import StructureGenerator
 from src.oracles.dft_oracle import DFTManager
+from src.oracles.mace_manager import MACEManager
+from src.oracles.tiered_oracle import TieredOracle
 from src.trainers.ace_trainer import PacemakerWrapper
 from src.validators.reporter import Reporter
 from src.validators.validator import Validator
@@ -31,7 +33,18 @@ class Orchestrator:
         self.config = config
         self.md_engine: AbstractDynamics = MDInterface(config.dynamics, config.system)
         self.eon_engine: AbstractDynamics = EONWrapper(config.dynamics, config.system)
-        self.oracle: AbstractOracle = DFTManager(config.oracle)
+
+        fallback_oracle = DFTManager(config.oracle)
+        if config.loop_strategy.use_tiered_oracle:
+            primary_oracle = MACEManager(config)
+            self.oracle: BaseOracle = TieredOracle(
+                primary_oracle=primary_oracle,
+                fallback_oracle=fallback_oracle,
+                threshold=config.loop_strategy.thresholds.threshold_call_dft,
+            )
+        else:
+            self.oracle = fallback_oracle
+
         self.trainer: AbstractTrainer = PacemakerWrapper(config.trainer)
         self.validator = Validator(config.validator)
         self.reporter = Reporter()
