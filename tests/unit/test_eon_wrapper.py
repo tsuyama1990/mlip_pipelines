@@ -182,6 +182,9 @@ def test_run_kmc_subprocess_fail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
         def kill(self):
             pass
 
+        def poll(self) -> int | None:
+            return self.returncode
+
         def __enter__(self) -> "MockProc":
             return self
 
@@ -232,6 +235,9 @@ def test_run_kmc_subprocess_halted(tmp_path: Path, monkeypatch: pytest.MonkeyPat
 
         def kill(self):
             pass
+
+        def poll(self) -> int | None:
+            return self.returncode
 
         def __enter__(self) -> "MockProc":
             return self
@@ -373,6 +379,9 @@ def test_run_exploration_eon(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         def kill(self):
             pass
 
+        def poll(self) -> int | None:
+            return self.returncode
+
         def __enter__(self) -> "MockProc":
             return self
 
@@ -453,6 +462,9 @@ def test_run_kmc_timeout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
         def __init__(self) -> None:
             self.count = 0
+
+        def poll(self) -> int | None:
+            return self.returncode
 
         def communicate(self, *args: Any, **kwargs: Any) -> tuple[bytes, bytes]:
             if self.count == 0:

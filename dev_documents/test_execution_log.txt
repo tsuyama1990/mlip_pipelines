@@ -42,12 +42,12 @@ src/domain_models/config.py               366    118    68%   35-36, 39-40, 46-4
 src/domain_models/dtos.py                  39      4    90%   41-44
 src/dynamics/__init__.py                    0      0   100%
 src/dynamics/dynamics_engine.py           228     52    77%   32-33, 40-41, 44-45, 48-49, 52-53, 57-58, 62-63, 98-99, 110-111, 117-118, 121-122, 125-126, 129-130, 133-134, 138-139, 143-144, 178-179, 190-191, 194-195, 201-202, 204-205, 269-271, 331-332, 338-339, 341-342, 370
-src/dynamics/eon_driver.py                144     40    72%   13-14, 28-29, 34-35, 42-51, 81-84, 88-89, 94-95, 124-125, 137-139, 142-143, 153-155, 163-165, 168-169, 195, 211
-src/dynamics/eon_wrapper.py               160     27    83%   57-58, 67-68, 71-72, 139-140, 142-143, 154-155, 166-178, 187, 195, 221-222
+src/dynamics/eon_driver.py                151     44    71%   13-14, 28-29, 34-35, 42-51, 81-84, 88-89, 94-95, 114-115, 119-120, 126-127, 139-141, 144-145, 155-157, 165-167, 170-171, 197, 213
+src/dynamics/eon_wrapper.py               166     29    83%   58-59, 68-69, 72-73, 144-145, 147-148, 159-160, 171-183, 192, 200, 226-227, 262-263
 src/dynamics/security_utils.py            110     26    76%   17-18, 26-32, 47-48, 78, 101-102, 110-111, 121-122, 133-134, 137-138, 141-142, 162-163
 src/generators/__init__.py                  0      0   100%
 src/generators/adaptive_policy.py          67      5    93%   16, 44-45, 123-124
-src/generators/defect_builder.py           72     14    81%   14, 22-23, 26, 43-44, 47, 66-67, 76-77, 81, 105-106
+src/generators/defect_builder.py           72     15    79%   14, 22-23, 26, 43-44, 47, 66-67, 76-77, 81, 103, 105-106
 src/generators/structure_generator.py      62      9    85%   47-48, 52-53, 99, 105-108
 src/oracles/__init__.py                     0      0   100%
 src/oracles/dft_oracle.py                 258     61    76%   22-23, 26-27, 33-34, 38-39, 42-43, 48-49, 59-60, 79-80, 86-87, 117-118, 120-121, 123-124, 142, 145, 150, 160, 172-173, 177-179, 184-185, 190-195, 222-224, 227-228, 239-240, 259-260, 275, 288-291, 294-295, 301-303, 364-365
@@ -58,7 +58,7 @@ src/validators/reporter.py                  7      0   100%
 src/validators/stability_tests.py         119      5    96%   51, 59-60, 63-66
 src/validators/validator.py                93     11    88%   20-22, 33-35, 39-41, 85, 99-100
 ---------------------------------------------------------------------
-TOTAL                                    2325    563    76%
-======================== 173 passed, 3 skipped in 4.67s ========================
+TOTAL                                    2338    570    76%
+======================== 173 passed, 3 skipped in 4.36s ========================
 /app/.venv/lib/python3.12/site-packages/coverage/inorout.py:561: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.4/messages.html#warning-module-not-imported
   self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")

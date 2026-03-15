@@ -29,8 +29,8 @@ def _read_stdin_safely(max_size: int) -> str:
             sys.exit(100)
 
         # Basic fast-fail validation for valid characters typically found in extxyz/xyz files
-        # Includes alphanumeric, whitespace, punctuation, etc.
-        if not re.match(r"^[\x09\x0A\x0D\x20-\x7E]*$", chunk):
+        # Only allow alphanumeric, spaces, and scientific notation characters (including quotes, often found in Lattice="")
+        if not re.match(r'^[a-zA-Z0-9\s\.\-\+\:\=\_\"\']*$', chunk):
             sys.stderr.write("Invalid characters detected in input stream.\n")
             sys.exit(100)
 
@@ -105,17 +105,19 @@ def write_bad_structure(path: str, atoms: "Atoms") -> None:
     allowed_dir.mkdir(parents=True, exist_ok=True)
     allowed_dir = allowed_dir.resolve(strict=True)
 
-    base_name = path
-    if (
-        "/" in base_name
-        or "\\" in base_name
-        or ".." in base_name
-        or not re.match(r"^[a-zA-Z0-9_.-]+$", base_name)
-    ):
-        sys.stderr.write(f"Invalid filename: {base_name}\n")
+    try:
+        resolved_path = Path(path).resolve(strict=False)
+        if not resolved_path.is_relative_to(allowed_dir):
+            sys.stderr.write(f"Path outside allowed directory: {path}\n")
+            sys.exit(100)
+    except Exception as e:
+        sys.stderr.write(f"Path resolution error: {e}\n")
         sys.exit(100)
 
-    resolved_path = allowed_dir / base_name
+    base_name = resolved_path.name
+    if not re.match(r"^[a-zA-Z0-9_.-]+$", base_name):
+        sys.stderr.write(f"Invalid filename: {base_name}\n")
+        sys.exit(100)
 
     try:
         from ase.io import write

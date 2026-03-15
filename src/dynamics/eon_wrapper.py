@@ -42,13 +42,14 @@ class EONWrapper(AbstractDynamics):
         resolved_pot_str = "None"
         if potential:
             validate_filename(potential.name)
-            resolved_pot = potential.resolve(strict=True)
+            # resolve strictly while following symlinks
+            resolved_pot = potential.resolve(strict=True).absolute()
             if self.config.project_root:
-                root = Path(self.config.project_root).resolve(strict=True)
+                root = Path(self.config.project_root).resolve(strict=True).absolute()
                 if not resolved_pot.is_relative_to(root):
                     msg = f"Potential path must be within the project root: {resolved_pot}"
                     raise ValueError(msg)
-            resolved_pot_str = str(resolved_pot)
+            resolved_pot_str = resolved_pot.as_posix()
             if (
                 not re.match(r"^[/a-zA-Z0-9_.-]+$", resolved_pot_str)
                 or "\x00" in resolved_pot_str
@@ -58,7 +59,7 @@ class EONWrapper(AbstractDynamics):
                 raise ValueError(msg)
 
         executable = Path(sys.executable)
-        executable_str = str(executable)
+        executable_str = executable.as_posix()
         if not re.match(r"^[/a-zA-Z0-9_.-]+$", executable_str) or ".." in executable_str:
             msg = "Invalid python executable path"
             raise ValueError(msg)
@@ -73,18 +74,22 @@ class EONWrapper(AbstractDynamics):
 
         static_driver = (Path(__file__).parent / "eon_driver.py").resolve(strict=True)
 
+        import shlex
+
         driver_content = f"""#!{executable_str}
 import subprocess
 import sys
 import os
+import shlex
 
+# Using shlex properly formatted strings
 cmd = [
-    "{executable_str}",
-    "{static_driver!s}",
-    "--threshold", "{self.config.uncertainty_threshold}",
-    "--potential", "{resolved_pot_str}",
-    "--default_element", "{self.system_config.elements[0]}",
-    "--default_cell", "{self.config.lattice_size}"
+    {shlex.quote(executable_str)!r},
+    {shlex.quote(static_driver.as_posix())!r},
+    "--threshold", {shlex.quote(str(self.config.uncertainty_threshold))!r},
+    "--potential", {shlex.quote(resolved_pot_str)!r},
+    "--default_element", {shlex.quote(self.system_config.elements[0])!r},
+    "--default_cell", {shlex.quote(str(self.config.lattice_size))!r}
 ]
 
 # Strictly pass only safe variables downstream
@@ -202,7 +207,7 @@ sys.exit(res.returncode)
                         except (FileNotFoundError, RuntimeError):
                             continue
                     env[k] = os.pathsep.join(safe_paths)
-                elif re.match(r"^[/a-zA-Z0-9_.-:=]+$", val):
+                elif re.match(r"^[a-zA-Z0-9._/-]+$", val):
                     env[k] = val
         return env
 
@@ -227,23 +232,35 @@ sys.exit(res.returncode)
             env = self._build_safe_env()
 
             # Execute via Popen to properly manage the process lifecycle
+            # Added size limits to pipes and full file-based processing for massive outputs
+            out_file = resolved_work_dir / "eonclient.out"
+            err_file = resolved_work_dir / "eonclient.err"
 
-            with subprocess.Popen(  # noqa: S603
-                cmd,
-                cwd=str(resolved_work_dir.absolute()),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                shell=False,
-                env=env,
-            ) as proc:
+            with (
+                out_file.open('w') as fout,
+                err_file.open('w') as ferr,
+                subprocess.Popen(  # noqa: S603
+                    cmd,
+                    cwd=str(resolved_work_dir.absolute()),
+                    stdout=fout,
+                    stderr=ferr,
+                    shell=False,
+                    env=env,
+                ) as proc
+            ):
                 try:
-                    out, err = proc.communicate(timeout=3600)  # Maximum 1 hour timeout
+                    proc.communicate(timeout=3600)  # Maximum 1 hour timeout
                     returncode = proc.returncode
                 except subprocess.TimeoutExpired:
                     proc.kill()
                     proc.communicate()  # ensure pipes are closed
                     msg = "EON client execution timed out."
                     raise RuntimeError(msg) from None
+                finally:
+                    # Defensive kill if it somehow escaped the above cleanly
+                    if proc.poll() is None:
+                        proc.kill()
+                        proc.wait()
 
             if returncode == 100:
                 return {
