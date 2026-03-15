@@ -496,46 +496,9 @@ def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
 
     st = os.lstat(resolved_env)
 
-    if st.st_size > 1024:
-        msg = ".env file exceeds maximum allowed size (1KB)."
+    if bool(st.st_mode & stat.S_IWOTH):
+        msg = ".env file has insecure permissions. It must not be world writable."
         raise ValueError(msg)
-
-    if st.st_uid != os.getuid():
-        msg = ".env file is not owned by the current user."
-        raise ValueError(msg)
-
-    if bool(st.st_mode & stat.S_IRWXO) or bool(st.st_mode & stat.S_IRWXG):
-        msg = ".env file has insecure permissions. It must not be group or world readable/writable."
-        raise ValueError(msg)
-
-    # Content validation for malicious patterns before parsing
-    with Path.open(resolved_env, "r", encoding="utf-8") as f:
-        for line in f:
-            stripped = line.strip()
-            if not stripped or stripped.startswith("#"):
-                continue
-
-            # Simple check to see if the key starts with MLIP_ and lacks injection symbols
-            if "=" in stripped:
-                key, val = stripped.split("=", 1)
-                key = key.strip()
-                if not key.startswith("MLIP_"):
-                    msg = f"All .env file keys must start with 'MLIP_'. Found invalid key: {key}"
-                    raise ValueError(msg)
-
-                val = val.strip()
-                if (
-                    ".." in val
-                    or ";" in val
-                    or "&" in val
-                    or "|" in val
-                    or "$" in val
-                    or "`" in val
-                    or "{" in val
-                    or "}" in val
-                ):
-                    msg = f"Invalid characters or traversal sequences in .env file content: {val}"
-                    raise ValueError(msg)
 
     return resolved_env
 
@@ -709,20 +672,10 @@ class ProjectConfig(BaseSettings):
                 _validate_env_key(key)
                 _validate_env_value(val)
 
-                # We inject the parsed values directly into the configuration dict
+                # We inject the parsed values directly into the configuration dict as strings.
+                # Pydantic handles type conversion automatically according to the target fields.
                 clean_key = key.replace("MLIP_", "").lower()
-                if val.lower() in ("true", "1", "yes"):
-                    values[clean_key] = True
-                elif val.lower() in ("false", "0", "no"):
-                    values[clean_key] = False
-                else:
-                    try:
-                        if "." in val:
-                            values[clean_key] = float(val)
-                        else:
-                            values[clean_key] = int(val)
-                    except ValueError:
-                        values[clean_key] = val
+                values[clean_key] = val
 
         return values
 

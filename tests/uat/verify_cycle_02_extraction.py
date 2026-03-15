@@ -5,6 +5,7 @@ import marimo
 __generated_with = "0.2.1"
 app = marimo.App(width="medium")
 
+
 @app.cell
 def setup() -> tuple:
     import os
@@ -190,9 +191,7 @@ def test_scenario_3(
 
     core_unrelaxed = unrelaxed_cluster.positions[fw_3 == 1.0]
     core_relaxed = relaxed_cluster.positions[fw_3 == 1.0]
-    np.testing.assert_allclose(
-        core_unrelaxed, core_relaxed, atol=1e-10, err_msg="Core atoms moved"
-    )
+    np.testing.assert_allclose(core_unrelaxed, core_relaxed, atol=1e-10, err_msg="Core atoms moved")
 
     buffer_unrelaxed = unrelaxed_cluster.positions[fw_3 == 0.0]
     buffer_relaxed = relaxed_cluster.positions[fw_3 == 0.0]
@@ -258,9 +257,7 @@ def test_scenario_5(
 
     fail_calc = FailingSurrogateCalculator()
 
-    result_fail = extract_intelligent_cluster(
-        bulk_atoms_fail, 0, config_fail, calculator=fail_calc
-    )
+    result_fail = extract_intelligent_cluster(bulk_atoms_fail, 0, config_fail, calculator=fail_calc)
 
     assert result_fail.cluster is not None
     assert len(result_fail.cluster) > 0

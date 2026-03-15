@@ -23,9 +23,6 @@ MIN_VECTOR_NORM = 1e-5
 def _extract_spherical_zones(
     atoms: Atoms, center_idx: int, core_r: float, buffer_r: float
 ) -> Atoms:
-    # Use neighbor_list to find all atoms within buffer_r of the center_idx
-    # The valid quantities are i, j, d, D, S, etc. Space separated usually or without commas.
-    # ase's primitive_neighbor_list expects string like 'ijdD'
     i_arr, j_arr, d_arr, D_arr = neighbor_list("ijdD", atoms, buffer_r)
 
     mask = i_arr == center_idx
@@ -33,25 +30,27 @@ def _extract_spherical_zones(
     distances = d_arr[mask]
     vectors = D_arr[mask]
 
-    # Include the center atom itself
+    # Explicitly avoid duplicates if center_idx somehow appeared in j_arr for its own i_arr
+    # (which it shouldn't unless self_interaction=True)
+    valid_mask = neighbors_j != center_idx
+    neighbors_j = neighbors_j[valid_mask]
+    distances = distances[valid_mask]
+    vectors = vectors[valid_mask]
+
     cluster_indices: np.ndarray = np.append(neighbors_j, center_idx)
     cluster_distances: np.ndarray = np.append(distances, 0.0)
-    cluster_vectors = np.vstack([vectors, np.zeros(3)])
+    cluster_vectors = np.vstack([vectors, np.zeros(3)]) if len(vectors) > 0 else np.zeros((1, 3))
 
-    # Sort by distance
     sort_idx = np.argsort(cluster_distances)
     cluster_indices = cluster_indices[sort_idx]
     cluster_distances = cluster_distances[sort_idx]
     cluster_vectors = cluster_vectors[sort_idx]
 
-    # Create the cluster atoms object
     symbols = np.array(atoms.get_chemical_symbols())[cluster_indices]
 
-    # positions are the vectors from the center atom
     cluster = Atoms(symbols=symbols, positions=cluster_vectors)
     cluster.set_pbc([False, False, False])
 
-    # Assign force weights
     force_weights = np.zeros(len(cluster))
     core_mask = cluster_distances <= core_r
     force_weights[core_mask] = 1.0

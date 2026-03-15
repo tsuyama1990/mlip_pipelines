@@ -89,37 +89,27 @@ class EONWrapper(AbstractDynamics):
 
         static_driver = (Path(__file__).parent / "eon_driver.py").resolve(strict=True)
 
-        import json
-
-        cmd = [
-            executable_str,
-            static_driver.as_posix(),
-            "--threshold",
-            str(self.config.uncertainty_threshold),
-            "--potential",
-            resolved_pot_str,
-            "--default_element",
-            self.system_config.elements[0],
-            "--default_cell",
-            str(self.config.lattice_size),
-        ]
-
-        # Secure generation without f-string interpolation risks.
-        # We serialize the validated command array directly into a JSON literal to be parsed in the script.
-        cmd_json = json.dumps(cmd)
-
         driver_content = f"""#!{executable_str}
 import subprocess
 import sys
 import os
-import json
 
-# Safely deserialize the literal command array
-cmd = json.loads({cmd_json!r})
+cmd = [
+    {executable_str!r},
+    {static_driver.as_posix()!r},
+    "--threshold",
+    {str(self.config.uncertainty_threshold)!r},
+    "--potential",
+    {resolved_pot_str!r},
+    "--default_element",
+    {self.system_config.elements[0]!r},
+    "--default_cell",
+    {str(self.config.lattice_size)!r},
+]
 
 # Strictly pass only safe variables downstream
 safe_env = {{}}
-for key in ("PATH", "LD_LIBRARY_PATH", "OMP_NUM_THREADS"):
+for key in ("PATH", "LD_LIBRARY_PATH", "OMP_NUM_THREADS", "PYTHONPATH", "HOME", "USER"):
     if key in os.environ:
         safe_env[key] = os.environ[key]
 
@@ -254,6 +244,7 @@ sys.exit(res.returncode)
                 return None
 
             import stat
+
             st = os.lstat(p_obj)
             if stat.S_ISLNK(st.st_mode):
                 return None
@@ -265,28 +256,44 @@ sys.exit(res.returncode)
             return None
         return None
 
+    def _validate_env_thread_count(self, val: str) -> str | None:
+        if re.match(r"^[0-9]+$", val):
+            try:
+                threads = int(val)
+                if 1 <= threads <= 1024:
+                    return val
+            except ValueError:
+                pass
+        return None
+
+    def _validate_env_paths(self, val: str) -> str:
+        safe_paths = []
+        for raw_p in val.split(os.pathsep):
+            validated = self._validate_env_path(raw_p)
+            if validated:
+                safe_paths.append(validated)
+        return os.pathsep.join(safe_paths)
+
     def _build_safe_env(self) -> dict[str, str]:
         env: dict[str, str] = {}
-        safe_keys = ("PATH", "LD_LIBRARY_PATH", "OMP_NUM_THREADS")
+        safe_keys = ("PATH", "LD_LIBRARY_PATH", "OMP_NUM_THREADS", "PYTHONPATH", "HOME", "USER")
         for k in safe_keys:
             if k in os.environ:
                 val: str = os.environ[k]
                 if not isinstance(val, str) or len(val) > 4096:
                     continue
-                if k in ("PATH", "LD_LIBRARY_PATH"):
-                    safe_paths = []
-                    for raw_p in val.split(os.pathsep):
-                        validated = self._validate_env_path(raw_p)
-                        if validated:
-                            safe_paths.append(validated)
-                    env[k] = os.pathsep.join(safe_paths)
-                elif k == "OMP_NUM_THREADS" and re.match(r"^[0-9]+$", val):
-                    try:
-                        threads = int(val)
-                        if 1 <= threads <= 1024:
-                            env[k] = val
-                    except ValueError:
-                        pass
+                if k in ("PATH", "LD_LIBRARY_PATH", "PYTHONPATH"):
+                    env[k] = self._validate_env_paths(val)
+                elif k == "OMP_NUM_THREADS":
+                    valid_threads = self._validate_env_thread_count(val)
+                    if valid_threads:
+                        env[k] = valid_threads
+                elif (
+                    k in ("HOME", "USER")
+                    and re.match(r"^[a-zA-Z0-9_.-/]*$", val)
+                    and ".." not in val
+                ):
+                    env[k] = val
         return env
 
     def run_kmc(self, potential: Path | None, work_dir: Path) -> dict[str, Any]:

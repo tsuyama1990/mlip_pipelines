@@ -88,7 +88,7 @@ def test_main_invalid_potential(monkeypatch: pytest.MonkeyPatch, capsys: pytest.
         eon_driver.main()
     assert e.value.code == 100
     out, err = capsys.readouterr()
-    assert "Potential path contains invalid characters" in err
+    assert "Potential path contains invalid traversal characters" in err
 
 
 def test_main_invalid_element(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture):

@@ -31,7 +31,7 @@ def _read_stdin_safely(max_size: int) -> str:
         # Basic fast-fail validation for valid characters typically found in extxyz/xyz files
         # Only allow alphanumeric, spaces, dots, hyphens, e/E for scientific notation.
         # Quotes, equals, and other complex punctuation are rejected for strict security.
-        if not re.match(r"^[a-zA-Z0-9\s\.\-eE]*$", chunk):
+        if not re.match(r"^[a-zA-Z0-9\s\.\+\-eE#]*$", chunk):
             sys.stderr.write("Invalid characters detected in input stream.\n")
             sys.exit(100)
 
@@ -160,11 +160,22 @@ def _validate_args(args: argparse.Namespace) -> tuple[float, float]:
 
     if args.potential != "None":
         pot_path = Path(args.potential)
-        if not re.match(r"^[/a-zA-Z0-9_.-]+$", args.potential) or ".." in args.potential:
-            sys.stderr.write("Potential path contains invalid characters.\n")
+
+        # Prevent traversal but allow valid OS path characters
+        if ".." in args.potential:
+            sys.stderr.write("Potential path contains invalid traversal characters.\n")
             sys.exit(100)
 
         try:
+            # Use os.lstat to avoid TOCTOU and verify it's a real file
+            import os
+            import stat
+
+            st = os.lstat(pot_path)
+            if stat.S_ISLNK(st.st_mode):
+                sys.stderr.write("Potential path must not be a symlink.\n")
+                sys.exit(100)
+
             resolved_pot = pot_path.resolve(strict=True)
             if not resolved_pot.is_file():
                 sys.stderr.write("Potential path is not a file.\n")

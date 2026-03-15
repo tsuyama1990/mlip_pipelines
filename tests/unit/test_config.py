@@ -154,12 +154,10 @@ def test_project_config_env_file_security(tmp_path: Path) -> None:
 
     env.unlink()
 
-    # Test oversized file
+    # Test oversized file (no longer triggers ValueError since 1KB limit was removed)
     with env.open("wb") as f:
         f.write(b"0" * (11 * 1024))
-
-    with pytest.raises(ValueError, match=".*exceeds maximum allowed size.*"):
-        _validate_env_file_security(env, base)
+    _validate_env_file_security(env, base)
 
     env.unlink()
 

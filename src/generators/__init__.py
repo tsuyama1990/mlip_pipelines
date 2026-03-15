@@ -7,5 +7,5 @@ __all__ = [
     "AdaptiveExplorationPolicyEngine",
     "DefectBuilder",
     "StructureGenerator",
-    "extract_intelligent_cluster"
+    "extract_intelligent_cluster",
 ]
