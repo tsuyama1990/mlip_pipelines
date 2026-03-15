@@ -1,10 +1,9 @@
+# ruff: noqa: N803, S108, T201
 import sys
-import os
-import pytest
 from pathlib import Path
 
 # Inject current working directory into sys.path to resolve src imports
-sys.path.insert(0, os.getcwd())
+sys.path.insert(0, str(Path.cwd()))
 
 import marimo
 
@@ -13,10 +12,9 @@ app = marimo.App()
 
 @app.cell
 def _():
-    import typing
-    from pathlib import Path
     import numpy as np
     from ase import Atoms
+
     from src.domain_models.config import DistillationConfig
     from src.oracles.base import BaseOracle
     from src.oracles.mace_manager import MACEManager
@@ -102,7 +100,7 @@ def test_uat_c03_02(TieredOracle, MockMACEManager, MockDFTManager, Atoms, Path) 
 @app.cell
 def test_uat_c03_03(MACEManager, DistillationConfig, Atoms, Path, np) -> tuple:
     # UAT-C03-03: Validation of MACE Epistemic Uncertainty Extraction and Normalization
-    import unittest.mock as mock
+    from unittest import mock
 
     _config = DistillationConfig(mace_model_path="mace-mp-0-medium")
 
