@@ -38,8 +38,14 @@ def test_write_bad_structure_invalid_path(
 
     monkeypatch.setattr(tempfile, "gettempdir", lambda: str(tmp_path))
 
+    # Path("../bad.cfg").name gives "bad.cfg", so it does NOT trigger the invalid filename logic.
+    # We must explicitly pass ".." in the basename if we want to trigger the ".." check, OR
+    # just rely on the test below to trigger ".." via bad..cfg
+    # BUT if the intent of this test is just to test a bad name with ".."
+    # let's supply something like "bad/../bad.cfg" if we want to trigger it, but Path().name strips out the directory part.
+    # Therefore we will provide a path that resolves its name to something containing ".." directly.
     with pytest.raises(SystemExit) as e:
-        eon_driver.write_bad_structure("../bad.cfg", Atoms("Fe"))
+        eon_driver.write_bad_structure("..bad.cfg", Atoms("Fe", positions=[[0, 0, 0]]))
     assert e.value.code == 100
     out, err = capsys.readouterr()
     assert "Invalid filename" in err

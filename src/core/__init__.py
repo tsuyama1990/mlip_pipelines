@@ -10,19 +10,10 @@ from src.core.exceptions import DynamicsHaltInterrupt, OracleConvergenceError
 __all__ = [
     "AbstractDynamics",
     "AbstractGenerator",
-    "AbstractOracle",
     "AbstractTrainer",
     "DynamicsHaltInterrupt",
     "OracleConvergenceError",
 ]
-
-
-class AbstractOracle(abc.ABC):
-    """Abstract Base Class for the DFT Oracle module."""
-
-    @abc.abstractmethod
-    def compute_batch(self, structures: list[Atoms], calc_dir: Path) -> list[Atoms]:
-        """Runs DFT computation on a batch of structures."""
 
 
 class AbstractTrainer(abc.ABC):

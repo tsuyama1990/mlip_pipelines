@@ -29,15 +29,15 @@ def test_orchestrator_oracle_convergence_error(
 
     from ase import Atoms
 
-    from src.core import AbstractOracle
     from src.core.exceptions import OracleConvergenceError
+    from src.oracles.base import BaseOracle
 
     monkeypatch.setitem(
         sys.modules, "pyacemaker.calculator", type("pyacemaker", (), {"pyacemaker": True})
     )
     orch = Orchestrator(mock_project_config)
 
-    class FailingOracle(AbstractOracle):
+    class FailingOracle(BaseOracle):
         def compute_batch(self, structures: list[Atoms], calc_dir: Path) -> list[Atoms]:
             msg = "Mocked SCF failure"
             raise OracleConvergenceError(msg)
