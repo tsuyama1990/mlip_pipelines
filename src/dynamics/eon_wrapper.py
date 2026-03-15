@@ -79,12 +79,12 @@ import sys
 import os
 
 cmd = [
-    {executable_str!r},
-    {str(static_driver)!r},
-    "--threshold", {str(self.config.uncertainty_threshold)!r},
-    "--potential", {resolved_pot_str!r},
-    "--default_element", {self.system_config.elements[0]!r},
-    "--default_cell", {str(self.config.lattice_size)!r}
+    "{executable_str}",
+    "{static_driver!s}",
+    "--threshold", "{self.config.uncertainty_threshold}",
+    "--potential", "{resolved_pot_str}",
+    "--default_element", "{self.system_config.elements[0]}",
+    "--default_cell", "{self.config.lattice_size}"
 ]
 
 # Strictly pass only safe variables downstream
@@ -154,7 +154,28 @@ sys.exit(res.returncode)
             msg = "EON binary is not within trusted directories."
             raise ValueError(msg)
 
+        self._verify_binary_hash(eon_bin_path)
+
         return eon_bin_path
+
+    def _verify_binary_hash(self, eon_bin_path: Path) -> None:
+        # Double check the binary hash again after strict resolution to prevent TOCTOU bypasses
+        if not self.config.binary_hashes:
+            return
+
+        expected_hash = self.config.binary_hashes.get(self.config.eon_binary)
+        if not expected_hash:
+            return
+
+        import hashlib
+
+        hasher = hashlib.sha256()
+        with eon_bin_path.open("rb") as f:
+            for chunk in iter(lambda: f.read(4096), b""):
+                hasher.update(chunk)
+        if hasher.hexdigest() != expected_hash:
+            msg = f"EON binary hash mismatch after resolution. Expected {expected_hash}, got {hasher.hexdigest()}"
+            raise ValueError(msg)
 
     def _build_safe_env(self) -> dict[str, str]:
         env: dict[str, str] = {}
@@ -172,10 +193,14 @@ sys.exit(res.returncode)
                         clean_p: str = raw_p.strip()
                         if not clean_p:
                             continue
-                        p_obj: Path = Path(clean_p).resolve(strict=False)
-                        # Only allow existing absolute paths
-                        if p_obj.is_absolute() and p_obj.is_dir():
-                            safe_paths.append(str(p_obj))
+                        # Use strictly validated paths to avoid path manipulation
+                        try:
+                            p_obj: Path = Path(clean_p).resolve(strict=True)
+                            # Only allow existing absolute directories
+                            if p_obj.is_absolute() and p_obj.is_dir():
+                                safe_paths.append(str(p_obj))
+                        except (FileNotFoundError, RuntimeError):
+                            continue
                     env[k] = os.pathsep.join(safe_paths)
                 elif re.match(r"^[/a-zA-Z0-9_.-:=]+$", val):
                     env[k] = val

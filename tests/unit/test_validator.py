@@ -135,15 +135,62 @@ def test_compute_metrics_with_dataset(tmp_path: Path, monkeypatch: pytest.Monkey
 def test_validate_passed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import sys
 
+    import numpy as np
+    from ase import Atoms
+    from ase.calculators.calculator import Calculator
+
+    class MockCalc(Calculator):  # type: ignore[misc]
+        implemented_properties: list[str] = ["energy", "forces", "stress"]  # noqa: RUF012
+
+        def calculate(
+            self,
+            atoms: Atoms | None = None,
+            properties: list[str] | None = None,
+            system_changes: list[str] | None = None,
+        ) -> None:  # type: ignore[override]
+            super().calculate(atoms, properties, system_changes)
+            self.results = {
+                "energy": 1.0,
+                "forces": np.array([[0.05, 0.05, 0.05]]),
+                "stress": np.array([0.1, 0.1, 0.1, 0.0, 0.0, 0.0]),
+            }
+
     monkeypatch.setitem(
-        sys.modules, "pyacemaker.calculator", type("pyacemaker", (), {"pyacemaker": True})
+        sys.modules,
+        "pyacemaker.calculator",
+        type("pyacemaker", (), {"pyacemaker": lambda path: MockCalc()}),
     )
+
+    dataset_path = tmp_path / "test_dataset.extxyz"
+    dataset_path.write_text("test")
+
+    def mock_read(path: str, index: str) -> list[Atoms]:
+        atoms = Atoms("Fe", positions=[(0, 0, 0)])
+        from ase.calculators.singlepoint import SinglePointCalculator
+
+        atoms.calc = SinglePointCalculator(
+            atoms,
+            energy=1.0,
+            forces=np.array([[0.05, 0.05, 0.05]]),
+            stress=np.array([0.1, 0.1, 0.1, 0.0, 0.0, 0.0]),
+        )
+        return [atoms]
+
+    monkeypatch.setattr("ase.io.read", mock_read)
+    monkeypatch.setattr(
+        "src.validators.validator.Validator._check_phonopy_stability", lambda self, a, c: True
+    )
+    monkeypatch.setattr(
+        "src.validators.stability_tests.check_mechanical_stability", lambda a, c: True
+    )
+
     config = ValidatorConfig(
-        energy_rmse_threshold=0.1, force_rmse_threshold=0.2, stress_rmse_threshold=0.3
+        energy_rmse_threshold=0.1,
+        force_rmse_threshold=0.2,
+        stress_rmse_threshold=0.3,
+        test_dataset_path=str(dataset_path),
     )
     validator = Validator(config)
-
-    monkeypatch.setattr(validator, "_compute_metrics", lambda path: (0.05, 0.1, 0.2, True, True))
 
     dummy_pot = tmp_path / "dummy.yace"
     dummy_pot.write_text("elements version")
@@ -156,13 +203,71 @@ def test_validate_passed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Non
 def test_validate_failed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import sys
 
-    monkeypatch.setitem(
-        sys.modules, "pyacemaker.calculator", type("pyacemaker", (), {"pyacemaker": True})
-    )
-    config = ValidatorConfig(energy_rmse_threshold=0.01)
-    validator = Validator(config)
+    import numpy as np
+    from ase import Atoms
+    from ase.calculators.calculator import Calculator
 
-    monkeypatch.setattr(validator, "_compute_metrics", lambda path: (0.05, 0.1, 0.2, True, True))
+    class MockCalc(Calculator):  # type: ignore[misc]
+        implemented_properties: list[str] = ["energy", "forces", "stress"]  # noqa: RUF012
+
+        def calculate(
+            self,
+            atoms: Atoms | None = None,
+            properties: list[str] | None = None,
+            system_changes: list[str] | None = None,
+        ) -> None:  # type: ignore[override]
+            super().calculate(atoms, properties, system_changes)
+            self.results = {
+                "energy": 10.0,
+                "forces": np.array([[5.0, 5.0, 5.0]]),
+                "stress": np.array([5.0, 5.0, 5.0, 0.0, 0.0, 0.0]),
+            }
+
+    monkeypatch.setitem(
+        sys.modules,
+        "pyacemaker.calculator",
+        type("pyacemaker", (), {"pyacemaker": lambda path: MockCalc()}),
+    )
+
+    dataset_path = tmp_path / "test_dataset.extxyz"
+    dataset_path.write_text("test")
+
+    def mock_read(path: str, index: str) -> list[Atoms]:
+        atoms = Atoms("Fe", positions=[(0, 0, 0)])
+        atoms.calc = MockCalc()
+        # By not setting atoms.calc.results here, or rather, we will provide a MockCalc True object, and it will be evaluated
+
+        # When get_potential_energy is called, it recomputes and returns self.results from MockCalc, so true and pred will be same.
+
+        # Wait, if we want them to differ, we need true to be different.
+
+        # ASE get_potential_energy just returns atoms.calc.results['energy'] if available.
+        # In our script, the mock returns atoms with a fixed true result, but we overwrite calc on it inside compute_metrics.
+
+        # So the atoms returned by read MUST NOT be linked to the same MockCalc, or we manually set their properties
+        # but ASE atoms don't hold properties natively without calc or arrays.
+        # Actually ASE Atoms hold singlepoint calculator for info!
+        from ase.calculators.singlepoint import SinglePointCalculator
+
+        atoms.calc = SinglePointCalculator(
+            atoms,
+            energy=1.0,
+            forces=np.array([[0.05, 0.05, 0.05]]),
+            stress=np.array([0.1, 0.1, 0.1, 0.0, 0.0, 0.0]),
+        )
+
+        return [atoms]
+
+    monkeypatch.setattr("ase.io.read", mock_read)
+    monkeypatch.setattr(
+        "src.validators.validator.Validator._check_phonopy_stability", lambda self, a, c: True
+    )
+    monkeypatch.setattr(
+        "src.validators.stability_tests.check_mechanical_stability", lambda a, c: True
+    )
+
+    config = ValidatorConfig(energy_rmse_threshold=0.01, test_dataset_path=str(dataset_path))
+    validator = Validator(config)
 
     dummy_pot = tmp_path / "dummy.yace"
     dummy_pot.write_text("elements version")
@@ -175,17 +280,15 @@ def test_validate_failed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Non
 def test_validate_runtime_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import sys
 
-    monkeypatch.setitem(
-        sys.modules, "pyacemaker.calculator", type("pyacemaker", (), {"pyacemaker": True})
-    )
-    config = ValidatorConfig()
-    validator = Validator(config)
-
-    def raise_err(path: Path) -> None:
+    def raise_err(path: str) -> None:
         msg = "Mock error"
         raise RuntimeError(msg)
 
-    monkeypatch.setattr(validator, "_compute_metrics", raise_err)
+    monkeypatch.setitem(
+        sys.modules, "pyacemaker.calculator", type("pyacemaker", (), {"pyacemaker": raise_err})
+    )
+    config = ValidatorConfig()
+    validator = Validator(config)
 
     dummy_pot = tmp_path / "dummy.yace"
     dummy_pot.write_text("elements version")

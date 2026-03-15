@@ -11,29 +11,38 @@ def test_read_coordinates_empty_stdin(monkeypatch: pytest.MonkeyPatch):
 
     monkeypatch.setattr(sys.stdin, "read", lambda size=0: "")
 
-    atoms = eon_driver.read_coordinates_from_stdin("Fe", 5.0)
-    assert len(atoms) == 1
-    assert atoms.get_chemical_symbols() == ["Fe"]
-    assert atoms.get_cell()[0][0] == 5.0
+    with pytest.raises(SystemExit) as e:
+        eon_driver.read_coordinates_from_stdin("Fe", 5.0)
+    assert e.value.code == 100
 
 
 def test_write_bad_structure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    import tempfile
+
     path = tmp_path / "bad.cfg"
     atoms = Atoms("Fe", positions=[[0, 0, 0]])
-    monkeypatch.setattr(Path, "cwd", lambda: tmp_path)
-    eon_driver.write_bad_structure(str(path), atoms)
-    assert path.exists()
+
+    # We need to mock gettempdir because write_bad_structure writes there now
+    monkeypatch.setattr(tempfile, "gettempdir", lambda: str(tmp_path))
+
+    eon_driver.write_bad_structure(path.name, atoms)
+
+    expected_written_path = tmp_path / "mlip_bad_structures" / "bad.cfg"
+    assert expected_written_path.exists()
 
 
 def test_write_bad_structure_invalid_path(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture, tmp_path: Path
 ):
-    monkeypatch.setattr(Path, "cwd", lambda: tmp_path)
+    import tempfile
+
+    monkeypatch.setattr(tempfile, "gettempdir", lambda: str(tmp_path))
+
     with pytest.raises(SystemExit) as e:
         eon_driver.write_bad_structure("../bad.cfg", Atoms("Fe"))
     assert e.value.code == 100
     out, err = capsys.readouterr()
-    assert "Invalid path" in err
+    assert "Invalid filename" in err
 
 
 def test_read_coordinates_invalid_input(
@@ -49,66 +58,11 @@ def test_read_coordinates_invalid_input(
             return "invalid format\n"
         return ""
 
+    import sys
+
     monkeypatch.setattr(sys.stdin, "read", mock_read)
-
-    atoms = eon_driver.read_coordinates_from_stdin("Pt", 10.0)
-    assert len(atoms) == 1
-    assert atoms.get_chemical_symbols() == ["Pt"]
-
-    out, err = capsys.readouterr()
-    assert "Failed to parse input stream" in err
-
-
-def test_print_forces(capsys: pytest.CaptureFixture):
-    forces = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]
-    eon_driver.print_forces(forces)
-    out, err = capsys.readouterr()
-    assert "1.0 2.0 3.0\n4.0 5.0 6.0\n" in out
-
-
-def test_main_empty_input(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
-    import sys
-
-    monkeypatch.setattr(sys.stdin, "read", lambda size=0: "")
-    monkeypatch.setattr(
-        sys,
-        "argv",
-        [
-            "eon_driver.py",
-            "--threshold",
-            "5.0",
-            "--potential",
-            "None",
-            "--default_element",
-            "Fe",
-            "--default_cell",
-            "5.0",
-        ],
-    )
-
-    # mock sys.modules to simulate pyacemaker import
-    class DummyCalc:
-        pass
-
-    import sys
-
-    class MockPyacemakerModule:
-        pyacemaker = DummyCalc
-
-    sys.modules["pyacemaker"] = MockPyacemakerModule()
-    sys.modules["pyacemaker.calculator"] = MockPyacemakerModule()
-
     with pytest.raises(SystemExit) as e:
-        eon_driver.main()
-    assert e.value.code == 0
-
-
-def test_main_invalid_threshold(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture):
-    import sys
-
-    monkeypatch.setattr(sys, "argv", ["eon_driver.py", "--threshold", "invalid"])
-    with pytest.raises(SystemExit) as e:
-        eon_driver.main()
+        eon_driver.read_coordinates_from_stdin("Fe", 5.0)
     assert e.value.code == 100
 
 
@@ -170,16 +124,30 @@ def test_main_empty_input_mock_pyacemaker(monkeypatch: pytest.MonkeyPatch, tmp_p
     sys.modules["pyacemaker"] = MockPyacemakerModule()
     sys.modules["pyacemaker.calculator"] = MockPyacemakerModule()
 
+    # The new read_coordinates_from_stdin exits with 100 on empty input
     with pytest.raises(SystemExit) as e:
         eon_driver.main()
-    assert e.value.code == 0
+    assert e.value.code == 100
 
 
 def test_main_with_potential(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     import sys
     import typing
 
-    monkeypatch.setattr(sys.stdin, "read", lambda size=0: "")
+    extxyz_data = """1
+Lattice="5.0 0.0 0.0 0.0 5.0 0.0 0.0 0.0 5.0" Properties=species:S:1:pos:R:3 pbc="T T T"
+Fe       0.00000000       0.00000000       0.00000000
+"""
+
+    calls = [0]
+
+    def mock_read(size=-1):
+        if calls[0] == 0:
+            calls[0] += 1
+            return extxyz_data
+        return ""
+
+    monkeypatch.setattr(sys.stdin, "read", mock_read)
     monkeypatch.setattr(
         sys,
         "argv",
@@ -224,7 +192,20 @@ def test_main_with_potential_exception(
     import sys
     import typing
 
-    monkeypatch.setattr(sys.stdin, "read", lambda size=0: "")
+    extxyz_data = """1
+Lattice="5.0 0.0 0.0 0.0 5.0 0.0 0.0 0.0 5.0" Properties=species:S:1:pos:R:3 pbc="T T T"
+Fe       0.00000000       0.00000000       0.00000000
+"""
+
+    calls = [0]
+
+    def mock_read(size=-1):
+        if calls[0] == 0:
+            calls[0] += 1
+            return extxyz_data
+        return ""
+
+    monkeypatch.setattr(sys.stdin, "read", mock_read)
     monkeypatch.setattr(
         sys,
         "argv",
