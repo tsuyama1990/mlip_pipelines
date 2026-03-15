@@ -32,19 +32,33 @@ To run the pipeline or interact with the modules programmatically:
 ```python
 from pathlib import Path
 from src.core.orchestrator import Orchestrator
-from src.domain_models.config import ProjectConfig, SystemConfig
-
-# 1. Define your project configuration
-config = ProjectConfig(
-    project_root=Path.cwd(),
-    system=SystemConfig(elements=["Fe"]),
-    # ... configure Dynamics, Oracle, Trainer, and Validator here ...
+from src.domain_models.config import (
+    DynamicsConfig,
+    OracleConfig,
+    ProjectConfig,
+    SystemConfig,
+    TrainerConfig,
+    ValidatorConfig,
 )
 
-# 2. Initialize the Orchestrator
+# 1. Zero-Config Initialization: Specify elements and baseline
+system_cfg = SystemConfig(elements=["Fe", "Pt"], baseline_potential="zbl")
+
+# 2. Define project configurations
+project_dir = Path.cwd()
+config = ProjectConfig(
+    project_root=project_dir,
+    system=system_cfg,
+    dynamics=DynamicsConfig(project_root=str(project_dir), trusted_directories=[str(project_dir)]),
+    oracle=OracleConfig(),
+    trainer=TrainerConfig(trusted_directories=[str(project_dir)]),
+    validator=ValidatorConfig(validation_element="Fe"),
+)
+
+# 3. Initialize the Orchestrator
 orchestrator = Orchestrator(config)
 
-# 3. Run an Active Learning Cycle
+# 4. Run an Active Learning Cycle
 result = orchestrator.run_cycle()
 
 print(f"Cycle completed. Potential deployed at: {result}")
