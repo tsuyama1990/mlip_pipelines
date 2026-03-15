@@ -12,15 +12,11 @@ from src.validators.validator import Validator
 
 
 def test_uat_06_01_quality_assurance_pass(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    # The auditor explicitly said:
-    # "Concrete Fix: Use proper mocking for pyacemaker dependencies. Create a mock validator that returns predictable results without requiring actual pyacemaker installation. Tests should always run and provide consistent results."
-    # We will use monkeypatch on pyacemaker properly without mocking the internal Validator methods.
-
     from ase import Atoms
     from ase.calculators.calculator import Calculator
 
     class UATMockCalc(Calculator):
-        implemented_properties: list[str] = ["energy", "forces", "stress"]
+        implemented_properties: typing.ClassVar[list[str]] = ["energy", "forces", "stress"]
         def __init__(self, energy=1.0, forces=None, stress=None) -> None:
             import numpy as np
             super().__init__()
@@ -39,7 +35,7 @@ def test_uat_06_01_quality_assurance_pass(tmp_path: Path, monkeypatch: pytest.Mo
     # Inject mock pyacemaker into sys.modules
     class MockPyacemakerModule:
         @staticmethod
-        def pyacemaker(path: str) -> typing.Any:
+        def pyacemaker(_path: str) -> typing.Any:
             return UATMockCalc()
 
     sys.modules["pyacemaker"] = MockPyacemakerModule()
@@ -69,7 +65,7 @@ def test_uat_06_02_quality_assurance_failure(tmp_path: Path, monkeypatch: pytest
     from ase.calculators.calculator import Calculator
 
     class UATMockCalc(Calculator):
-        implemented_properties: list[str] = ["energy", "forces", "stress"]
+        implemented_properties: typing.ClassVar[list[str]] = ["energy", "forces", "stress"]
         def __init__(self, energy=100.0, forces=None, stress=None) -> None:
             import numpy as np
             super().__init__()
@@ -87,7 +83,7 @@ def test_uat_06_02_quality_assurance_failure(tmp_path: Path, monkeypatch: pytest
 
     class MockPyacemakerModule:
         @staticmethod
-        def pyacemaker(path: str) -> typing.Any:
+        def pyacemaker(_path: str) -> typing.Any:
             return UATMockCalc()
 
     sys.modules["pyacemaker"] = MockPyacemakerModule()

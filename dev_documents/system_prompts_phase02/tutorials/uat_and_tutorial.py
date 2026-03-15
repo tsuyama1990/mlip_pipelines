@@ -55,7 +55,6 @@ def __() -> tuple[Any, ...]:
 
         project_config = ProjectConfig(
             project_root=Path.cwd(),
-            use_mock=os.environ.get("USE_MOCK", "False") == "True",
             system=sys_config,
             dynamics=dyn_config,
             oracle=oracle_config,
@@ -65,7 +64,7 @@ def __() -> tuple[Any, ...]:
 
         orchestrator = Orchestrator(project_config)
 
-        if project_config.use_mock:
+        if os.environ.get("USE_MOCK", "False") == "True":
             # Replace components natively using explicit Mock implementations via Dependency Injection
             # avoiding brittle MagicMock method overwriting on existing instance boundaries.
 

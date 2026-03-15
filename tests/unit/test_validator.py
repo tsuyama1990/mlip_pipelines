@@ -14,7 +14,7 @@ def _setup_mock_pyacemaker(monkeypatch, energy=1.0, forces=None, stress=None):
 
     from ase.calculators.calculator import Calculator
     class UnitMockCalc(Calculator):
-        implemented_properties: list[str] = ["energy", "forces", "stress"]
+        implemented_properties: typing.ClassVar[list[str]] = ["energy", "forces", "stress"]
         def __init__(self) -> None:
             super().__init__()
             self.energy = energy
@@ -30,7 +30,7 @@ def _setup_mock_pyacemaker(monkeypatch, energy=1.0, forces=None, stress=None):
 
     class MockPyacemakerModule:
         @staticmethod
-        def pyacemaker(path: str) -> typing.Any:
+        def pyacemaker(_path: str) -> typing.Any:
             return UnitMockCalc()
 
     sys.modules["pyacemaker"] = MockPyacemakerModule()
@@ -106,7 +106,7 @@ def test_validate_failed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 def test_validate_runtime_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     class MockPyacemakerModuleFailure:
         @staticmethod
-        def pyacemaker(path) -> Never:
+        def pyacemaker(_path) -> Never:
             msg = "Mock error"
             raise RuntimeError(msg)
 
