@@ -87,29 +87,22 @@ def print_forces(forces: typing.Any) -> None:
         sys.stdout.write(f"{f[0]} {f[1]} {f[2]}\n")
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="PACE Driver for EON")
-    parser.add_argument("--threshold", type=str, required=True, help="Uncertainty threshold")
-    parser.add_argument("--potential", type=str, default="None", help="Path to potential file")
-    parser.add_argument(
-        "--default_element", type=str, default="Fe", help="Default element for empty structures"
-    )
-    parser.add_argument("--default_cell", type=str, default="5.0", help="Default cell parameter")
-    args = parser.parse_args()
-
-    # Security Validation
+def _validate_args(args: argparse.Namespace) -> tuple[float, float]:
     try:
         threshold = float(args.threshold)
-        if threshold < 0:
-            raise ValueError
     except ValueError:
         sys.stderr.write("Invalid threshold type or value.\n")
         sys.exit(100)
 
-    if args.potential != "None":
-        if not re.match(r"^[/a-zA-Z0-9_.-]+$", args.potential) or ".." in args.potential:
-            sys.stderr.write("Potential path contains invalid characters.\n")
-            sys.exit(100)
+    if threshold < 0:
+        sys.stderr.write("Invalid threshold type or value.\n")
+        sys.exit(100)
+
+    if args.potential != "None" and (
+        not re.match(r"^[/a-zA-Z0-9_.-]+$", args.potential) or ".." in args.potential
+    ):
+        sys.stderr.write("Potential path contains invalid characters.\n")
+        sys.exit(100)
 
     try:
         from ase.data import chemical_symbols
@@ -123,11 +116,28 @@ def main() -> None:
 
     try:
         default_cell = float(args.default_cell)
-        if default_cell <= 0:
-            raise ValueError
     except ValueError:
         sys.stderr.write("Invalid default_cell format.\n")
         sys.exit(100)
+
+    if default_cell <= 0:
+        sys.stderr.write("Invalid default_cell format.\n")
+        sys.exit(100)
+
+    return threshold, default_cell
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="PACE Driver for EON")
+    parser.add_argument("--threshold", type=str, required=True, help="Uncertainty threshold")
+    parser.add_argument("--potential", type=str, default="None", help="Path to potential file")
+    parser.add_argument(
+        "--default_element", type=str, default="Fe", help="Default element for empty structures"
+    )
+    parser.add_argument("--default_cell", type=str, default="5.0", help="Default cell parameter")
+    args = parser.parse_args()
+
+    threshold, default_cell = _validate_args(args)
 
     try:
         from pyacemaker.calculator import pyacemaker
