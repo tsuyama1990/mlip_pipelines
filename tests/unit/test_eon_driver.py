@@ -8,7 +8,8 @@ from src.dynamics import eon_driver
 
 
 def test_read_coordinates_empty_stdin(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr(sys.stdin, "readlines", list)
+    import io
+    monkeypatch.setattr(sys.stdin, "read", lambda size=0: "")
 
     atoms = eon_driver.read_coordinates_from_stdin("Fe", 5.0)
     assert len(atoms) == 1
@@ -34,7 +35,18 @@ def test_write_bad_structure_invalid_path(capsys: pytest.CaptureFixture):
 def test_read_coordinates_invalid_input(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
 ):
-    monkeypatch.setattr(sys.stdin, "readlines", lambda: ["invalid format\n"])
+    import io
+
+    # return the invalid format on the first read, then empty
+    calls = [0]
+
+    def mock_read(size=-1):
+        if calls[0] == 0:
+            calls[0] += 1
+            return "invalid format\n"
+        return ""
+
+    monkeypatch.setattr(sys.stdin, "read", mock_read)
 
     atoms = eon_driver.read_coordinates_from_stdin("Pt", 10.0)
     assert len(atoms) == 1
@@ -54,7 +66,7 @@ def test_print_forces(capsys: pytest.CaptureFixture):
 def test_main_empty_input(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     import sys
 
-    monkeypatch.setattr(sys.stdin, "readlines", list)
+    monkeypatch.setattr(sys.stdin, "read", lambda size=0: "")
     monkeypatch.setattr(
         sys,
         "argv",
@@ -126,7 +138,7 @@ def test_main_invalid_element(monkeypatch: pytest.MonkeyPatch, capsys: pytest.Ca
 def test_main_empty_input_mock_pyacemaker(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     import sys
 
-    monkeypatch.setattr(sys.stdin, "readlines", list)
+    monkeypatch.setattr(sys.stdin, "read", lambda size=0: "")
     monkeypatch.setattr(
         sys,
         "argv",
@@ -164,7 +176,7 @@ def test_main_with_potential(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     import sys
     import typing
 
-    monkeypatch.setattr(sys.stdin, "readlines", list)
+    monkeypatch.setattr(sys.stdin, "read", lambda size=0: "")
     monkeypatch.setattr(
         sys,
         "argv",
@@ -209,7 +221,7 @@ def test_main_with_potential_exception(
     import sys
     import typing
 
-    monkeypatch.setattr(sys.stdin, "readlines", list)
+    monkeypatch.setattr(sys.stdin, "read", lambda size=0: "")
     monkeypatch.setattr(
         sys,
         "argv",
@@ -258,7 +270,7 @@ def test_read_coordinates_from_stdin_no_ase(
 ):
     import sys
 
-    monkeypatch.setattr(sys.stdin, "readlines", list)
+    monkeypatch.setattr(sys.stdin, "read", lambda size=0: "")
 
     # Mock import error for ase
     import builtins
@@ -290,7 +302,7 @@ def test_read_coordinates_from_stdin_no_ase(
 def test_main_no_pyacemaker(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture):
     import sys
 
-    monkeypatch.setattr(sys.stdin, "readlines", list)
+    monkeypatch.setattr(sys.stdin, "read", lambda size=0: "")
     monkeypatch.setattr(
         sys,
         "argv",
@@ -343,7 +355,15 @@ def test_read_coordinates_from_stdin_with_list(monkeypatch: pytest.MonkeyPatch, 
     content = '2\nLattice="1.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 1.0" Properties=species:S:1:pos:R:3\nFe 0.0 0.0 0.0\nFe 0.5 0.5 0.5\n2\nLattice="1.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 1.0" Properties=species:S:1:pos:R:3\nFe 0.1 0.1 0.1\nFe 0.6 0.6 0.6\n'
     import sys
 
-    monkeypatch.setattr(sys.stdin, "readlines", lambda: [content])
+    calls = [0]
+
+    def mock_read(size=-1):
+        if calls[0] == 0:
+            calls[0] += 1
+            return content
+        return ""
+
+    monkeypatch.setattr(sys.stdin, "read", mock_read)
 
     atoms = eon_driver.read_coordinates_from_stdin("Fe", 5.0)
     assert len(atoms) == 2

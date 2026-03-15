@@ -15,6 +15,7 @@ def _raise_empty_stdin() -> None:
 
 
 def read_coordinates_from_stdin(default_element: str, default_cell: float) -> "Atoms":
+    import sys
     try:
         import io
 
@@ -25,8 +26,26 @@ def read_coordinates_from_stdin(default_element: str, default_cell: float) -> "A
         sys.stderr.write("ase is not available.\n")
         sys.exit(100)
 
-    lines: list[str] = sys.stdin.readlines()
-    if not lines:
+    # Note: size limit should be configurable, defaulting to 10MB here.
+    # Reading stdin in chunks to prevent DoS vector
+    max_size = 10 * 1024 * 1024
+    content_chunks = []
+    current_size = 0
+
+    import sys
+    while True:
+        chunk = sys.stdin.read(4096)
+        if not chunk:
+            break
+        current_size += len(chunk)
+        if current_size > max_size:
+            sys.stderr.write(f"Input stream exceeds maximum allowed size ({max_size} bytes).\n")
+            sys.exit(100)
+        content_chunks.append(chunk)
+
+    content = "".join(content_chunks)
+
+    if not content.strip():
         sys.stderr.write("Empty stdin received, falling back to configurable default structure.\n")
         return Atoms(
             default_element,
@@ -34,11 +53,6 @@ def read_coordinates_from_stdin(default_element: str, default_cell: float) -> "A
             cell=[default_cell, default_cell, default_cell],
             pbc=True,
         )
-
-    content = "".join(lines)
-    if len(content) > 10 * 1024 * 1024:
-        sys.stderr.write("Input stream exceeds maximum allowed size (10MB).\n")
-        sys.exit(100)
 
     try:
         atoms_obj = read(io.StringIO(content), format="extxyz")
