@@ -31,26 +31,45 @@ class EONWrapper(AbstractDynamics):
         with Path.open(work_dir / "config.ini", "w") as f:
             f.write(ini_content)
 
+    def _validate_potential_path(self, potential: Path) -> str:
+        validate_filename(potential.name)
+        import stat
+
+        try:
+            st = os.lstat(potential)
+        except Exception as e:
+            msg = f"Failed to access potential file: {e}"
+            raise ValueError(msg) from e
+
+        if stat.S_ISLNK(st.st_mode):
+            msg = "Potential file must not be a symlink."
+            raise ValueError(msg)
+
+        try:
+            resolved_pot = potential.resolve(strict=True)
+        except Exception as e:
+            msg = f"Failed to resolve potential path: {e}"
+            raise ValueError(msg) from e
+
+        if not resolved_pot.is_file():
+            msg = "Potential must be a regular file."
+            raise ValueError(msg)
+
+        if self.config.project_root:
+            root = Path(self.config.project_root).resolve(strict=True)
+            if not resolved_pot.is_relative_to(root):
+                msg = f"Potential path must be within the project root: {resolved_pot}"
+                raise ValueError(msg)
+        return resolved_pot.as_posix()
+
     def _write_pace_driver(self, work_dir: Path, potential: Path | None) -> None:
         pots_dir = work_dir / "potentials"
         pots_dir.mkdir(parents=True, exist_ok=True)
         driver_path = pots_dir / "pace_driver.py"
 
-        # the pace_driver should be executable by python
-
-        # Security: strictly validate the potential string before formatting it into the python template
-
         resolved_pot_str = "None"
         if potential:
-            validate_filename(potential.name)
-            # resolve strictly while following symlinks
-            resolved_pot = potential.resolve(strict=True).absolute()
-            if self.config.project_root:
-                root = Path(self.config.project_root).resolve(strict=True).absolute()
-                if not resolved_pot.is_relative_to(root):
-                    msg = f"Potential path must be within the project root: {resolved_pot}"
-                    raise ValueError(msg)
-            resolved_pot_str = resolved_pot.as_posix()
+            resolved_pot_str = self._validate_potential_path(potential)
 
         try:
             executable = Path(sys.executable).resolve(strict=True)
@@ -118,11 +137,24 @@ sys.exit(res.returncode)
         return self.run_kmc(potential, work_dir)
 
     def _validate_work_dir(self, work_dir: Path) -> Path:
-        """Validates and resolves the working directory."""
+        """Validates and resolves the working directory securely."""
         work_dir.mkdir(parents=True, exist_ok=True)
+
+        try:
+            st = os.lstat(work_dir)
+            if __import__("stat").S_ISLNK(st.st_mode):
+                msg = "Working directory must not be a symlink."
+                raise ValueError(msg)
+        except OSError as e:
+            msg = f"Failed to access working directory: {e}"
+            raise ValueError(msg) from e
+
         resolved_work_dir = work_dir.resolve(strict=True)
 
-        # Verify that the resolved working directory is within the project root to prevent traversal
+        if not resolved_work_dir.is_dir():
+            msg = "Working directory must be a directory."
+            raise ValueError(msg)
+
         if self.config.project_root:
             proj_root = Path(self.config.project_root).resolve(strict=True)
             if not resolved_work_dir.is_relative_to(proj_root):
@@ -131,7 +163,6 @@ sys.exit(res.returncode)
         return resolved_work_dir
 
     def _get_validated_eon_bin(self) -> Path:
-        """Resolves and validates the EON binary path."""
         project_root = self.config.project_root
         try:
             eon_bin = validate_executable_path(
@@ -141,8 +172,14 @@ sys.exit(res.returncode)
                 expected_hash=self.config.binary_hashes.get(self.config.eon_binary),
             )
         except RuntimeError as e:
-            msg = "EON client executable not found."
+            msg = "EON client executable not found or not executable."
             raise RuntimeError(msg) from e
+
+        if not os.access(eon_bin, os.X_OK):
+            msg = f"EON binary at {eon_bin} is not executable."
+            raise RuntimeError(msg)
+
+        return eon_bin
 
         # Strictly validate the resolved EON binary path before execution
         eon_bin_path = eon_bin.resolve(strict=True)
@@ -208,8 +245,16 @@ sys.exit(res.returncode)
 
     def _validate_env_path(self, raw_p: str) -> str | None:
         clean_p: str = raw_p.strip()
-        if not clean_p:
+        if not clean_p or ".." in clean_p:
             return None
+        with contextlib.suppress(Exception):
+            p_obj: Path = Path(clean_p)
+            if not p_obj.is_absolute():
+                return None
+            resolved = p_obj.resolve(strict=True)
+            if resolved.is_absolute() and resolved.is_dir() and self._is_path_trusted(resolved):
+                return resolved.as_posix()
+        return None
         with contextlib.suppress(Exception):
             p_obj: Path = Path(clean_p).resolve(strict=True)
             if p_obj.is_absolute() and p_obj.is_dir() and self._is_path_trusted(p_obj):
@@ -222,7 +267,7 @@ sys.exit(res.returncode)
         for k in safe_keys:
             if k in os.environ:
                 val: str = os.environ[k]
-                if not isinstance(val, str):
+                if not isinstance(val, str) or len(val) > 4096:
                     continue
                 if k in ("PATH", "LD_LIBRARY_PATH"):
                     safe_paths = []
@@ -231,8 +276,13 @@ sys.exit(res.returncode)
                         if validated:
                             safe_paths.append(validated)
                     env[k] = os.pathsep.join(safe_paths)
-                elif re.match(r"^[0-9]+$", val):
-                    env[k] = val
+                elif k == "OMP_NUM_THREADS" and re.match(r"^[0-9]+$", val):
+                    try:
+                        threads = int(val)
+                        if 1 <= threads <= 1024:
+                            env[k] = val
+                    except ValueError:
+                        pass
         return env
 
     def run_kmc(self, potential: Path | None, work_dir: Path) -> dict[str, Any]:
@@ -251,6 +301,15 @@ sys.exit(res.returncode)
                 raise ValueError(msg)
 
             cmd: list[str] = [str(eon_bin_path)]
+
+            for arg in cmd:
+                if not isinstance(arg, str):
+                    msg = "Command arguments must be strings."
+                    raise TypeError(msg)
+                # Ensure no shell injection characters are present
+                if re.search(r"[;&|`$]", arg):
+                    msg = "Command argument contains invalid shell characters."
+                    raise ValueError(msg)
 
             # Create a minimal safe environment whitelist to prevent sensitive credential leaks
             env = self._build_safe_env()

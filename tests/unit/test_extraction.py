@@ -25,7 +25,7 @@ class HookeanCalculatorMock(Calculator):
         self,
         atoms: Atoms | None = None,
         properties: list[str] | None = None,
-        system_changes: list[str] | None = all_changes
+        system_changes: list[str] | None = all_changes,
     ) -> None:
         super().calculate(atoms, properties, system_changes)
 
@@ -39,7 +39,7 @@ class HookeanCalculatorMock(Calculator):
         forces = -self.k * (pos - com)
 
         # Energy is sum of 0.5 * k * dx^2
-        energy = np.sum(0.5 * self.k * np.sum((pos - com)**2, axis=1))
+        energy = np.sum(0.5 * self.k * np.sum((pos - com) ** 2, axis=1))
 
         self.results["forces"] = forces
         self.results["energy"] = energy
@@ -100,11 +100,14 @@ def test_passivate_surface_broken_bond() -> None:
 
 
 def test_pre_relax_buffer() -> None:
-    atoms = Atoms("Cu3", positions=[
-        [0.0, 0.0, 0.0],
-        [1.0, 0.0, 0.0],
-        [-1.0, 0.0, 0.0],
-    ])
+    atoms = Atoms(
+        "Cu3",
+        positions=[
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [-1.0, 0.0, 0.0],
+        ],
+    )
     # Atom 0 is core, 1 and 2 are buffer
     atoms.arrays["force_weights"] = np.array([1.0, 0.0, 0.0])
 
@@ -133,7 +136,7 @@ def test_extract_intelligent_cluster() -> None:
         buffer_radius=3.0,
         enable_passivation=True,
         enable_pre_relaxation=True,
-        passivation_element="H"
+        passivation_element="H",
     )
 
     mock_calc = HookeanCalculatorMock()

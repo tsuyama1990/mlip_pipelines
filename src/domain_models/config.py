@@ -475,8 +475,8 @@ def _validate_env_value(val: str) -> None:
         raise ValueError(msg)
 
     # Strictly whitelist allowed characters to prevent shell/JSON injection
-    # Allows alphanumerics, underscores, dots, hyphens, colons, slashes, equals, plus, commas, asterisks
-    if not re.match(r"^[-a-zA-Z0-9_.:/=,+]*$", val):
+    # Allows alphanumerics, underscores, dots, and hyphens
+    if not re.match(r"^[a-zA-Z0-9_.-]*$", val):
         msg = "Invalid characters detected in .env variable value."
         raise ValueError(msg)
 
@@ -671,6 +671,21 @@ class ProjectConfig(BaseSettings):
         extra="forbid",
         env_file_encoding="utf-8",
     )
+
+    def __init__(self, **kwargs: Any) -> None:
+        if "_env_file" in kwargs:
+            env_file_raw = kwargs["_env_file"]
+            if env_file_raw is not None:
+                env_file_path = Path(env_file_raw)
+                expected_base = Path.cwd().resolve(strict=True)
+                try:
+                    resolved = env_file_path.resolve(strict=True)
+                    if not resolved.is_relative_to(expected_base):
+                        msg = f".env file must reside within the project root {expected_base}"
+                        raise ValueError(msg)
+                except FileNotFoundError:
+                    pass
+        super().__init__(**kwargs)
 
     project_root: Path = Field(..., description="Root directory of the project")
 

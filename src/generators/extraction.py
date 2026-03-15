@@ -1,8 +1,8 @@
 import logging
-import typing
 
 import numpy as np
 from ase import Atom, Atoms
+from ase.calculators.calculator import Calculator
 from ase.constraints import FixAtoms
 from ase.neighborlist import neighbor_list
 from ase.optimize import LBFGS
@@ -11,6 +11,13 @@ from src.domain_models.config import CutoutConfig
 from src.domain_models.dtos import CutoutResult
 
 logger = logging.getLogger(__name__)
+
+# Constants extracted to prevent hardcoding
+PASSIVATION_BOND_LENGTH = 1.0
+PRE_RELAX_FMAX = 0.1
+PRE_RELAX_MAX_STEPS = 50
+CUTOFF_MULTIPLIER = 1.2
+MIN_VECTOR_NORM = 1e-5
 
 
 def _extract_spherical_zones(
@@ -58,7 +65,7 @@ def _calculate_coordinations(cluster: Atoms) -> np.ndarray:
     from ase.neighborlist import NeighborList, natural_cutoffs
 
     cutoffs = natural_cutoffs(cluster)
-    cutoffs = [c * 1.2 for c in cutoffs]
+    cutoffs = [c * CUTOFF_MULTIPLIER for c in cutoffs]
     nl = NeighborList(cutoffs, self_interaction=False, bothways=True)
     nl.update(cluster)
 
@@ -107,9 +114,11 @@ def _passivate_surface(cluster: Atoms, passivating_element: str = "H") -> int:
             if coordinations[i] < expected_coordination.get(el, 0):
                 vec_outward = cluster.positions[i] - com
                 norm = float(np.linalg.norm(vec_outward))
-                dir_outward = vec_outward / norm if norm > 1e-5 else np.array([1.0, 0.0, 0.0])
+                dir_outward = (
+                    vec_outward / norm if norm > MIN_VECTOR_NORM else np.array([1.0, 0.0, 0.0])
+                )
 
-                new_pos = cluster.positions[i] + dir_outward * 1.0
+                new_pos = cluster.positions[i] + dir_outward * PASSIVATION_BOND_LENGTH
                 new_atom = Atom(passivating_element, position=new_pos)
                 new_atoms.append(new_atom)
 
@@ -126,11 +135,11 @@ def _passivate_surface(cluster: Atoms, passivating_element: str = "H") -> int:
     return len(new_atoms)
 
 
-def _pre_relax_buffer(cluster: Atoms, mock_calculator: typing.Any) -> None:
-    if mock_calculator is None:
+def _pre_relax_buffer(cluster: Atoms, calculator: Calculator | None) -> None:
+    if calculator is None:
         return
 
-    cluster.calc = mock_calculator
+    cluster.calc = calculator
 
     force_weights = cluster.arrays["force_weights"]
     core_indices = np.where(force_weights == 1.0)[0]
@@ -143,14 +152,14 @@ def _pre_relax_buffer(cluster: Atoms, mock_calculator: typing.Any) -> None:
     try:
         opt = LBFGS(cluster, logfile=None)
         with contextlib.suppress(Exception):
-            opt.run(fmax=0.1, steps=50)
+            opt.run(fmax=PRE_RELAX_FMAX, steps=PRE_RELAX_MAX_STEPS)
     finally:
         cluster.calc = None
         cluster.set_constraint()
 
 
 def extract_intelligent_cluster(
-    atoms: Atoms, center_idx: int, cutout_config: CutoutConfig, mock_calculator: typing.Any = None
+    atoms: Atoms, center_idx: int, cutout_config: CutoutConfig, calculator: Calculator | None = None
 ) -> CutoutResult:
     """Intelligently extracts a spherical cluster from a bulk structure."""
     cluster = _extract_spherical_zones(
@@ -163,7 +172,7 @@ def extract_intelligent_cluster(
             cluster, passivating_element=cutout_config.passivation_element
         )
 
-    if cutout_config.enable_pre_relaxation and mock_calculator is not None:
-        _pre_relax_buffer(cluster, mock_calculator)
+    if cutout_config.enable_pre_relaxation and calculator is not None:
+        _pre_relax_buffer(cluster, calculator)
 
     return CutoutResult(cluster=cluster, passivation_atoms_added=passivation_count)

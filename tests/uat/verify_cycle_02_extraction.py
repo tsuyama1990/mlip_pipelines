@@ -5,14 +5,14 @@ import marimo
 __generated_with = "0.2.1"
 app = marimo.App(width="medium")
 
-
 @app.cell
 def setup() -> tuple:
     import os
     import sys
+    from pathlib import Path
 
-    if os.getcwd() not in sys.path:
-        sys.path.insert(0, os.getcwd())
+    if str(Path.cwd()) not in sys.path:
+        sys.path.insert(0, str(Path.cwd()))
 
     import typing
 
@@ -47,7 +47,6 @@ def setup() -> tuple:
             if atoms is None:
                 return
 
-            # Simple Hookean mock
             pos = atoms.positions
             com = atoms.get_center_of_mass()
             forces = -self.k * (pos - com)
@@ -59,7 +58,8 @@ def setup() -> tuple:
         implemented_properties: typing.ClassVar[list[str]] = ["energy", "forces"]
 
         def calculate(self, *args: typing.Any, **kwargs: typing.Any) -> None:
-            raise RuntimeError("MACE optimization failed!")
+            msg = "MACE optimization failed!"
+            raise RuntimeError(msg)
 
     return (
         sys,
@@ -80,13 +80,12 @@ def setup() -> tuple:
 
 @app.cell
 def test_scenario_1(
-    Atoms: typing.Any,
+    Atoms: typing.Any,  # noqa: N803
     bulk: typing.Any,
     extract_intelligent_cluster: typing.Any,
-    CutoutConfig: typing.Any,
+    CutoutConfig: typing.Any,  # noqa: N803
     np: typing.Any,
 ) -> tuple:
-    # UAT-C02-01: Verification of Force Weight Assignments
     bulk_atoms = bulk("Cu", "fcc", a=3.6).repeat((5, 5, 5))
     center_idx = 62  # some arbitrary core atom
 
@@ -104,14 +103,12 @@ def test_scenario_1(
     assert "force_weights" in cluster.arrays, "force_weights missing"
 
     force_weights_1 = cluster.arrays["force_weights"]
-
     distances = np.linalg.norm(cluster.positions, axis=1)
 
     assert np.all(distances[force_weights_1 == 1.0] <= 3.0), "Core atoms exceed core radius"
     assert np.all(
         (distances[force_weights_1 == 0.0] > 3.0) & (distances[force_weights_1 == 0.0] <= 5.0)
     ), "Buffer atoms outside buffer zone"
-    print("UAT-C02-01 Passed: Force weight assignment correct.")
     return (bulk_atoms, center_idx, config, result, cluster, force_weights_1, distances)
 
 
@@ -119,10 +116,9 @@ def test_scenario_1(
 def test_scenario_2(
     bulk: typing.Any,
     extract_intelligent_cluster: typing.Any,
-    CutoutConfig: typing.Any,
+    CutoutConfig: typing.Any,  # noqa: N803
     np: typing.Any,
 ) -> tuple:
-    # UAT-C02-02: Automatic Surface Passivation of Dangling Bonds
     bulk_atoms_mgo = bulk("MgO", "rocksalt", a=4.21).repeat((3, 3, 3))
     center_idx_mgo = 27
 
@@ -146,7 +142,6 @@ def test_scenario_2(
     h_weights = force_weights_2[symbols == "H"]
     assert np.all(h_weights == 0.0), "Passivating atoms have non-zero force weight"
 
-    print("UAT-C02-02 Passed: Surface passivation applied.")
     return (
         bulk_atoms_mgo,
         center_idx_mgo,
@@ -163,11 +158,10 @@ def test_scenario_2(
 def test_scenario_3(
     bulk: typing.Any,
     extract_intelligent_cluster: typing.Any,
-    CutoutConfig: typing.Any,
-    SurrogateCalculator: typing.Any,
+    CutoutConfig: typing.Any,  # noqa: N803
+    SurrogateCalculator: typing.Any,  # noqa: N803
     np: typing.Any,
 ) -> tuple:
-    # UAT-C02-03: Successful Pre-Relaxation with Frozen Core Constraints
     bulk_atoms_cu = bulk("Cu", "fcc", a=3.6).repeat((3, 3, 3))
     center_idx_cu = 13
 
@@ -186,7 +180,7 @@ def test_scenario_3(
 
     mock_calc = SurrogateCalculator()
     result_relax = extract_intelligent_cluster(
-        bulk_atoms_cu, center_idx_cu, config_relax, mock_calc
+        bulk_atoms_cu, center_idx_cu, config_relax, calculator=mock_calc
     )
     relaxed_cluster = result_relax.cluster
 
@@ -196,7 +190,9 @@ def test_scenario_3(
 
     core_unrelaxed = unrelaxed_cluster.positions[fw_3 == 1.0]
     core_relaxed = relaxed_cluster.positions[fw_3 == 1.0]
-    np.testing.assert_allclose(core_unrelaxed, core_relaxed, atol=1e-10, err_msg="Core atoms moved")
+    np.testing.assert_allclose(
+        core_unrelaxed, core_relaxed, atol=1e-10, err_msg="Core atoms moved"
+    )
 
     buffer_unrelaxed = unrelaxed_cluster.positions[fw_3 == 0.0]
     buffer_relaxed = relaxed_cluster.positions[fw_3 == 0.0]
@@ -204,7 +200,6 @@ def test_scenario_3(
     moved = not np.allclose(buffer_unrelaxed, buffer_relaxed, atol=1e-5)
     assert moved, "Buffer atoms did not move"
 
-    print("UAT-C02-03 Passed: Pre-Relaxation successful with frozen core.")
     return (
         bulk_atoms_cu,
         center_idx_cu,
@@ -221,10 +216,9 @@ def test_scenario_3(
 def test_scenario_4(
     bulk: typing.Any,
     extract_intelligent_cluster: typing.Any,
-    CutoutConfig: typing.Any,
+    CutoutConfig: typing.Any,  # noqa: N803
     np: typing.Any,
 ) -> tuple:
-    # UAT-C02-04: Graceful Handling of Edge Cases Near Cell Boundaries
     bulk_atoms_edge = bulk("Fe", "bcc", a=2.86).repeat((3, 3, 3))
     edge_idx = 0
 
@@ -241,11 +235,8 @@ def test_scenario_4(
     assert len(cluster_edge) > 1, "Failed to extract neighbors across PBC"
 
     distances_4 = np.linalg.norm(cluster_edge.positions, axis=1)
-    assert np.all(distances_4 <= 5.0), (
-        "Extracted atoms have wrong positions (not centered or not PBC correct)"
-    )
+    assert np.all(distances_4 <= 5.0), "Extracted atoms have wrong positions"
 
-    print("UAT-C02-04 Passed: Periodic boundaries handled gracefully.")
     return (bulk_atoms_edge, edge_idx, config_edge, result_edge, cluster_edge, distances_4)
 
 
@@ -253,10 +244,9 @@ def test_scenario_4(
 def test_scenario_5(
     bulk: typing.Any,
     extract_intelligent_cluster: typing.Any,
-    CutoutConfig: typing.Any,
-    FailingSurrogateCalculator: typing.Any,
+    CutoutConfig: typing.Any,  # noqa: N803
+    FailingSurrogateCalculator: typing.Any,  # noqa: N803
 ) -> tuple:
-    # UAT-C02-05: Validation of Fallback Mechanisms During Pre-Relaxation Failure
     bulk_atoms_fail = bulk("Cu", "fcc", a=3.6).repeat((2, 2, 2))
 
     config_fail = CutoutConfig(
@@ -269,13 +259,12 @@ def test_scenario_5(
     fail_calc = FailingSurrogateCalculator()
 
     result_fail = extract_intelligent_cluster(
-        bulk_atoms_fail, 0, config_fail, mock_calculator=fail_calc
+        bulk_atoms_fail, 0, config_fail, calculator=fail_calc
     )
 
     assert result_fail.cluster is not None
     assert len(result_fail.cluster) > 0
 
-    print("UAT-C02-05 Passed: Graceful fallback on pre-relaxation failure.")
     return (bulk_atoms_fail, config_fail, fail_calc, result_fail)
 
 

@@ -29,9 +29,9 @@ def _read_stdin_safely(max_size: int) -> str:
             sys.exit(100)
 
         # Basic fast-fail validation for valid characters typically found in extxyz/xyz files
-        # Only allow alphanumeric, spaces, dots, hyphens, plus signs, commas, e/E for scientific notation.
+        # Only allow alphanumeric, spaces, dots, hyphens, e/E for scientific notation.
         # Quotes, equals, and other complex punctuation are rejected for strict security.
-        if not re.match(r"^[a-zA-Z0-9\s\.\-\+\,eE]*$", chunk):
+        if not re.match(r"^[a-zA-Z0-9\s\.\-eE]*$", chunk):
             sys.stderr.write("Invalid characters detected in input stream.\n")
             sys.exit(100)
 
