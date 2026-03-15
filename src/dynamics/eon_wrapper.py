@@ -69,23 +69,29 @@ class EONWrapper(AbstractDynamics):
 
         static_driver = (Path(__file__).parent / "eon_driver.py").resolve(strict=True)
 
-        import shlex
+        import json
+
+        cmd = [
+            executable_str,
+            static_driver.as_posix(),
+            "--threshold", str(self.config.uncertainty_threshold),
+            "--potential", resolved_pot_str,
+            "--default_element", self.system_config.elements[0],
+            "--default_cell", str(self.config.lattice_size)
+        ]
+
+        # Secure generation without f-string interpolation risks.
+        # We serialize the validated command array directly into a JSON literal to be parsed in the script.
+        cmd_json = json.dumps(cmd)
 
         driver_content = f"""#!{executable_str}
 import subprocess
 import sys
 import os
-import shlex
+import json
 
-# Using shlex properly formatted strings
-cmd = [
-    {shlex.quote(executable_str)!r},
-    {shlex.quote(static_driver.as_posix())!r},
-    "--threshold", {shlex.quote(str(self.config.uncertainty_threshold))!r},
-    "--potential", {shlex.quote(resolved_pot_str)!r},
-    "--default_element", {shlex.quote(self.system_config.elements[0])!r},
-    "--default_cell", {shlex.quote(str(self.config.lattice_size))!r}
-]
+# Safely deserialize the literal command array
+cmd = json.loads({cmd_json!r})
 
 # Strictly pass only safe variables downstream
 safe_env = {{}}
@@ -203,11 +209,30 @@ sys.exit(res.returncode)
                             p_obj: Path = Path(clean_p).resolve(strict=True)
                             # Only allow existing absolute directories
                             if p_obj.is_absolute() and p_obj.is_dir():
-                                safe_paths.append(str(p_obj))
-                        except (FileNotFoundError, RuntimeError):
+                                # Security: path must be inside project_root or trusted_dirs
+                                is_trusted = False
+                                if self.config.project_root:
+                                    try:
+                                        root = Path(self.config.project_root).resolve(strict=True)
+                                        if p_obj.is_relative_to(root):
+                                            is_trusted = True
+                                    except Exception:
+                                        pass
+                                if not is_trusted:
+                                    for tdir in self.config.trusted_directories:
+                                        try:
+                                            tp = Path(tdir).resolve(strict=True)
+                                            if p_obj.is_relative_to(tp):
+                                                is_trusted = True
+                                                break
+                                        except Exception:
+                                            continue
+                                if is_trusted:
+                                    safe_paths.append(p_obj.as_posix())
+                        except Exception:
                             continue
                     env[k] = os.pathsep.join(safe_paths)
-                elif re.match(r"^[a-zA-Z0-9._/-]+$", val):
+                elif re.match(r"^[0-9]+$", val):
                     env[k] = val
         return env
 

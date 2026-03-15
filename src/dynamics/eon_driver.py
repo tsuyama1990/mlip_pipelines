@@ -29,8 +29,9 @@ def _read_stdin_safely(max_size: int) -> str:
             sys.exit(100)
 
         # Basic fast-fail validation for valid characters typically found in extxyz/xyz files
-        # Strict whitelist: alphanumeric, basic whitespace, dots, hyphens, plus signs, commas, equals, quotes, and parentheses.
-        if not re.match(r'^[a-zA-Z0-9\s\.\-\+\,eE\[\]\(\)\=\"\':]*$', chunk):
+        # Only allow alphanumeric, spaces, dots, hyphens, plus signs, commas, e/E for scientific notation.
+        # Quotes, equals, and other complex punctuation are rejected for strict security.
+        if not re.match(r'^[a-zA-Z0-9\s\.\-\+\,eE]*$', chunk):
             sys.stderr.write("Invalid characters detected in input stream.\n")
             sys.exit(100)
 
@@ -117,29 +118,25 @@ def write_bad_structure(path: str, atoms: "Atoms") -> None:
 
         resolved_path = allowed_dir / base_name
 
-        # Canonicalize the path strictly
-        resolved_path = resolved_path.resolve(strict=False)
-
-        if not resolved_path.is_relative_to(allowed_dir):
-            sys.stderr.write(f"Path outside allowed directory: {path}\n")
-            sys.exit(100)
-
-        # Check for symlink specifically, just in case
         if resolved_path.exists():
             st = os.lstat(resolved_path)
             if stat.S_ISLNK(st.st_mode):
                 sys.stderr.write(f"Symlinks are not allowed: {path}\n")
                 sys.exit(100)
-    except Exception as e:
-        sys.stderr.write(f"Path resolution error: {e}\n")
+
+        # Write atomically avoiding race conditions
+        fd = os.open(resolved_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, 'w') as f:
+            from ase.io import write
+            write(f, atoms, format="extxyz")
+
+    except FileExistsError:
+        # Atomic creation failed because file already exists; handle gracefully
+        sys.stderr.write(f"File already exists: {path}\n")
         sys.exit(100)
-
-    try:
-        from ase.io import write
-
-        write(str(resolved_path), atoms, format="extxyz")
     except Exception as e:
         sys.stderr.write(f"Failed to write bad structure: {e}\n")
+        sys.exit(100)
 
 
 def print_forces(forces: typing.Any) -> None:

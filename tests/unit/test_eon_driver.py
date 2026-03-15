@@ -347,7 +347,7 @@ def test_main_no_pyacemaker(monkeypatch: pytest.MonkeyPatch, capsys: pytest.Capt
 
 
 def test_read_coordinates_from_stdin_with_list(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
-    content = '2\nLattice="1.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 1.0" Properties=species:S:1:pos:R:3\nFe 0.0 0.0 0.0\nFe 0.5 0.5 0.5\n2\nLattice="1.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 1.0" Properties=species:S:1:pos:R:3\nFe 0.1 0.1 0.1\nFe 0.6 0.6 0.6\n'
+    content = '2\n\nFe 0.0 0.0 0.0\nFe 0.5 0.5 0.5\n2\n\nFe 0.1 0.1 0.1\nFe 0.6 0.6 0.6\n'
     import sys
 
     calls = [0]
