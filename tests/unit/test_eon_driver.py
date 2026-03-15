@@ -8,7 +8,7 @@ from src.dynamics import eon_driver
 
 
 def test_read_coordinates_empty_stdin(monkeypatch: pytest.MonkeyPatch):
-    import io
+
     monkeypatch.setattr(sys.stdin, "read", lambda size=0: "")
 
     atoms = eon_driver.read_coordinates_from_stdin("Fe", 5.0)
@@ -35,7 +35,6 @@ def test_write_bad_structure_invalid_path(capsys: pytest.CaptureFixture):
 def test_read_coordinates_invalid_input(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
 ):
-    import io
 
     # return the invalid format on the first read, then empty
     calls = [0]

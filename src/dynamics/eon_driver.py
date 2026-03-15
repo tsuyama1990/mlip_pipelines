@@ -14,8 +14,39 @@ def _raise_empty_stdin() -> None:
     raise ValueError(msg)
 
 
+def _read_stdin_safely(max_size: int) -> str:
+    import sys
+
+    content_chunks = []
+    current_size = 0
+    while True:
+        chunk = sys.stdin.read(4096)
+        if not chunk:
+            break
+        current_size += len(chunk)
+        if current_size > max_size:
+            sys.stderr.write(f"Input stream exceeds maximum allowed size ({max_size} bytes).\n")
+            sys.exit(100)
+        content_chunks.append(chunk)
+    return "".join(content_chunks)
+
+
+def _validate_atoms(atoms_obj: "Atoms", chemical_symbols: list[str]) -> None:
+    import sys
+
+    for atom in atoms_obj:
+        if atom.symbol not in chemical_symbols:
+            sys.stderr.write(f"Invalid chemical symbol found: {atom.symbol}\n")
+            sys.exit(100)
+        for coord in atom.position:
+            if not (-1e5 <= coord <= 1e5):
+                sys.stderr.write(f"Coordinate out of valid range: {coord}\n")
+                sys.exit(100)
+
+
 def read_coordinates_from_stdin(default_element: str, default_cell: float) -> "Atoms":
     import sys
+
     try:
         import io
 
@@ -27,23 +58,8 @@ def read_coordinates_from_stdin(default_element: str, default_cell: float) -> "A
         sys.exit(100)
 
     # Note: size limit should be configurable, defaulting to 10MB here.
-    # Reading stdin in chunks to prevent DoS vector
     max_size = 10 * 1024 * 1024
-    content_chunks = []
-    current_size = 0
-
-    import sys
-    while True:
-        chunk = sys.stdin.read(4096)
-        if not chunk:
-            break
-        current_size += len(chunk)
-        if current_size > max_size:
-            sys.stderr.write(f"Input stream exceeds maximum allowed size ({max_size} bytes).\n")
-            sys.exit(100)
-        content_chunks.append(chunk)
-
-    content = "".join(content_chunks)
+    content = _read_stdin_safely(max_size)
 
     if not content.strip():
         sys.stderr.write("Empty stdin received, falling back to configurable default structure.\n")
