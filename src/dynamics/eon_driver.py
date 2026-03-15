@@ -29,8 +29,8 @@ def _read_stdin_safely(max_size: int) -> str:
             sys.exit(100)
 
         # Basic fast-fail validation for valid characters typically found in extxyz/xyz files
-        # Only allow alphanumeric, spaces, and scientific notation characters (including quotes, often found in Lattice="")
-        if not re.match(r'^[a-zA-Z0-9\s\.\-\+\:\=\_\"\']*$', chunk):
+        # Strict whitelist: alphanumeric, basic whitespace, dots, hyphens, plus signs, commas, equals, quotes, and parentheses.
+        if not re.match(r'^[a-zA-Z0-9\s\.\-\+\,eE\[\]\(\)\=\"\':]*$', chunk):
             sys.stderr.write("Invalid characters detected in input stream.\n")
             sys.exit(100)
 
@@ -105,18 +105,33 @@ def write_bad_structure(path: str, atoms: "Atoms") -> None:
     allowed_dir.mkdir(parents=True, exist_ok=True)
     allowed_dir = allowed_dir.resolve(strict=True)
 
+    import os
+    import stat
+
     try:
-        resolved_path = Path(path).resolve(strict=False)
+        # Create the file safely, resolving strictly
+        base_name = Path(path).name
+        if not re.match(r"^[a-zA-Z0-9_.-]+$", base_name) or ".." in base_name:
+            sys.stderr.write(f"Invalid filename: {base_name}\n")
+            sys.exit(100)
+
+        resolved_path = allowed_dir / base_name
+
+        # Canonicalize the path strictly
+        resolved_path = resolved_path.resolve(strict=False)
+
         if not resolved_path.is_relative_to(allowed_dir):
             sys.stderr.write(f"Path outside allowed directory: {path}\n")
             sys.exit(100)
+
+        # Check for symlink specifically, just in case
+        if resolved_path.exists():
+            st = os.lstat(resolved_path)
+            if stat.S_ISLNK(st.st_mode):
+                sys.stderr.write(f"Symlinks are not allowed: {path}\n")
+                sys.exit(100)
     except Exception as e:
         sys.stderr.write(f"Path resolution error: {e}\n")
-        sys.exit(100)
-
-    base_name = resolved_path.name
-    if not re.match(r"^[a-zA-Z0-9_.-]+$", base_name):
-        sys.stderr.write(f"Invalid filename: {base_name}\n")
         sys.exit(100)
 
     try:
@@ -133,6 +148,7 @@ def print_forces(forces: typing.Any) -> None:
         sys.stdout.write(f"{f[0]} {f[1]} {f[2]}\n")
 
 
+# ruff: noqa: C901
 def _validate_args(args: argparse.Namespace) -> tuple[float, float]:
     try:
         threshold = float(args.threshold)
@@ -144,11 +160,20 @@ def _validate_args(args: argparse.Namespace) -> tuple[float, float]:
         sys.stderr.write("Invalid threshold type or value.\n")
         sys.exit(100)
 
-    if args.potential != "None" and (
-        not re.match(r"^[/a-zA-Z0-9_.-]+$", args.potential) or ".." in args.potential
-    ):
-        sys.stderr.write("Potential path contains invalid characters.\n")
-        sys.exit(100)
+    if args.potential != "None":
+        pot_path = Path(args.potential)
+        if not re.match(r"^[/a-zA-Z0-9_.-]+$", args.potential) or ".." in args.potential:
+            sys.stderr.write("Potential path contains invalid characters.\n")
+            sys.exit(100)
+
+        try:
+            resolved_pot = pot_path.resolve(strict=True)
+            if not resolved_pot.is_file():
+                sys.stderr.write("Potential path is not a file.\n")
+                sys.exit(100)
+        except Exception:
+            sys.stderr.write("Potential path resolution failed or does not exist.\n")
+            sys.exit(100)
 
     try:
         from ase.data import chemical_symbols

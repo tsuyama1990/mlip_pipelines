@@ -39,10 +39,21 @@ def test_write_bad_structure_invalid_path(
     monkeypatch.setattr(tempfile, "gettempdir", lambda: str(tmp_path))
 
     with pytest.raises(SystemExit) as e:
-        eon_driver.write_bad_structure("../bad.cfg", Atoms("Fe"))
+        eon_driver.write_bad_structure("..", Atoms("Fe"))
     assert e.value.code == 100
     out, err = capsys.readouterr()
-    assert "Path outside allowed directory" in err
+    assert "Invalid filename" in err
+
+def test_write_bad_structure_invalid_path_chars(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture, tmp_path: Path
+):
+    import tempfile
+
+    monkeypatch.setattr(tempfile, "gettempdir", lambda: str(tmp_path))
+
+    with pytest.raises(SystemExit) as e:
+        eon_driver.write_bad_structure("bad..cfg", Atoms("Fe"))
+    assert e.value.code == 100
 
 
 def test_read_coordinates_invalid_input(
@@ -156,7 +167,7 @@ Fe       0.00000000       0.00000000       0.00000000
             "--threshold",
             "5.0",
             "--potential",
-            "test.yace",
+            "None",
             "--default_element",
             "Fe",
             "--default_cell",
@@ -214,7 +225,7 @@ Fe       0.00000000       0.00000000       0.00000000
             "--threshold",
             "5.0",
             "--potential",
-            "test.yace",
+                "None",
             "--default_element",
             "Fe",
             "--default_cell",
@@ -295,7 +306,7 @@ def test_main_no_pyacemaker(monkeypatch: pytest.MonkeyPatch, capsys: pytest.Capt
             "--threshold",
             "5.0",
             "--potential",
-            "test.yace",
+                "None",
             "--default_element",
             "Fe",
             "--default_cell",

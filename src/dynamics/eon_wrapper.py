@@ -50,21 +50,16 @@ class EONWrapper(AbstractDynamics):
                     msg = f"Potential path must be within the project root: {resolved_pot}"
                     raise ValueError(msg)
             resolved_pot_str = resolved_pot.as_posix()
-            if (
-                not re.match(r"^[/a-zA-Z0-9_.-]+$", resolved_pot_str)
-                or "\x00" in resolved_pot_str
-                or ".." in resolved_pot_str
-            ):
-                msg = "Potential path contains invalid characters"
-                raise ValueError(msg)
 
-        executable = Path(sys.executable)
-        executable_str = executable.as_posix()
-        if not re.match(r"^[/a-zA-Z0-9_.-]+$", executable_str) or ".." in executable_str:
+        try:
+            executable = Path(sys.executable).resolve(strict=True)
+            executable_str = executable.as_posix()
+            valid_exec = executable.is_file() and os.access(executable, os.X_OK)
+        except Exception as e:
             msg = "Invalid python executable path"
-            raise ValueError(msg)
-        executable = executable.resolve(strict=True)
-        if not executable.is_file():
+            raise ValueError(msg) from e
+
+        if not valid_exec:
             msg = "Invalid python executable path"
             raise ValueError(msg)
 
@@ -165,6 +160,11 @@ sys.exit(res.returncode)
 
     def _verify_binary_hash(self, eon_bin_path: Path) -> None:
         # Double check the binary hash again after strict resolution to prevent TOCTOU bypasses
+        st = os.lstat(eon_bin_path)
+        if st.st_uid != os.getuid():
+            msg = "EON binary is not owned by the current user"
+            raise ValueError(msg)
+
         if not self.config.binary_hashes:
             return
 
