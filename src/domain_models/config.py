@@ -475,8 +475,8 @@ def _validate_env_value(val: str) -> None:
         raise ValueError(msg)
 
     # Strictly whitelist allowed characters to prevent shell/JSON injection
-    # Allows alphanumerics, underscores, dots, and hyphens
-    if not re.match(r"^[a-zA-Z0-9_.-]*$", val):
+    # Allows alphanumerics and underscores only
+    if not re.match(r"^[a-zA-Z0-9_]*$", val):
         msg = "Invalid characters detected in .env variable value."
         raise ValueError(msg)
 
@@ -641,6 +641,11 @@ class ProjectConfig(BaseSettings):
             if env_file_raw is not None:
                 env_file_path = Path(env_file_raw)
                 expected_base = Path.cwd().resolve(strict=True)
+
+                if ".." in str(env_file_path):
+                    msg = "Path traversal sequences are not allowed in .env file path"
+                    raise ValueError(msg)
+
                 try:
                     resolved = env_file_path.resolve(strict=True)
                     if not resolved.is_relative_to(expected_base):

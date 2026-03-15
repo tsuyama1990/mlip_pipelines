@@ -66,6 +66,7 @@ class EONWrapper(AbstractDynamics):
         pots_dir = work_dir / "potentials"
         pots_dir.mkdir(parents=True, exist_ok=True)
         driver_path = pots_dir / "pace_driver.py"
+        config_path = pots_dir / "driver_config.json"
 
         resolved_pot_str = "None"
         if potential:
@@ -89,25 +90,43 @@ class EONWrapper(AbstractDynamics):
 
         static_driver = (Path(__file__).parent / "eon_driver.py").resolve(strict=True)
 
+        import json
+        config_data = {
+            "executable": executable_str,
+            "static_driver": static_driver.as_posix(),
+            "threshold": self.config.uncertainty_threshold,
+            "potential": resolved_pot_str,
+            "default_element": self.system_config.elements[0],
+            "default_cell": self.config.lattice_size
+        }
+
+        with Path.open(config_path, "w") as f:
+            json.dump(config_data, f)
+
         driver_content = f"""#!{executable_str}
 import subprocess
 import sys
 import os
+import json
+from pathlib import Path
+
+config_path = Path(__file__).parent / "driver_config.json"
+with config_path.open("r") as f:
+    config = json.load(f)
 
 cmd = [
-    {executable_str!r},
-    {static_driver.as_posix()!r},
+    config["executable"],
+    config["static_driver"],
     "--threshold",
-    {str(self.config.uncertainty_threshold)!r},
+    str(config["threshold"]),
     "--potential",
-    {resolved_pot_str!r},
+    config["potential"],
     "--default_element",
-    {self.system_config.elements[0]!r},
+    config["default_element"],
     "--default_cell",
-    {str(self.config.lattice_size)!r},
+    str(config["default_cell"]),
 ]
 
-# Strictly pass only safe variables downstream
 safe_env = {{}}
 for key in ("PATH", "LD_LIBRARY_PATH", "OMP_NUM_THREADS", "PYTHONPATH", "HOME", "USER"):
     if key in os.environ:
@@ -288,11 +307,9 @@ sys.exit(res.returncode)
                     valid_threads = self._validate_env_thread_count(val)
                     if valid_threads:
                         env[k] = valid_threads
-                elif (
-                    k in ("HOME", "USER")
-                    and re.match(r"^[a-zA-Z0-9_.-/]*$", val)
-                    and ".." not in val
-                ):
+                elif k == "HOME":
+                    env[k] = self._validate_env_path(val) or ""
+                elif k == "USER" and re.match(r"^[a-zA-Z0-9_]*$", val):
                     env[k] = val
         return env
 
