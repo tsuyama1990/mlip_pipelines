@@ -554,10 +554,6 @@ class Orchestrator:
                         except DynamicsHaltInterrupt:
                             self.checkpoint.set_state("orchestrator_phase", "PHASE3_EXTRACTION_DFT")
                             current_state = "PHASE3_EXTRACTION_DFT"
-                            # Assuming _run_exploration handles throwing this after creating some halt info
-                            # Actually, we need to extract halt info here, but since the exception itself
-                            # might not carry it, we'll assume it's written or handled.
-                            # Based on architecture, we break out
                             break
 
                 # PHASE 3: Extraction and DFT

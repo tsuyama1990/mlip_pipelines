@@ -14,7 +14,7 @@ class CheckpointManager:
 
     def _init_db(self) -> None:
         try:
-            with sqlite3.connect(self.db_path, isolation_level=None) as conn:
+            with sqlite3.connect(self.db_path, isolation_level='IMMEDIATE') as conn:
                 conn.execute("CREATE TABLE IF NOT EXISTS state (key TEXT PRIMARY KEY, value TEXT)")
         except sqlite3.OperationalError as e:
             msg = f"Failed to initialize checkpoint database at {self.db_path}. It may be locked or corrupted. Please check file permissions or remove the lock."
@@ -25,7 +25,7 @@ class CheckpointManager:
         """Sets a state value in the database with JSON serialization."""
         try:
             json_value = json.dumps(value)
-            with sqlite3.connect(self.db_path, isolation_level=None) as conn:
+            with sqlite3.connect(self.db_path, isolation_level='IMMEDIATE') as conn:
                 conn.execute(
                     "INSERT OR REPLACE INTO state (key, value) VALUES (?, ?)",
                     (key, json_value),
@@ -42,7 +42,7 @@ class CheckpointManager:
     def get_state(self, key: str) -> Any | None:
         """Gets a state value from the database, deserializing from JSON."""
         try:
-            with sqlite3.connect(self.db_path, isolation_level=None) as conn:
+            with sqlite3.connect(self.db_path, isolation_level='IMMEDIATE') as conn:
                 cursor = conn.execute("SELECT value FROM state WHERE key = ?", (key,))
                 row = cursor.fetchone()
                 if row is None:
