@@ -23,7 +23,7 @@ def mock_system_config() -> SystemConfig:
 @pytest.fixture
 def mock_project_config(mock_system_config: SystemConfig, tmp_path: Path) -> ProjectConfig:
     (tmp_path / "README.md").touch()
-    from src.domain_models.config import DistillationConfig, LoopStrategyConfig, CutoutConfig
+    from src.domain_models.config import CutoutConfig, DistillationConfig, LoopStrategyConfig
     return ProjectConfig(
         project_root=tmp_path,
         system=mock_system_config,

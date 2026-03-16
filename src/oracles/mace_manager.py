@@ -63,8 +63,6 @@ class MACEManager(BaseOracle):
                 uncertainty = float(calc.results["energy_variance"])
             elif "energy_var" in calc.results:
                 uncertainty = float(calc.results["energy_var"])
-            elif "error" in calc.results:
-                uncertainty = float(calc.results["error"])  # fallback for some mock configs
 
             if uncertainty is None:
                 msg = f"MACE calculator failed to produce an uncertainty metric. Available keys: {list(calc.results.keys())}"

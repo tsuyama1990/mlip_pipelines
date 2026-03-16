@@ -66,13 +66,15 @@ class FinetuneManager(BinaryResolverMixin):
             fd = os.open(train_xyz, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, 'O_NOFOLLOW', 0), 0o600)
             try:
                 fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                with os.fdopen(fd, "w"):
-                    pass
-            finally:
-                pass
-
-            # Actually write to the file now that it's securely created
-            write(str(train_xyz), structures, format="extxyz")
+                with os.fdopen(fd, "w") as f_out:
+                    # Write directly to the securely opened file descriptor instead of closing and reopening
+                    write(f_out, structures, format="extxyz")
+            except Exception as e:
+                import contextlib
+                with contextlib.suppress(OSError):
+                    os.close(fd)
+                msg = f"Failed to securely create or write to {train_xyz}"
+                raise RuntimeError(msg) from e
 
             cmd = [
                 mace_train_bin,
@@ -118,8 +120,6 @@ class FinetuneManager(BinaryResolverMixin):
 
             # Typically MACE saves the model with a .model extension
             # For simplicity, we assume we find one .model file or copy the entire output
-            # In mock environment we'll assume it outputs something or we just create it.
-            # UAT requirements: UAT-C05-03: return dummy model file
             model_files = list(temp_dir.glob("*.model"))
             if not model_files:
                 msg = "mace_run_train completed but failed to produce a .model file."
@@ -128,10 +128,7 @@ class FinetuneManager(BinaryResolverMixin):
             shutil.copy2(str(model_files[0]), str(resolved_out / "finetuned.model"))
 
             # Cleanup is handled automatically by TemporaryDirectory,
-            # but UAT expects us to catch potential cleanup errors, which
-            # TemporaryDirectory handles internally or via weakref warnings.
-            # To strictly fulfill the UAT requirement of catching PermissionError explicitly:
-            # We'll rely on the tempfile module's internal mechanisms, but the original test mocked rmtree.
+            # but we explicitly catch cleanup errors per system requirements.
             try:
                 shutil.rmtree(str(temp_dir), ignore_errors=False)
             except PermissionError as e:
