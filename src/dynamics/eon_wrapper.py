@@ -75,10 +75,14 @@ class EONWrapper(AbstractDynamics):
         cmd = [
             executable_str,
             static_driver.as_posix(),
-            "--threshold", str(self.config.uncertainty_threshold),
-            "--potential", resolved_pot_str,
-            "--default_element", self.system_config.elements[0],
-            "--default_cell", str(self.config.lattice_size)
+            "--threshold",
+            str(self.config.uncertainty_threshold),
+            "--potential",
+            resolved_pot_str,
+            "--default_element",
+            self.system_config.elements[0],
+            "--default_cell",
+            str(self.config.lattice_size),
         ]
 
         # Secure generation without f-string interpolation risks.
@@ -257,8 +261,8 @@ sys.exit(res.returncode)
             err_file = resolved_work_dir / "eonclient.err"
 
             with (
-                out_file.open('w') as fout,
-                err_file.open('w') as ferr,
+                out_file.open("w") as fout,
+                err_file.open("w") as ferr,
                 subprocess.Popen(  # noqa: S603
                     cmd,
                     cwd=str(resolved_work_dir.absolute()),
@@ -266,7 +270,7 @@ sys.exit(res.returncode)
                     stderr=ferr,
                     shell=False,
                     env=env,
-                ) as proc
+                ) as proc,
             ):
                 try:
                     proc.communicate(timeout=3600)  # Maximum 1 hour timeout

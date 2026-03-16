@@ -14,7 +14,7 @@ tests/uat/test_cycle06_validator.py ...                                  [  7%]
 tests/uat/test_tutorial.py s....                                         [  9%]
 tests/unit/test_ace_trainer.py .................                         [ 18%]
 tests/unit/test_adaptive_policy.py .......                               [ 22%]
-tests/unit/test_config.py ........................                       [ 35%]
+tests/unit/test_config.py ..........FF............                       [ 35%]
 tests/unit/test_defect_builder.py ...                                    [ 36%]
 tests/unit/test_dft_oracle.py ...............                            [ 44%]
 tests/unit/test_domain_models.py .                                       [ 45%]
@@ -30,6 +30,125 @@ tests/unit/test_structure_generator.py ......                            [ 95%]
 tests/unit/test_tiered_oracle.py .                                       [ 95%]
 tests/unit/test_validator.py ........                                    [100%]
 
+=================================== FAILURES ===================================
+________________________ test_project_config_env_value _________________________
+
+    def test_project_config_env_value() -> None:
+        from src.domain_models.config import _validate_env_value
+
+        with pytest.raises(ValueError, match=".*Invalid characters detected.*"):
+            _validate_env_value("value; rm -rf")
+
+        # "../secret" is now valid under the relaxed r"^[-a-zA-Z0-9_.:/=,+]*$" rule
+        # and no longer triggers a ValueError in _validate_env_value itself
+>       _validate_env_value("../secret")
+
+tests/unit/test_config.py:133:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+val = '../secret'
+
+    def _validate_env_value(val: str) -> None:
+        if len(val) > 1024:
+            msg = "Environment variable value exceeds maximum length"
+            raise ValueError(msg)
+
+        # Strictly whitelist allowed characters to prevent shell/JSON injection
+        if not re.match(r"^[-a-zA-Z0-9_]+$", val):
+            msg = "Invalid characters detected in .env variable value."
+>           raise ValueError(msg)
+E           ValueError: Invalid characters detected in .env variable value.
+
+src/domain_models/config.py:523: ValueError
+____________________ test_project_config_env_file_security _____________________
+
+tmp_path = PosixPath('/tmp/pytest-of-jules/pytest-17/test_project_config_env_file_s0')
+
+    def test_project_config_env_file_security(tmp_path: Path) -> None:
+
+        from src.domain_models.config import _validate_env_file_security
+
+        base = tmp_path / "base"
+        base.mkdir()
+        env = base / ".env"
+
+        # Test file doesn't exist
+        with pytest.raises(FileNotFoundError):
+            _validate_env_file_security(env, base)
+
+        # Test symlink
+        target = base / "target.txt"
+        target.write_text("test")
+        env.symlink_to(target)
+        with pytest.raises(ValueError, match=".*must not be a symlink.*"):
+>           _validate_env_file_security(env, base)
+
+tests/unit/test_config.py:153:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+env_file = PosixPath('/tmp/pytest-of-jules/pytest-17/test_project_config_env_file_s0/base/.env')
+expected_base = PosixPath('/tmp/pytest-of-jules/pytest-17/test_project_config_env_file_s0/base')
+
+    def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
+        st = os.lstat(env_file)
+        if stat.S_ISLNK(st.st_mode):
+            target = Path(env_file).readlink()
+            resolved_target = Path(os.path.realpath(env_file.parent / target))
+            if not str(resolved_target).startswith(str(expected_base.resolve(strict=True))):
+                msg = f".env symlink target must reside securely within the allowed base directory: {expected_base}"
+                raise ValueError(msg)
+
+        resolved_env = env_file.resolve(strict=True)
+
+        # Verify the canonicalized path sits within the trusted base directory
+        if not str(resolved_env).startswith(str(expected_base.resolve(strict=True))):
+            msg = f".env file must reside within the allowed base directory: {expected_base}"
+            raise ValueError(msg)
+
+        st = os.lstat(resolved_env)
+
+        if st.st_size > 1024:
+            msg = ".env file exceeds maximum allowed size (1KB)."
+            raise ValueError(msg)
+
+        if st.st_uid != os.getuid():
+            msg = ".env file is not owned by the current user."
+            raise ValueError(msg)
+
+        if bool(st.st_mode & stat.S_IRWXO) or bool(st.st_mode & stat.S_IRWXG):
+            msg = ".env file has insecure permissions. It must not be group or world readable/writable."
+>           raise ValueError(msg)
+E           ValueError: .env file has insecure permissions. It must not be group or world readable/writable.
+
+src/domain_models/config.py:554: ValueError
+
+During handling of the above exception, another exception occurred:
+
+tmp_path = PosixPath('/tmp/pytest-of-jules/pytest-17/test_project_config_env_file_s0')
+
+    def test_project_config_env_file_security(tmp_path: Path) -> None:
+
+        from src.domain_models.config import _validate_env_file_security
+
+        base = tmp_path / "base"
+        base.mkdir()
+        env = base / ".env"
+
+        # Test file doesn't exist
+        with pytest.raises(FileNotFoundError):
+            _validate_env_file_security(env, base)
+
+        # Test symlink
+        target = base / "target.txt"
+        target.write_text("test")
+        env.symlink_to(target)
+>       with pytest.raises(ValueError, match=".*must not be a symlink.*"):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: Regex pattern did not match.
+E         Expected regex: '.*must not be a symlink.*'
+E         Actual message: '.env file has insecure permissions. It must not be group or world readable/writable.'
+
+tests/unit/test_config.py:152: AssertionError
 ================================ tests coverage ================================
 _______________ coverage: platform linux, python 3.12.13-final-0 _______________
 
@@ -40,12 +159,12 @@ src/core/__init__.py                       21      0   100%
 src/core/exceptions.py                      2      0   100%
 src/core/orchestrator.py                  343     90    74%   46, 68-69, 74, 106-107, 110-111, 116-118, 130-144, 150-151, 177-192, 197-199, 203-205, 208-212, 224, 269-270, 279-280, 291-292, 299-300, 304-305, 313-314, 345-346, 373, 392-399, 424-425, 437-439, 448-476, 491, 523, 526
 src/domain_models/__init__.py               3      0   100%
-src/domain_models/config.py               448    119    73%   35-36, 39-40, 46-47, 49-50, 56-57, 60-61, 71-72, 152, 179-180, 200-214, 218, 221, 261-262, 267-272, 371-374, 390-392, 439-442, 447-450, 504-509, 514-515, 534-535, 544-545, 552-580, 696-722, 731-732, 734-735, 753-754, 756-757, 763-764, 767-768, 776-777, 784-785, 789-790
+src/domain_models/config.py               451    123    73%   35-36, 39-40, 46-47, 49-50, 56-57, 60-61, 71-72, 154, 182-183, 203-217, 221, 224, 264-265, 270-275, 374-377, 393-395, 442-445, 450-453, 507-512, 517-518, 532-533, 539-540, 545-546, 549-550, 557-585, 705-731, 740-741, 743-744, 762-763, 765-766, 772-773, 776-777, 785-786, 793-794, 798-799
 src/domain_models/dtos.py                  50      4    92%   41-44
 src/dynamics/__init__.py                    0      0   100%
-src/dynamics/dynamics_engine.py           252     61    76%   32-33, 40-41, 44-45, 48-49, 52-53, 57-58, 62-63, 98-99, 110-111, 117-118, 121-122, 125-126, 129-130, 133-134, 138-139, 143-144, 174, 183-184, 193-194, 205-206, 209-210, 216-217, 219-220, 236-238, 291-293, 360-361, 367-368, 370-371, 386-388, 405
-src/dynamics/eon_driver.py                167     51    69%   13-14, 28-29, 43-52, 82-85, 89-90, 95-96, 122-125, 135-136, 138-139, 152-154, 157-158, 166-173, 177-179, 187-189, 192-193, 235
-src/dynamics/eon_wrapper.py               185     30    84%   64-65, 68-69, 146-147, 149-150, 161-162, 172-173, 178-190, 197, 208, 222, 246-247, 282-283
+src/dynamics/dynamics_engine.py           224     50    78%   33-34, 41-42, 45-46, 49-50, 53-54, 58-59, 63-64, 111-112, 125-126, 132-133, 136-137, 140-141, 144-145, 148-149, 153-154, 158-159, 205, 214-215, 224-225, 240-241, 247-248, 250-251, 267-270, 323-325, 406
+src/dynamics/eon_driver.py                167     51    69%   13-14, 28-29, 43-52, 82-85, 89-90, 95-96, 122-125, 136-137, 139-140, 153-155, 158-159, 167-174, 178-180, 188-190, 193-194, 236
+src/dynamics/eon_wrapper.py               185     30    84%   64-65, 68-69, 150-151, 153-154, 165-166, 176-177, 182-194, 201, 212, 226, 250-251, 286-287
 src/dynamics/security_utils.py            110     26    76%   17-18, 26-32, 47-48, 78, 101-102, 110-111, 121-122, 133-134, 137-138, 141-142, 162-163
 src/generators/__init__.py                  0      0   100%
 src/generators/adaptive_policy.py          67      5    93%   16, 44-45, 123-124
@@ -63,7 +182,10 @@ src/validators/reporter.py                  7      0   100%
 src/validators/stability_tests.py         119      5    96%   51, 59-60, 63-66
 src/validators/validator.py                90     11    88%   20-22, 28-30, 34-36, 80, 94-95
 ---------------------------------------------------------------------
-TOTAL                                    2564    595    77%
-======================== 189 passed, 2 skipped in 5.51s ========================
+TOTAL                                    2539    588    77%
+=========================== short test summary info ============================
+FAILED tests/unit/test_config.py::test_project_config_env_value - ValueError:...
+FAILED tests/unit/test_config.py::test_project_config_env_file_security - Ass...
+=================== 2 failed, 187 passed, 2 skipped in 9.17s ===================
 /app/.venv/lib/python3.12/site-packages/coverage/inorout.py:561: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.4/messages.html#warning-module-not-imported
   self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")

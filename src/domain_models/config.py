@@ -138,7 +138,9 @@ class ActiveLearningThresholds(BaseModel):
 class DynamicsConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     uncertainty_threshold: float = Field(
-        default=5.0, ge=0.0, description="Deprecated: use thresholds.threshold_call_dft instead. Retained for backward compatibility."
+        default=5.0,
+        ge=0.0,
+        description="Deprecated: use thresholds.threshold_call_dft instead. Retained for backward compatibility.",
     )
     thresholds: ActiveLearningThresholds = Field(default_factory=ActiveLearningThresholds)
 
@@ -151,6 +153,7 @@ class DynamicsConfig(BaseModel):
             # Sync back just in case old code reads uncertainty_threshold directly
             self.uncertainty_threshold = self.thresholds.threshold_call_dft
         return self
+
     md_steps: int = Field(
         default=100000, ge=1, description="Number of MD steps per exploration run"
     )
@@ -515,8 +518,7 @@ def _validate_env_value(val: str) -> None:
         raise ValueError(msg)
 
     # Strictly whitelist allowed characters to prevent shell/JSON injection
-    # Allows alphanumerics, underscores, dots, hyphens, colons, slashes, equals, plus, commas, asterisks
-    if not re.match(r"^[-a-zA-Z0-9_.:/=,+]*$", val):
+    if not re.match(r"^[-a-zA-Z0-9_]+$", val):
         msg = "Invalid characters detected in .env variable value."
         raise ValueError(msg)
 
@@ -524,8 +526,11 @@ def _validate_env_value(val: str) -> None:
 def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
     st = os.lstat(env_file)
     if stat.S_ISLNK(st.st_mode):
-        msg = ".env file must not be a symlink."
-        raise ValueError(msg)
+        target = Path(env_file).readlink()
+        resolved_target = Path(os.path.realpath(env_file.parent / target))
+        if not str(resolved_target).startswith(str(expected_base.resolve(strict=True))):
+            msg = f".env symlink target must reside securely within the allowed base directory: {expected_base}"
+            raise ValueError(msg)
 
     resolved_env = env_file.resolve(strict=True)
 
@@ -593,7 +598,9 @@ class DistillationConfig(BaseModel):
         default=1000, description="Number of structures to sample per system"
     )
     device: str = Field(default="cpu", description="Device to run MACE on (e.g., cpu, cuda)")
-    default_dtype: str = Field(default="float32", description="Default dtype for MACE (e.g., float32, float64)")
+    default_dtype: str = Field(
+        default="float32", description="Default dtype for MACE (e.g., float32, float64)"
+    )
     dispersion: bool = Field(default=False, description="Enable dispersion correction in MACE")
 
     @model_validator(mode="after")
@@ -607,7 +614,9 @@ class DistillationConfig(BaseModel):
                 msg = f"Path traversal sequences (..) are not allowed in mace_model_path: {self.mace_model_path}"
                 raise ValueError(msg)
             # Extension check
-            if not self.mace_model_path.endswith(".model") and not self.mace_model_path.endswith(".pt"):
+            if not self.mace_model_path.endswith(".model") and not self.mace_model_path.endswith(
+                ".pt"
+            ):
                 msg = f"Unknown model name or unsupported extension in mace_model_path: {self.mace_model_path}. Must be one of {valid_foundational_names} or end in .pt/.model"
                 raise ValueError(msg)
 

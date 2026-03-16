@@ -1,4 +1,3 @@
-
 with open("tests/unit/test_eon_driver.py") as f:
     data = f.read()
 

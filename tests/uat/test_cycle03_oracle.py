@@ -149,12 +149,14 @@ def test_uat_03_03_exceeding_physical_constraints():
         # Let's override max_coord to let it reach max_cell_dimension logic.
         manager._apply_periodic_embedding(cluster)
 
+
 # NEW CYCLE 03 TIERED ORACLE UATS
 
 import marimo  # noqa: E402
 
 __generated_with = "0.20.4"
 app = marimo.App(width="medium")
+
 
 @app.cell
 def __() -> tuple:
@@ -206,6 +208,7 @@ def __() -> tuple:
         MockPrimaryOracle,
         MockFallbackOracle,
     )
+
 
 @app.cell
 def __(
@@ -305,7 +308,7 @@ def __(
 
     _missing_batch = []
     _a = Atoms("Fe")
-    _a.info["force_uncertainty"] = "MISSING" # Mock behavior will pop/not set
+    _a.info["force_uncertainty"] = "MISSING"  # Mock behavior will pop/not set
     _missing_batch.append(_a)
 
     _results_missing = _tiered_4.compute_batch(_missing_batch, Path("/tmp"))

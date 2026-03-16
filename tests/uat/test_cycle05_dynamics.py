@@ -54,7 +54,9 @@ ITEM: ATOMS id type x y z c_pace_gamma
     script_content = in_file.read_text()
 
     # Check the AL_HALT watchdog is correctly implemented
-    assert 'fix watchdog all halt 3 v_max_gamma > 5.0 error hard message "AL_HALT"' in script_content
+    assert (
+        'fix watchdog all halt 3 v_max_gamma > 5.0 error hard message "AL_HALT"' in script_content
+    )
 
     # Verify parse result
     assert res["halted"] is True

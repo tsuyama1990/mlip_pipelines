@@ -32,6 +32,7 @@ def test_run_exploration_watchdog(monkeypatch: pytest.MonkeyPatch, tmp_path: Pat
     monkeypatch.setattr(subprocess, "run", mock_run)
 
     import shutil
+
     lmp_path = tmp_path / "lmp"
     lmp_path.touch()
     lmp_path.chmod(0o755)
@@ -413,6 +414,7 @@ def test_resume_subprocess_calledprocesserror(
     monkeypatch.setattr(subprocess, "run", mock_run)
 
     import shutil
+
     lmp_path = tmp_path / "lmp"
     lmp_path.touch()
     lmp_path.chmod(0o755)
@@ -510,6 +512,7 @@ def test_extract_high_gamma_structures_single_structure_missing_file_2(tmp_path:
     with pytest.raises(FileNotFoundError):
         engine.extract_high_gamma_structures(tmp_path / "notexist.lammps", 5.0)
 
+
 def test_cold_start_script_generation(tmp_path: Path) -> None:
     config = DynamicsConfig(trusted_directories=[], project_root=str(Path.cwd()))
     sys_config = SystemConfig(elements=["Fe", "Pt"])
@@ -522,6 +525,7 @@ def test_cold_start_script_generation(tmp_path: Path) -> None:
     assert "read_restart" not in script
     assert "fix soft_start" not in script
     assert "langevin" not in script
+
 
 def test_resume_script_generation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     config = DynamicsConfig(trusted_directories=[], project_root=str(Path.cwd()))
@@ -545,6 +549,7 @@ def test_resume_script_generation(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
 
     # We mock subprocess.run so we can inspect the generated in.lammps file
     import subprocess
+
     def mock_run(*args: Any, **kwargs: Any) -> None:
         pass
 
@@ -552,6 +557,7 @@ def test_resume_script_generation(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
 
     # Mock lmp binary path properly so it passes validate_executable_path
     import shutil
+
     lmp_path = tmp_path / "lmp"
     lmp_path.touch()
     lmp_path.chmod(0o755)
@@ -573,12 +579,18 @@ def test_resume_script_generation(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
 
     # Assert exact required resume logic
     assert f"read_restart {restart_file.resolve()}" in script
-    assert f"fix soft_start all langevin {config.temperature} {config.temperature} 0.1 48279" in script
+    assert (
+        f"fix soft_start all langevin {config.temperature} {config.temperature} 0.1 48279" in script
+    )
     assert "run 100" in script
     assert "unfix soft_start" in script
 
     # Check watchdog generated in resume
-    assert f"fix watchdog all halt {config.thresholds.smooth_steps} v_max_gamma > {config.thresholds.threshold_call_dft} error hard message \"AL_HALT\"" in script
+    assert (
+        f'fix watchdog all halt {config.thresholds.smooth_steps} v_max_gamma > {config.thresholds.threshold_call_dft} error hard message "AL_HALT"'
+        in script
+    )
+
 
 def test_log_parsing_halt(tmp_path: Path) -> None:
     config = DynamicsConfig(trusted_directories=[], project_root=str(Path.cwd()))
