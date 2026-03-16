@@ -32,6 +32,8 @@ class EONWrapper(AbstractDynamics):
             f.write(ini_content)
 
     def _write_pace_driver(self, work_dir: Path, potential: Path | None) -> None:
+        from src.domain_models.config import _secure_resolve_and_validate_dir
+        _secure_resolve_and_validate_dir(str(work_dir), check_exists=False)
         import os
 
         # Configure potentials directory via environment variable, fallback to default
@@ -126,6 +128,8 @@ sys.exit(res.returncode)
         return self.run_kmc(potential, work_dir)
 
     def _validate_work_dir(self, work_dir: Path) -> Path:
+        from src.domain_models.config import _secure_resolve_and_validate_dir
+        _secure_resolve_and_validate_dir(str(work_dir), check_exists=False)
         """Validates and resolves the working directory."""
         work_dir.mkdir(parents=True, exist_ok=True)
         resolved_work_dir = work_dir.resolve(strict=True)

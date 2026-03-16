@@ -176,3 +176,7 @@ mlip-pipelines/
 ## 9. License
 
 This project is licensed under the MIT License.
+
+
+## High-Performance State Resumption
+The Orchestrator features a highly robust, database-backed state machine. If a multi-day job is abruptly killed by a Slurm scheduler's wall-time limit, the system can instantly and safely resume from the exact micro-operation. Furthermore, it features an aggressive, asynchronous cleanup daemon to prevent HPC quota limits.
