@@ -256,7 +256,7 @@ sys.exit(res.returncode)
                     continue
 
                 # Broadly restrict payload length and disallow generic injection operators natively before processing
-                if len(val) > 4096 or re.search(r"[`;&|<>]", val):
+                if len(val) > 4096 or re.search(r"[`;&|<>()$\\{\}\"\']", val):
                     continue
 
                 if k in ("PATH", "LD_LIBRARY_PATH"):

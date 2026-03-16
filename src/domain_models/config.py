@@ -552,7 +552,7 @@ def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
     # Remove the 1KB size limit
     # Relax ownership check to allow root execution (UID 0) in containerized environments
     current_uid = os.getuid()
-    if st.st_uid not in (current_uid, 0):
+    if st.st_uid != current_uid:
         msg = ".env file is not owned by the current user or root."
         raise ValueError(msg)
 
@@ -571,7 +571,7 @@ def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
             if "=" in stripped:
                 key, val = stripped.split("=", 1)
                 key = key.strip()
-                if not key.startswith("MLIP_"):
+                if not re.match(r"^MLIP_[a-zA-Z0-9_]+$", key):
                     msg = f"All .env file keys must start with 'MLIP_'. Found invalid key: {key}"
                     raise ValueError(msg)
 
