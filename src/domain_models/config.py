@@ -106,11 +106,51 @@ class SystemConfig(BaseModel):
     )
 
 
+class ActiveLearningThresholds(BaseModel):
+    """Two-tier thresholds inspired by FLARE."""
+
+    model_config = ConfigDict(extra="forbid")
+    threshold_call_dft: float = Field(
+        default=0.05, description="Global threshold to halt MD and call DFT"
+    )
+    threshold_add_train: float = Field(
+        default=0.02, description="Local threshold to select atoms for training"
+    )
+    smooth_steps: int = Field(
+        default=3, description="Number of consecutive steps exceeding threshold required to halt"
+    )
+
+    @model_validator(mode="after")
+    def validate_thresholds(self) -> "ActiveLearningThresholds":
+        if self.threshold_call_dft < self.threshold_add_train:
+            msg = (
+                f"Global halt threshold ({self.threshold_call_dft}) must be strictly greater than "
+                f"or equal to local training addition threshold ({self.threshold_add_train}) "
+                "to prevent infinite loops."
+            )
+            raise ValueError(msg)
+        if self.smooth_steps <= 0:
+            msg = "smooth_steps must be strictly greater than zero"
+            raise ValueError(msg)
+        return self
+
+
 class DynamicsConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     uncertainty_threshold: float = Field(
-        default=5.0, ge=0.0, description="Gamma threshold to trigger halt"
+        default=5.0, ge=0.0, description="Deprecated: use thresholds.threshold_call_dft instead. Retained for backward compatibility."
     )
+    thresholds: ActiveLearningThresholds = Field(default_factory=ActiveLearningThresholds)
+
+    @model_validator(mode="after")
+    def sync_thresholds(self) -> "DynamicsConfig":
+        if self.uncertainty_threshold != 5.0 and self.thresholds.threshold_call_dft == 0.05:
+            # If the user explicitly set the deprecated uncertainty_threshold but not the new thresholds
+            self.thresholds.threshold_call_dft = self.uncertainty_threshold
+        elif self.thresholds.threshold_call_dft != 0.05:
+            # Sync back just in case old code reads uncertainty_threshold directly
+            self.uncertainty_threshold = self.thresholds.threshold_call_dft
+        return self
     md_steps: int = Field(
         default=100000, ge=1, description="Number of MD steps per exploration run"
     )
@@ -576,35 +616,6 @@ class DistillationConfig(BaseModel):
             raise ValueError(msg)
         if self.sampling_structures_per_system <= 0:
             msg = "sampling_structures_per_system must be an integer strictly greater than zero"
-            raise ValueError(msg)
-        return self
-
-
-class ActiveLearningThresholds(BaseModel):
-    """Two-tier thresholds inspired by FLARE."""
-
-    model_config = ConfigDict(extra="forbid")
-    threshold_call_dft: float = Field(
-        default=0.05, description="Global threshold to halt MD and call DFT"
-    )
-    threshold_add_train: float = Field(
-        default=0.02, description="Local threshold to select atoms for training"
-    )
-    smooth_steps: int = Field(
-        default=3, description="Number of consecutive steps exceeding threshold required to halt"
-    )
-
-    @model_validator(mode="after")
-    def validate_thresholds(self) -> "ActiveLearningThresholds":
-        if self.threshold_call_dft < self.threshold_add_train:
-            msg = (
-                f"Global halt threshold ({self.threshold_call_dft}) must be strictly greater than "
-                f"or equal to local training addition threshold ({self.threshold_add_train}) "
-                "to prevent infinite loops."
-            )
-            raise ValueError(msg)
-        if self.smooth_steps <= 0:
-            msg = "smooth_steps must be strictly greater than zero"
             raise ValueError(msg)
         return self
 

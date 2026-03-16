@@ -15,6 +15,7 @@ def test_uat_05_01_otf_halting(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) 
     config = DynamicsConfig(
         uncertainty_threshold=5.0, trusted_directories=[], project_root=str(tmp_path), md_steps=1000
     )
+    config.thresholds.threshold_call_dft = 5.0
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
@@ -51,8 +52,9 @@ ITEM: ATOMS id type x y z c_pace_gamma
     # Verify the generated input script contains the watchdog instruction
     in_file = work_dir / "in.lammps"
     script_content = in_file.read_text()
-    # The current dynamics_engine writes "error soft" instead of "error hard", we should check what's there.
-    assert "fix watchdog all halt 10 v_max_gamma > 5.0 error soft" in script_content
+
+    # Check the AL_HALT watchdog is correctly implemented
+    assert 'fix watchdog all halt 3 v_max_gamma > 5.0 error hard message "AL_HALT"' in script_content
 
     # Verify parse result
     assert res["halted"] is True

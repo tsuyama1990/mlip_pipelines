@@ -159,7 +159,7 @@ class MDInterface(AbstractDynamics):
             "",
             "compute pace_gamma all pace gamma_mode=1",
             "variable max_gamma equal max(c_pace_gamma)",
-            f"fix watchdog all halt {max(10, self.config.md_steps // 100)} v_max_gamma > {float(self.config.uncertainty_threshold)} error soft",
+            f'fix watchdog all halt {self.config.thresholds.smooth_steps} v_max_gamma > {float(self.config.thresholds.threshold_call_dft)} error hard message "AL_HALT"',
             "",
             f"dump 1 all custom {max(10, self.config.md_steps // 100)} {dump_name} id type x y z c_pace_gamma",
             f"run {int(self.config.md_steps)}",
@@ -167,6 +167,21 @@ class MDInterface(AbstractDynamics):
             f"write_data {work_dir_str}/data.lammps",
         ]
         tmp_in_file.write("\n".join(script_lines) + "\n")
+
+    def _parse_halt_log(self, log_file: Path) -> bool:
+        """Parses LAMMPS log to check if halt was due to AL watchdog or fatal crash."""
+        if not log_file.exists():
+            return False
+
+        try:
+            with Path.open(log_file, "r", encoding="utf-8", errors="ignore") as f:
+                f.seek(0, 2)
+                size = f.tell()
+                f.seek(max(0, size - 4096), 0)
+                tail = f.read()
+                return "AL_HALT" in tail
+        except Exception:
+            return False
 
     def _execute_lammps(self, work_dir: Path) -> None:
         in_file_name = "in.lammps"
@@ -212,8 +227,15 @@ class MDInterface(AbstractDynamics):
                 capture_output=True,
                 shell=False,
             )
-        except subprocess.CalledProcessError:
-            logging.info("LAMMPS run completed with a CalledProcessError (possibly soft halt).")
+        except subprocess.CalledProcessError as e:
+            # Check if it was an intentional AL_HALT
+            log_path = work_dir / "log.lammps"
+            if self._parse_halt_log(log_path):
+                logging.info("LAMMPS run correctly paused due to AL_HALT watchdog.")
+            else:
+                from src.core.exceptions import DynamicsHaltInterrupt
+                msg = f"Fatal LAMMPS crash. log.lammps tail missing AL_HALT string. Code: {e.returncode}"
+                raise DynamicsHaltInterrupt(msg) from e
         except FileNotFoundError as e:
             msg = "LAMMPS executable not found."
             raise RuntimeError(msg) from e
@@ -272,18 +294,7 @@ class MDInterface(AbstractDynamics):
 
         return {"halted": is_halted, "dump_file": dump_file}
 
-    def resume(self, potential: Path, restart_dir: Path, work_dir: Path) -> dict[str, Any]:
-        """Resumes the MD simulation with the newly updated potential."""
-        logging.info(f"Resuming dynamics with new potential: {potential}")
-        work_dir.mkdir(parents=True, exist_ok=True)
-        dump_file = work_dir / "dump.lammps"
-        in_file = work_dir / "in.lammps"
-
-        restart_file = restart_dir / "restart.lammps"
-        if not restart_file.exists():
-            msg = f"Missing required file: {restart_file}"
-            raise FileNotFoundError(msg)
-
+    def _write_resume_input(self, in_file: Path, potential: Path, restart_file: Path, dump_file_name: str, work_dir: Path) -> None:
         zbl_elements = " ".join(
             str(atomic_numbers.get(el, 1)) for el in self.system_config.elements
         )
@@ -299,13 +310,31 @@ pair_coeff * * zbl {zbl_elements}
 
 compute pace_gamma all pace gamma_mode=1
 variable max_gamma equal max(c_pace_gamma)
-fix watchdog all halt 10 v_max_gamma > {self.config.uncertainty_threshold} error soft
+fix watchdog all halt {self.config.thresholds.smooth_steps} v_max_gamma > {self.config.thresholds.threshold_call_dft} error hard message "AL_HALT"
 
-dump 1 all custom 10 {dump_file.name} id type x y z c_pace_gamma
+fix soft_start all langevin {self.config.temperature} {self.config.temperature} 0.1 48279
+run 100
+unfix soft_start
+
+dump 1 all custom 10 {dump_file_name} id type x y z c_pace_gamma
 run {self.config.md_steps}
 write_restart {work_dir.resolve()}/restart.lammps
 write_data {work_dir.resolve()}/data.lammps
 """)
+
+    def resume(self, potential: Path, restart_dir: Path, work_dir: Path) -> dict[str, Any]:
+        """Resumes the MD simulation with the newly updated potential."""
+        logging.info(f"Resuming dynamics with new potential: {potential}")
+        work_dir.mkdir(parents=True, exist_ok=True)
+        dump_file = work_dir / "dump.lammps"
+        in_file = work_dir / "in.lammps"
+
+        restart_file = restart_dir / "restart.lammps"
+        if not restart_file.exists():
+            msg = f"Missing required file: {restart_file}"
+            raise FileNotFoundError(msg)
+
+        self._write_resume_input(in_file, potential, restart_file, dump_file.name, work_dir)
 
         trusted_dirs = self.config.trusted_directories.copy()
         trusted_dirs.append(str(Path(sys.prefix) / "bin"))
@@ -349,8 +378,14 @@ write_data {work_dir.resolve()}/data.lammps
                 capture_output=True,
                 shell=False,
             )
-        except subprocess.CalledProcessError:
-            logging.info("LAMMPS resume run completed with a CalledProcessError.")
+        except subprocess.CalledProcessError as e:
+            log_path = work_dir / "log.lammps"
+            if self._parse_halt_log(log_path):
+                logging.info("LAMMPS resume run correctly paused due to AL_HALT watchdog.")
+            else:
+                from src.core.exceptions import DynamicsHaltInterrupt
+                msg = f"Fatal LAMMPS crash during resume. log.lammps tail missing AL_HALT string. Code: {e.returncode}"
+                raise DynamicsHaltInterrupt(msg) from e
         except FileNotFoundError as e:
             msg = "LAMMPS executable not found."
             raise RuntimeError(msg) from e

@@ -39,7 +39,8 @@ def test_write_bad_structure_invalid_path(
     monkeypatch.setattr(tempfile, "gettempdir", lambda: str(tmp_path))
 
     with pytest.raises(SystemExit) as e:
-        eon_driver.write_bad_structure("../bad.cfg", Atoms("Fe"))
+        # Path(path).name natively strips the directory. We need to pass the literal traversal string as the filename.
+        eon_driver.write_bad_structure("bad..cfg", Atoms("Fe"))
     assert e.value.code == 100
     out, err = capsys.readouterr()
     assert "Invalid filename" in err
