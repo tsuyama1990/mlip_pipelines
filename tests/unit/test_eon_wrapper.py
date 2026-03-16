@@ -106,7 +106,7 @@ def test_write_pace_driver_invalid_potential(
     engine = EONWrapper(config, sys_config)
 
     # Potential path is outside project root
-    pot_path = Path("/var/tmp/hacker_dummy.yace")  # noqa: S108
+    pot_path = Path("/var/tmp/hacker_dummy.yace")
     pot_path.parent.mkdir(parents=True, exist_ok=True)
     pot_path.touch()
 
@@ -143,7 +143,7 @@ def test_run_kmc_invalid_work_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = EONWrapper(config, sys_config)
 
-    work_dir = Path("/var/tmp/hacker_work")  # noqa: S108
+    work_dir = Path("/var/tmp/hacker_work")
     with pytest.raises(ValueError, match="is outside the allowed project root"):
         engine.run_kmc(None, work_dir)
 

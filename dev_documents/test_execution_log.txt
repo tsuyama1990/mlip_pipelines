@@ -4,7 +4,7 @@ rootdir: /app
 configfile: pyproject.toml
 testpaths: tests
 plugins: cov-7.0.0, anyio-4.12.1
-collected 191 items
+collected 198 items
 
 tests/e2e/test_skeleton.py s.                                            [  1%]
 tests/uat/test_cycle03_oracle.py ...                                     [  2%]
@@ -12,143 +12,25 @@ tests/uat/test_cycle04_trainer.py ...                                    [  4%]
 tests/uat/test_cycle05_dynamics.py ...                                   [  5%]
 tests/uat/test_cycle06_validator.py ...                                  [  7%]
 tests/uat/test_tutorial.py s....                                         [  9%]
-tests/unit/test_ace_trainer.py .................                         [ 18%]
-tests/unit/test_adaptive_policy.py .......                               [ 22%]
-tests/unit/test_config.py ..........FF............                       [ 35%]
+tests/unit/test_ace_trainer.py ....................                      [ 19%]
+tests/unit/test_adaptive_policy.py .......                               [ 23%]
+tests/unit/test_config.py ........................                       [ 35%]
 tests/unit/test_defect_builder.py ...                                    [ 36%]
 tests/unit/test_dft_oracle.py ...............                            [ 44%]
-tests/unit/test_domain_models.py .                                       [ 45%]
-tests/unit/test_dynamics_engine.py ...........................           [ 59%]
+tests/unit/test_domain_models.py .                                       [ 44%]
+tests/unit/test_dynamics_engine.py ...........................           [ 58%]
 tests/unit/test_eon_driver.py .............                              [ 65%]
-tests/unit/test_eon_wrapper.py .................                         [ 74%]
-tests/unit/test_mace_manager.py .                                        [ 75%]
+tests/unit/test_eon_wrapper.py .................                         [ 73%]
+tests/unit/test_finetune_manager.py ....                                 [ 75%]
+tests/unit/test_mace_manager.py .                                        [ 76%]
 tests/unit/test_orchestrator.py .............                            [ 82%]
 tests/unit/test_reporter.py ..                                           [ 83%]
-tests/unit/test_security_utils.py .........                              [ 87%]
+tests/unit/test_security_utils.py .........                              [ 88%]
 tests/unit/test_stability.py ........                                    [ 92%]
 tests/unit/test_structure_generator.py ......                            [ 95%]
 tests/unit/test_tiered_oracle.py .                                       [ 95%]
 tests/unit/test_validator.py ........                                    [100%]
 
-=================================== FAILURES ===================================
-________________________ test_project_config_env_value _________________________
-
-    def test_project_config_env_value() -> None:
-        from src.domain_models.config import _validate_env_value
-
-        with pytest.raises(ValueError, match=".*Invalid characters detected.*"):
-            _validate_env_value("value; rm -rf")
-
-        # "../secret" is now valid under the relaxed r"^[-a-zA-Z0-9_.:/=,+]*$" rule
-        # and no longer triggers a ValueError in _validate_env_value itself
->       _validate_env_value("../secret")
-
-tests/unit/test_config.py:133:
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
-
-val = '../secret'
-
-    def _validate_env_value(val: str) -> None:
-        if len(val) > 1024:
-            msg = "Environment variable value exceeds maximum length"
-            raise ValueError(msg)
-
-        # Strictly whitelist allowed characters to prevent shell/JSON injection
-        if not re.match(r"^[-a-zA-Z0-9_]+$", val):
-            msg = "Invalid characters detected in .env variable value."
->           raise ValueError(msg)
-E           ValueError: Invalid characters detected in .env variable value.
-
-src/domain_models/config.py:523: ValueError
-____________________ test_project_config_env_file_security _____________________
-
-tmp_path = PosixPath('/tmp/pytest-of-jules/pytest-18/test_project_config_env_file_s0')
-
-    def test_project_config_env_file_security(tmp_path: Path) -> None:
-
-        from src.domain_models.config import _validate_env_file_security
-
-        base = tmp_path / "base"
-        base.mkdir()
-        env = base / ".env"
-
-        # Test file doesn't exist
-        with pytest.raises(FileNotFoundError):
-            _validate_env_file_security(env, base)
-
-        # Test symlink
-        target = base / "target.txt"
-        target.write_text("test")
-        env.symlink_to(target)
-        with pytest.raises(ValueError, match=".*must not be a symlink.*"):
->           _validate_env_file_security(env, base)
-
-tests/unit/test_config.py:153:
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
-
-env_file = PosixPath('/tmp/pytest-of-jules/pytest-18/test_project_config_env_file_s0/base/.env')
-expected_base = PosixPath('/tmp/pytest-of-jules/pytest-18/test_project_config_env_file_s0/base')
-
-    def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
-        st = os.lstat(env_file)
-        if stat.S_ISLNK(st.st_mode):
-            target = Path(env_file).readlink()
-            resolved_target = Path(os.path.realpath(env_file.parent / target))
-            if not str(resolved_target).startswith(str(expected_base.resolve(strict=True))):
-                msg = f".env symlink target must reside securely within the allowed base directory: {expected_base}"
-                raise ValueError(msg)
-
-        resolved_env = env_file.resolve(strict=True)
-
-        # Verify the canonicalized path sits within the trusted base directory
-        if not str(resolved_env).startswith(str(expected_base.resolve(strict=True))):
-            msg = f".env file must reside within the allowed base directory: {expected_base}"
-            raise ValueError(msg)
-
-        st = os.lstat(resolved_env)
-
-        if st.st_size > 1024:
-            msg = ".env file exceeds maximum allowed size (1KB)."
-            raise ValueError(msg)
-
-        if st.st_uid != os.getuid():
-            msg = ".env file is not owned by the current user."
-            raise ValueError(msg)
-
-        if bool(st.st_mode & stat.S_IRWXO) or bool(st.st_mode & stat.S_IRWXG):
-            msg = ".env file has insecure permissions. It must not be group or world readable/writable."
->           raise ValueError(msg)
-E           ValueError: .env file has insecure permissions. It must not be group or world readable/writable.
-
-src/domain_models/config.py:554: ValueError
-
-During handling of the above exception, another exception occurred:
-
-tmp_path = PosixPath('/tmp/pytest-of-jules/pytest-18/test_project_config_env_file_s0')
-
-    def test_project_config_env_file_security(tmp_path: Path) -> None:
-
-        from src.domain_models.config import _validate_env_file_security
-
-        base = tmp_path / "base"
-        base.mkdir()
-        env = base / ".env"
-
-        # Test file doesn't exist
-        with pytest.raises(FileNotFoundError):
-            _validate_env_file_security(env, base)
-
-        # Test symlink
-        target = base / "target.txt"
-        target.write_text("test")
-        env.symlink_to(target)
->       with pytest.raises(ValueError, match=".*must not be a symlink.*"):
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-E       AssertionError: Regex pattern did not match.
-E         Expected regex: '.*must not be a symlink.*'
-E         Actual message: '.env file has insecure permissions. It must not be group or world readable/writable.'
-
-tests/unit/test_config.py:152: AssertionError
 ================================ tests coverage ================================
 _______________ coverage: platform linux, python 3.12.13-final-0 _______________
 
@@ -159,7 +41,7 @@ src/core/__init__.py                       21      0   100%
 src/core/exceptions.py                      2      0   100%
 src/core/orchestrator.py                  343     90    74%   46, 68-69, 74, 106-107, 110-111, 116-118, 130-144, 150-151, 177-192, 197-199, 203-205, 208-212, 224, 269-270, 279-280, 291-292, 299-300, 304-305, 313-314, 345-346, 373, 392-399, 424-425, 437-439, 448-476, 491, 523, 526
 src/domain_models/__init__.py               3      0   100%
-src/domain_models/config.py               457    123    73%   35-36, 39-40, 46-47, 49-50, 56-57, 60-61, 71-72, 154, 182-183, 203-217, 221, 224, 264-265, 270-275, 374-377, 393-395, 442-445, 450-453, 507-512, 517-518, 532-533, 539-540, 545-546, 549-550, 557-585, 724-750, 759-760, 762-763, 781-782, 784-785, 791-792, 795-796, 804-805, 812-813, 817-818
+src/domain_models/config.py               458    119    74%   35-36, 39-40, 46-47, 49-50, 56-57, 60-61, 71-72, 154, 182-183, 203-217, 221, 224, 264-265, 270-275, 385-388, 404-406, 453-456, 461-464, 518-523, 528-529, 550-551, 560-561, 568-596, 735-761, 770-771, 773-774, 792-793, 795-796, 802-803, 806-807, 815-816, 823-824, 828-829
 src/domain_models/dtos.py                  50      4    92%   41-44
 src/dynamics/__init__.py                    0      0   100%
 src/dynamics/dynamics_engine.py           229     52    77%   33-34, 41-42, 45-46, 49-50, 53-54, 58-59, 63-64, 108-109, 117-118, 131-132, 138-139, 142-143, 146-147, 150-151, 154-155, 159-160, 164-165, 211, 220-221, 230-231, 246-247, 253-254, 256-257, 273-276, 329-331, 412
@@ -176,16 +58,15 @@ src/oracles/dft_oracle.py                 258     61    76%   22-23, 26-27, 33-3
 src/oracles/mace_manager.py                42      5    88%   23-26, 63, 65, 67
 src/oracles/tiered_oracle.py               25      1    96%   31
 src/trainers/__init__.py                    0      0   100%
-src/trainers/ace_trainer.py               235    102    57%   27-30, 33, 42-45, 48-60, 66, 72-89, 94-115, 123-124, 130-148, 151-161, 166, 197-198, 217, 254-260, 263-264, 280-281, 285-286, 307-308
+src/trainers/ace_trainer.py               174     32    82%   27-30, 33, 42-45, 55-58, 90-91, 110, 138-140, 182-188, 191-192, 208-209, 213-214, 240-241
+src/trainers/binary_resolver.py            89     64    28%   19, 25-42, 47-65, 71-72, 78-96, 99-109, 114
+src/trainers/finetune_manager.py           59     15    75%   28-32, 35-36, 80-84, 88-90, 111-112
 src/validators/__init__.py                  0      0   100%
 src/validators/reporter.py                  7      0   100%
 src/validators/stability_tests.py         119      5    96%   51, 59-60, 63-66
 src/validators/validator.py                90     11    88%   20-22, 28-30, 34-36, 80, 94-95
 ---------------------------------------------------------------------
-TOTAL                                    2570    597    77%
-=========================== short test summary info ============================
-FAILED tests/unit/test_config.py::test_project_config_env_value - ValueError:...
-FAILED tests/unit/test_config.py::test_project_config_env_file_security - Ass...
-=================== 2 failed, 187 passed, 2 skipped in 8.11s ===================
+TOTAL                                    2658    602    77%
+======================== 196 passed, 2 skipped in 6.20s ========================
 /app/.venv/lib/python3.12/site-packages/coverage/inorout.py:561: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.4/messages.html#warning-module-not-imported
   self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")
