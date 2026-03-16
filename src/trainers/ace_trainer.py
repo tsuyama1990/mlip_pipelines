@@ -2,7 +2,6 @@ import os
 import re
 import shutil
 import subprocess
-import sys
 import tempfile
 from pathlib import Path
 
@@ -11,9 +10,10 @@ from ase.io import write
 
 from src.core import AbstractTrainer
 from src.domain_models.config import TrainerConfig
+from src.trainers.binary_resolver import BinaryResolverMixin
 
 
-class PacemakerWrapper(AbstractTrainer):
+class PacemakerWrapper(AbstractTrainer, BinaryResolverMixin):
     """Manages Pacemaker active set selection and training."""
 
     def __init__(self, config: TrainerConfig) -> None:
@@ -58,113 +58,6 @@ class PacemakerWrapper(AbstractTrainer):
             raise
 
         return resolved_path
-
-    def _get_trusted_dirs(self) -> list[str]:
-        trusted = list(self.config.trusted_directories)
-        trusted.append(str(Path(sys.prefix) / "bin"))
-        if hasattr(self.config, "project_root"):
-            trusted.append(str(Path(self.config.project_root) / "bin"))
-        return trusted
-
-    def _validate_binary_properties(
-        self, resolved_bin: Path, binary_name: str, trusted_dirs: list[str]
-    ) -> None:
-        if not resolved_bin.is_file() or not os.access(resolved_bin, os.X_OK):
-            msg = f"Binary is not an executable file: {resolved_bin}"
-            raise ValueError(msg)
-        if resolved_bin.name != binary_name:
-            msg = f"Resolved binary name must be '{binary_name}', got '{resolved_bin.name}'"
-            raise ValueError(msg)
-        is_trusted = False
-        for trusted_path in trusted_dirs:
-            try:
-                resolved_trusted = Path(trusted_path).resolve(strict=True)
-                if resolved_bin.is_relative_to(resolved_trusted):
-                    is_trusted = True
-                    break
-            except OSError:
-                continue
-        if not is_trusted:
-            msg = f"Resolved binary must reside in a trusted directory: {resolved_bin}"
-            raise ValueError(msg)
-
-    def _resolve_absolute_binary(
-        self, binary_setting: str, binary_name: str, trusted_dirs: list[str]
-    ) -> str:
-        import os
-
-        # Canonicalize to securely drop any symlink evasion patterns natively
-        canonical_bin = Path(os.path.realpath(binary_setting))
-
-        in_trusted_dir = False
-        for td in trusted_dirs:
-            try:
-                canonical_td = Path(os.path.realpath(str(td)))
-                if str(canonical_bin).startswith(str(canonical_td)):
-                    in_trusted_dir = True
-                    break
-            except (OSError, ValueError):
-                continue
-
-        if not in_trusted_dir:
-            msg = "Resolved binary path is not securely within trusted directories."
-            raise ValueError(msg)
-
-        self._validate_binary_properties(canonical_bin, binary_name, trusted_dirs)
-        self._verify_hash(canonical_bin, binary_name)
-        return str(canonical_bin)
-
-    def _resolve_relative_binary(
-        self, binary_setting: str, binary_name: str, trusted_dirs: list[str]
-    ) -> str:
-        import os
-
-        if not re.match(r"^[-a-zA-Z0-9_.]+$", binary_setting):
-            msg = f"Invalid binary name: {binary_setting}"
-            raise ValueError(msg)
-
-        resolved_which = shutil.which(binary_setting)
-        if resolved_which is None:
-            return binary_setting
-
-        canonical_bin = Path(os.path.realpath(resolved_which))
-
-        in_trusted_dir = False
-        for td in trusted_dirs:
-            try:
-                canonical_td = Path(os.path.realpath(str(td)))
-                if str(canonical_bin).startswith(str(canonical_td)):
-                    in_trusted_dir = True
-                    break
-            except (OSError, ValueError):
-                continue
-
-        if not in_trusted_dir:
-            msg = "Resolved binary path is not securely within trusted directories."
-            raise ValueError(msg)
-
-        self._validate_binary_properties(canonical_bin, binary_name, trusted_dirs)
-        self._verify_hash(canonical_bin, binary_name)
-        return str(canonical_bin)
-
-    def _verify_hash(self, resolved_bin: Path, binary_name: str) -> None:
-        expected_hash = self.config.binary_hashes.get(binary_name)
-        if expected_hash:
-            import hashlib
-
-            h = hashlib.sha256()
-            with Path.open(resolved_bin, "rb") as f:
-                for chunk in iter(lambda: f.read(4096), b""):
-                    h.update(chunk)
-            if h.hexdigest() != expected_hash:
-                msg = f"Executable hash mismatch for {resolved_bin}"
-                raise ValueError(msg)
-
-    def _resolve_binary_path(self, binary_setting: str, binary_name: str) -> str:
-        trusted_dirs = self._get_trusted_dirs()
-        if Path(binary_setting).is_absolute():
-            return self._resolve_absolute_binary(binary_setting, binary_name, trusted_dirs)
-        return self._resolve_relative_binary(binary_setting, binary_name, trusted_dirs)
 
     def select_local_active_set(
         self, candidates: list[Atoms], anchor: Atoms, n: int = 5
@@ -226,6 +119,41 @@ class PacemakerWrapper(AbstractTrainer):
             msg = "pace_activeset did not generate the output file."
             raise RuntimeError(msg)
 
+    def _manage_replay_buffer(
+        self, new_surrogate_data: list[Atoms], history_file_path: Path, buffer_size: int
+    ) -> list[Atoms]:
+        """Samples the replay buffer to prevent catastrophic forgetting and returns combined training set."""
+        import random
+
+        from ase.io import read
+
+        resolved_history = history_file_path.resolve()
+        historical_data: list[Atoms] = []
+
+        if resolved_history.exists():
+            try:
+                # Read all historical data
+                read_data = read(str(resolved_history), index=":")
+                historical_data = read_data if isinstance(read_data, list) else [read_data]
+            except Exception as e:
+                import logging
+                logging.warning(f"Failed to read history file {resolved_history}: {e}")
+
+        # Sample historical data if it exceeds buffer_size
+        if len(historical_data) > buffer_size:
+            sampled_history = random.sample(historical_data, buffer_size)
+        else:
+            sampled_history = historical_data.copy()
+
+        # Combine and shuffle
+        combined_data = sampled_history + new_surrogate_data
+        random.shuffle(combined_data)
+
+        # Persist new surrogate data to history
+        self.update_dataset(new_surrogate_data, history_file_path)
+
+        return combined_data
+
     def _validate_train_directories(self, dataset: Path, output_dir: Path) -> tuple[Path, Path]:
         import os
         import tempfile
@@ -285,12 +213,17 @@ class PacemakerWrapper(AbstractTrainer):
             msg = f"Invalid output directory path: {output_dir_str}"
             raise ValueError(msg)
 
+        # Delta Learning explicitly enabled: scale down max_num_epochs by 10 if we have an initial_potential
+        epochs = int(self.config.max_epochs)
+        if initial_potential and initial_potential.exists():
+            epochs = max(1, epochs // 10)
+
         cmd = [
             pace_train_bin,
             "--dataset",
             dataset_str,
             "--max_num_epochs",
-            str(int(self.config.max_epochs)),
+            str(epochs),
             "--active_set_size",
             str(int(self.config.active_set_size)),
             "--baseline_potential",

@@ -367,8 +367,19 @@ class TrainerConfig(BaseModel):
         description="Binary name or path for pace_activeset",
         pattern=r"^[a-zA-Z0-9_-]+$",
     )
+    mace_train_binary: str = Field(
+        default="mace_run_train",
+        description="Binary name or path for mace_run_train",
+        pattern=r"^[a-zA-Z0-9_-]+$",
+    )
+    mace_finetuning_epochs: int = Field(
+        default=5, ge=1, le=1000, description="Number of epochs for MACE finetuning"
+    )
+    mace_learning_rate: float = Field(
+        default=0.001, gt=0.0, description="Learning rate for MACE finetuning"
+    )
 
-    @field_validator("pace_train_binary", "pace_activeset_binary")
+    @field_validator("pace_train_binary", "pace_activeset_binary", "mace_train_binary")
     @classmethod
     def validate_binary_names(cls, v: str) -> str:
         if "/" in v or "\\" in v or ".." in v:

@@ -19,7 +19,8 @@ def __() -> tuple[Any, ...]:
     from ase import Atoms
     from ase.build import bulk
 
-    from src.core import AbstractDynamics, AbstractOracle, AbstractTrainer
+    from src.core import AbstractDynamics, AbstractTrainer
+    from src.core import BaseOracle as AbstractOracle
     from src.core.orchestrator import Orchestrator
     from src.domain_models.config import (
         DynamicsConfig,

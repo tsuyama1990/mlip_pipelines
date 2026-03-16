@@ -234,3 +234,74 @@ class TestACETrainer:
         ace_trainer.config.regularization = "invalid reg!"
         with pytest.raises(ValueError, match="Invalid regularization format"):
             ace_trainer.train(dataset, None, out_dir)
+
+    @patch("subprocess.run")
+    def test_train_success_incremental(self, mock_run, ace_trainer, tmp_path):
+        mock_run.return_value = MagicMock(returncode=0)
+
+        dataset = tmp_path / "dataset.extxyz"
+        dataset.write_text("10\ncontent")
+        out_dir = tmp_path / "out"
+        out_dir.mkdir()
+
+        init_pot = tmp_path / "init.yace"
+        init_pot.write_text("pot")
+
+        ace_trainer.config.max_epochs = 100
+
+        # Test full success path
+        res_pot = ace_trainer.train(dataset, init_pot, out_dir)
+        assert res_pot == out_dir / "output_potential.yace"
+
+        # Validate that cmd passed to subprocess contains the initial potential argument
+        cmd_args = mock_run.call_args[0][0]
+        assert "--initial_potential" in cmd_args
+        assert str(init_pot.resolve()) in cmd_args
+
+        # Max epochs should be scaled down by 10
+        assert "--max_num_epochs" in cmd_args
+        epochs_idx = cmd_args.index("--max_num_epochs") + 1
+        assert cmd_args[epochs_idx] == "10"
+
+    def test_manage_replay_buffer(self, ace_trainer, tmp_path):
+        from ase import Atoms
+        from ase.io import write
+
+        history_file = tmp_path / "history.extxyz"
+
+        # Create history file with 10 atoms
+        hist_atoms = [Atoms("Cu", positions=[(i, 0, 0)]) for i in range(10)]
+        write(str(history_file), hist_atoms, format="extxyz")
+
+        # New atoms
+        new_atoms = [Atoms("Fe", positions=[(i, 0, 0)]) for i in range(3)]
+
+        # Sample with buffer_size = 5
+        combined = ace_trainer._manage_replay_buffer(new_atoms, history_file, buffer_size=5)
+
+        # Combined should be 5 + 3 = 8
+        assert len(combined) == 8
+
+        # History file should now have 13 atoms
+        from ase.io import read
+        updated_history = read(str(history_file), index=":")
+        assert len(updated_history) == 13
+
+    def test_manage_replay_buffer_small_history(self, ace_trainer, tmp_path):
+        from ase import Atoms
+        from ase.io import write
+
+        history_file = tmp_path / "history.extxyz"
+
+        # Create history file with 2 atoms
+        hist_atoms = [Atoms("Cu", positions=[(i, 0, 0)]) for i in range(2)]
+        write(str(history_file), hist_atoms, format="extxyz")
+
+        # New atoms
+        new_atoms = [Atoms("Fe", positions=[(i, 0, 0)]) for i in range(3)]
+
+        # Sample with buffer_size = 5
+        combined = ace_trainer._manage_replay_buffer(new_atoms, history_file, buffer_size=5)
+
+        # Combined should be 2 + 3 = 5
+        assert len(combined) == 5
