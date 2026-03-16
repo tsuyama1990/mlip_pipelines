@@ -35,6 +35,7 @@ def test_mace_manager_compute_batch(mock_config, tmp_path):
 
     def mock_get_forces():
         import numpy as np
+
         return np.array([[0.1, 0.2, 0.3]])
 
     with (
@@ -51,11 +52,14 @@ def test_mace_manager_compute_batch(mock_config, tmp_path):
 
         # Case 2: missing uncertainty
         mock_calc_instance.results = {"energy": -5.0}
-        with pytest.raises(ValueError, match="MACE calculator failed to produce an uncertainty metric"):
+        with pytest.raises(
+            ValueError, match="MACE calculator failed to produce an uncertainty metric"
+        ):
             manager.compute_batch([atoms2], tmp_path)
 
         # Case 3: valid uncertainty via 'node_energy_variance'
         import numpy as np
+
         mock_calc_instance.results = {"node_energy_variance": np.array([0.01, 0.05])}
         results = manager.compute_batch([atoms1], tmp_path)
         assert len(results) == 1

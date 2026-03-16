@@ -32,7 +32,15 @@ class EONWrapper(AbstractDynamics):
             f.write(ini_content)
 
     def _write_pace_driver(self, work_dir: Path, potential: Path | None) -> None:
-        pots_dir = work_dir / "potentials"
+        import os
+
+        # Configure potentials directory via environment variable, fallback to default
+        pots_dir_name = os.environ.get("MLIP_POTENTIALS_DIR", "potentials")
+        if not re.match(r"^[a-zA-Z0-9_-]+$", pots_dir_name):
+            msg = "Invalid characters in MLIP_POTENTIALS_DIR"
+            raise ValueError(msg)
+
+        pots_dir = work_dir / pots_dir_name
         pots_dir.mkdir(parents=True, exist_ok=True)
         driver_path = pots_dir / "pace_driver.py"
 
@@ -75,10 +83,14 @@ class EONWrapper(AbstractDynamics):
         cmd = [
             executable_str,
             static_driver.as_posix(),
-            "--threshold", str(self.config.uncertainty_threshold),
-            "--potential", resolved_pot_str,
-            "--default_element", self.system_config.elements[0],
-            "--default_cell", str(self.config.lattice_size)
+            "--threshold",
+            str(self.config.uncertainty_threshold),
+            "--potential",
+            resolved_pot_str,
+            "--default_element",
+            self.system_config.elements[0],
+            "--default_cell",
+            str(self.config.lattice_size),
         ]
 
         # Secure generation without f-string interpolation risks.
@@ -203,14 +215,34 @@ sys.exit(res.returncode)
         return False
 
     def _validate_env_path(self, raw_p: str) -> str | None:
+        import logging
         clean_p: str = raw_p.strip()
         if not clean_p:
             return None
-        with contextlib.suppress(Exception):
-            p_obj: Path = Path(clean_p).resolve(strict=True)
-            if p_obj.is_absolute() and p_obj.is_dir() and self._is_path_trusted(p_obj):
-                return p_obj.as_posix()
-        return None
+
+        try:
+            # Enforce realpath before resolution to protect against TOCTOU path resolution exploits
+            import os
+            real_p = os.path.realpath(clean_p)
+            p_obj: Path = Path(real_p).resolve(strict=True)
+
+            if not p_obj.is_absolute():
+                logging.warning(f"Path is not absolute: {clean_p}")
+                return None
+
+            if not p_obj.is_dir():
+                logging.warning(f"Path is not a valid directory: {clean_p}")
+                return None
+
+            if not self._is_path_trusted(p_obj):
+                logging.warning(f"Path is untrusted: {clean_p}")
+                return None
+
+            return p_obj.as_posix()
+
+        except (RuntimeError, ValueError, OSError) as e:
+            logging.warning(f"Invalid environment path provided: {e}")
+            return None
 
     def _build_safe_env(self) -> dict[str, str]:
         env: dict[str, str] = {}
@@ -220,6 +252,11 @@ sys.exit(res.returncode)
                 val: str = os.environ[k]
                 if not isinstance(val, str):
                     continue
+
+                # Broadly restrict payload length and disallow generic injection operators natively before processing
+                if len(val) > 4096 or re.search(r"[`;&|<>]", val):
+                    continue
+
                 if k in ("PATH", "LD_LIBRARY_PATH"):
                     safe_paths = []
                     for raw_p in val.split(os.pathsep):
@@ -257,8 +294,8 @@ sys.exit(res.returncode)
             err_file = resolved_work_dir / "eonclient.err"
 
             with (
-                out_file.open('w') as fout,
-                err_file.open('w') as ferr,
+                out_file.open("w") as fout,
+                err_file.open("w") as ferr,
                 subprocess.Popen(  # noqa: S603
                     cmd,
                     cwd=str(resolved_work_dir.absolute()),
@@ -266,7 +303,7 @@ sys.exit(res.returncode)
                     stderr=ferr,
                     shell=False,
                     env=env,
-                ) as proc
+                ) as proc,
             ):
                 try:
                     proc.communicate(timeout=3600)  # Maximum 1 hour timeout

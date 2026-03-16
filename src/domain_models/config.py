@@ -106,11 +106,54 @@ class SystemConfig(BaseModel):
     )
 
 
+class ActiveLearningThresholds(BaseModel):
+    """Two-tier thresholds inspired by FLARE."""
+
+    model_config = ConfigDict(extra="forbid")
+    threshold_call_dft: float = Field(
+        default=0.05, description="Global threshold to halt MD and call DFT"
+    )
+    threshold_add_train: float = Field(
+        default=0.02, description="Local threshold to select atoms for training"
+    )
+    smooth_steps: int = Field(
+        default=3, description="Number of consecutive steps exceeding threshold required to halt"
+    )
+
+    @model_validator(mode="after")
+    def validate_thresholds(self) -> "ActiveLearningThresholds":
+        if self.threshold_call_dft < self.threshold_add_train:
+            msg = (
+                f"Global halt threshold ({self.threshold_call_dft}) must be strictly greater than "
+                f"or equal to local training addition threshold ({self.threshold_add_train}) "
+                "to prevent infinite loops."
+            )
+            raise ValueError(msg)
+        if self.smooth_steps <= 0:
+            msg = "smooth_steps must be strictly greater than zero"
+            raise ValueError(msg)
+        return self
+
+
 class DynamicsConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     uncertainty_threshold: float = Field(
-        default=5.0, ge=0.0, description="Gamma threshold to trigger halt"
+        default=5.0,
+        ge=0.0,
+        description="Deprecated: use thresholds.threshold_call_dft instead. Retained for backward compatibility.",
     )
+    thresholds: ActiveLearningThresholds = Field(default_factory=ActiveLearningThresholds)
+
+    @model_validator(mode="after")
+    def sync_thresholds(self) -> "DynamicsConfig":
+        if self.uncertainty_threshold != 5.0 and self.thresholds.threshold_call_dft == 0.05:
+            # If the user explicitly set the deprecated uncertainty_threshold but not the new thresholds
+            self.thresholds.threshold_call_dft = self.uncertainty_threshold
+        elif self.thresholds.threshold_call_dft != 0.05:
+            # Sync back just in case old code reads uncertainty_threshold directly
+            self.uncertainty_threshold = self.thresholds.threshold_call_dft
+        return self
+
     md_steps: int = Field(
         default=100000, ge=1, description="Number of MD steps per exploration run"
     )
@@ -475,8 +518,7 @@ def _validate_env_value(val: str) -> None:
         raise ValueError(msg)
 
     # Strictly whitelist allowed characters to prevent shell/JSON injection
-    # Allows alphanumerics, underscores, dots, hyphens, colons, slashes, equals, plus, commas, asterisks
-    if not re.match(r"^[-a-zA-Z0-9_.:/=,+]*$", val):
+    if not re.match(r"^[-a-zA-Z0-9_]+$", val):
         msg = "Invalid characters detected in .env variable value."
         raise ValueError(msg)
 
@@ -484,8 +526,11 @@ def _validate_env_value(val: str) -> None:
 def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
     st = os.lstat(env_file)
     if stat.S_ISLNK(st.st_mode):
-        msg = ".env file must not be a symlink."
-        raise ValueError(msg)
+        target = Path(env_file).readlink()
+        resolved_target = Path(os.path.realpath(env_file.parent / target))
+        if not str(resolved_target).startswith(str(expected_base.resolve(strict=True))):
+            msg = f".env symlink target must reside securely within the allowed base directory: {expected_base}"
+            raise ValueError(msg)
 
     resolved_env = env_file.resolve(strict=True)
 
@@ -553,8 +598,20 @@ class DistillationConfig(BaseModel):
         default=1000, description="Number of structures to sample per system"
     )
     device: str = Field(default="cpu", description="Device to run MACE on (e.g., cpu, cuda)")
-    default_dtype: str = Field(default="float32", description="Default dtype for MACE (e.g., float32, float64)")
+    default_dtype: str = Field(
+        default="float32", description="Default dtype for MACE (e.g., float32, float64)"
+    )
     dispersion: bool = Field(default=False, description="Enable dispersion correction in MACE")
+    temp_dir: str = Field(
+        default="/tmp/pyacemaker_distillation",  # noqa: S108
+        description="Path to temporary directory for distillation"
+    )
+    output_dir: str = Field(
+        default="./active_learning/distillation_outputs", description="Path to save distillation outputs"
+    )
+    model_storage_path: str = Field(
+        default="./potentials/mace_models", description="Path to cache MACE foundation models"
+    )
 
     @model_validator(mode="after")
     def validate_thresholds_and_samples(self) -> "DistillationConfig":
@@ -567,7 +624,9 @@ class DistillationConfig(BaseModel):
                 msg = f"Path traversal sequences (..) are not allowed in mace_model_path: {self.mace_model_path}"
                 raise ValueError(msg)
             # Extension check
-            if not self.mace_model_path.endswith(".model") and not self.mace_model_path.endswith(".pt"):
+            if not self.mace_model_path.endswith(".model") and not self.mace_model_path.endswith(
+                ".pt"
+            ):
                 msg = f"Unknown model name or unsupported extension in mace_model_path: {self.mace_model_path}. Must be one of {valid_foundational_names} or end in .pt/.model"
                 raise ValueError(msg)
 
@@ -576,35 +635,6 @@ class DistillationConfig(BaseModel):
             raise ValueError(msg)
         if self.sampling_structures_per_system <= 0:
             msg = "sampling_structures_per_system must be an integer strictly greater than zero"
-            raise ValueError(msg)
-        return self
-
-
-class ActiveLearningThresholds(BaseModel):
-    """Two-tier thresholds inspired by FLARE."""
-
-    model_config = ConfigDict(extra="forbid")
-    threshold_call_dft: float = Field(
-        default=0.05, description="Global threshold to halt MD and call DFT"
-    )
-    threshold_add_train: float = Field(
-        default=0.02, description="Local threshold to select atoms for training"
-    )
-    smooth_steps: int = Field(
-        default=3, description="Number of consecutive steps exceeding threshold required to halt"
-    )
-
-    @model_validator(mode="after")
-    def validate_thresholds(self) -> "ActiveLearningThresholds":
-        if self.threshold_call_dft < self.threshold_add_train:
-            msg = (
-                f"Global halt threshold ({self.threshold_call_dft}) must be strictly greater than "
-                f"or equal to local training addition threshold ({self.threshold_add_train}) "
-                "to prevent infinite loops."
-            )
-            raise ValueError(msg)
-        if self.smooth_steps <= 0:
-            msg = "smooth_steps must be strictly greater than zero"
             raise ValueError(msg)
         return self
 
@@ -655,6 +685,15 @@ class LoopStrategyConfig(BaseModel):
         default="LJ", description="Baseline physical potential type (e.g., LJ)"
     )
     thresholds: ActiveLearningThresholds = Field(default_factory=ActiveLearningThresholds)
+    checkpoint_interval: int = Field(
+        default=5, description="Frequency (in iterations) to execute full hard-checkpoints"
+    )
+    max_retries: int = Field(
+        default=3, description="Maximum number of orchestration loop retries on transient failures"
+    )
+    timeout_seconds: int = Field(
+        default=86400, description="Maximum wall-clock timeout in seconds for a complete loop iteration"
+    )
 
     @model_validator(mode="after")
     def validate_strategy_consistency(self) -> "LoopStrategyConfig":

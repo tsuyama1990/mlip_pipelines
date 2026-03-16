@@ -28,10 +28,9 @@ def _read_stdin_safely(max_size: int) -> str:
             sys.stderr.write(f"Input stream exceeds maximum allowed size ({max_size} bytes).\n")
             sys.exit(100)
 
-        # Basic fast-fail validation for valid characters typically found in extxyz/xyz files
-        # Only allow alphanumeric, spaces, dots, hyphens, plus signs, commas, e/E for scientific notation.
-        # Quotes, equals, and other complex punctuation are rejected for strict security.
-        if not re.match(r'^[a-zA-Z0-9\s\.\-\+\,eE]*$', chunk):
+        # Comprehensive validation for valid characters in extxyz format,
+        # strictly disallowing malicious payloads like backticks, semicolons, shells or null bytes.
+        if not re.match(r"^[a-zA-Z0-9\s\.\-\+\,eE\:\_=]*$", chunk):
             sys.stderr.write("Invalid characters detected in input stream.\n")
             sys.exit(100)
 
@@ -64,8 +63,8 @@ def read_coordinates_from_stdin(default_element: str, default_cell: float) -> "A
         sys.stderr.write("ase is not available.\n")
         sys.exit(100)
 
-    # Note: size limit should be configurable, defaulting to 10MB here.
-    max_size = 10 * 1024 * 1024
+    # Note: size limit should be configurable, defaulting to 1MB here to prevent DoS.
+    max_size = 1 * 1024 * 1024
     content = _read_stdin_safely(max_size)
 
     if not content.strip():
@@ -126,8 +125,9 @@ def write_bad_structure(path: str, atoms: "Atoms") -> None:
 
         # Write atomically avoiding race conditions
         fd = os.open(resolved_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
-        with os.fdopen(fd, 'w') as f:
+        with os.fdopen(fd, "w") as f:
             from ase.io import write
+
             write(f, atoms, format="extxyz")
 
     except FileExistsError:
