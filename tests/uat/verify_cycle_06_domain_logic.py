@@ -6,17 +6,16 @@ app = marimo.App()
 @app.cell
 def _():
     import sys
-    import os
-    sys.path.insert(0, os.getcwd())
+    from pathlib import Path
+    sys.path.insert(0, str(Path.cwd()))
     import logging
     import shutil
     import sqlite3
     from pathlib import Path
     from unittest.mock import MagicMock
 
-    from src.core.orchestrator import Orchestrator
-    from src.domain_models.config import ProjectConfig
     from src.core.exceptions import DynamicsHaltInterrupt
+    from src.core.orchestrator import Orchestrator
 
     # Supress noisy logs
     logging.getLogger().setLevel(logging.ERROR)
@@ -35,33 +34,53 @@ def _():
     env_file = tmp_path / ".env"
     env_file.write_text("MLIP_DYNAMICS__UNCERTAINTY_THRESHOLD=5.0\n")
 
+    import typing
+
     # Instead of fully initializing config and dealing with dotenv validation which expects root .env,
     # we'll mock the config entirely.
     class DummyConfig:
-        class loop_strategy:
-            use_tiered_oracle = False
-            max_iterations = 2 # Enough to run full 4-phase and loop
-            class thresholds:
-                threshold_call_dft = 0.5
-        class system:
-            elements = ["Fe"]
-            interface_target = None
-            interface_generation_iteration = 0
-            restricted_directories = []
-            baseline_potential = "zbl"
-        class dynamics:
-            trusted_directories = []
-            project_root = str(tmp_path)
-        class oracle:
+        class LoopStrategy:
+            use_tiered_oracle: typing.ClassVar[bool] = False
+            max_iterations: typing.ClassVar[int] = 2 # Enough to run full 4-phase and loop
+            class Thresholds:
+                threshold_call_dft: typing.ClassVar[float] = 0.5
+            thresholds = Thresholds()
+        loop_strategy = LoopStrategy()
+
+        class System:
+            elements: typing.ClassVar[list[str]] = ["Fe"]
+            interface_target: typing.ClassVar[str | None] = None
+            interface_generation_iteration: typing.ClassVar[int] = 0
+            restricted_directories: typing.ClassVar[list[str]] = []
+            baseline_potential: typing.ClassVar[str] = "zbl"
+        system = System()
+
+        class Dynamics:
+            trusted_directories: typing.ClassVar[list[str]] = []
+            project_root: typing.ClassVar[str] = str(tmp_path)
+        dynamics = Dynamics()
+
+        class Oracle:
             pass
-        class trainer:
-            trusted_directories = []
-        class validator:
+        oracle = Oracle()
+
+        class Trainer:
+            trusted_directories: typing.ClassVar[list[str]] = []
+            max_potential_size: typing.ClassVar[int] = 1000000
+        trainer = Trainer()
+
+        class Validator:
             pass
-        class structure_generator:
+        validator = Validator()
+
+        class StructureGenerator:
             pass
-        class policy:
+        structure_generator = StructureGenerator()
+
+        class Policy:
             pass
+        policy = Policy()
+
         project_root = tmp_path
 
     return DummyConfig, Orchestrator, tmp_path, DynamicsHaltInterrupt, sqlite3
@@ -79,11 +98,8 @@ def test_scenario_1(DummyConfig, Orchestrator, tmp_path):
     # "Restart" the process
     orch2 = Orchestrator(DummyConfig())
 
-    # Actually wait, iteration might be 0 because we don't set it from state in __init__?
-    # Oh! Earlier I changed Orchestrator.__init__ to:
-    # state_iter = self.checkpoint.get_state("CURRENT_ITERATION")
-    # self.iteration = int(state_iter) if state_iter is not None else 0
-    # Let's verify this is working.
+    # Explaining the logic here: iteration might be 0 because we don't set it from state in __init__
+    # unless we use `get_state`. Let's verify this is working.
     assert orch2.checkpoint.get_state("CURRENT_PHASE") == "PHASE2_VALIDATION", "State did not persist!"
     assert orch2.iteration == 5, f"Iteration counter did not resume correctly! It is {orch2.iteration}"
     print("✓ Orchestrator successfully resumed from database checkpoint")
@@ -148,7 +164,7 @@ def test_scenario_4(DummyConfig, Orchestrator, tmp_path, sqlite3):
     db_path = tmp_path / ".ac_cdd" / "checkpoint.db"
 
     # Make DB read only to simulate lock/permission error
-    _os.chmod(db_path, 0o400)
+    Path(db_path).chmod(0o400)
 
     try:
         _orch3 = Orchestrator(DummyConfig())
@@ -156,12 +172,14 @@ def test_scenario_4(DummyConfig, Orchestrator, tmp_path, sqlite3):
         failed = False
     except RuntimeError as e:
         failed = True
-        assert "Failed to set state" in str(e), "Did not raise expected error message"
+        if "Failed to set state" not in str(e):
+            raise AssertionError("Did not raise expected error message") from e
 
     # restore permission so it can be deleted later
-    _os.chmod(db_path, 0o600)
+    Path(db_path).chmod(0o600)
 
-    assert failed, "Orchestrator did not fail loudly on corrupted DB"
+    if not failed:
+        raise AssertionError("Orchestrator did not fail loudly on corrupted DB")
     print("✓ Orchestrator successfully failed loudly without overwriting locked DB")
     return db_path
 

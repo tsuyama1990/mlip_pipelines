@@ -1,7 +1,10 @@
 import sqlite3
-import pytest
 from pathlib import Path
+
+import pytest
+
 from src.core.checkpoint import CheckpointManager
+
 
 def test_checkpoint_manager_init(tmp_path: Path):
     db_path = tmp_path / "checkpoint.db"
@@ -29,7 +32,6 @@ def test_checkpoint_transaction_rollback(tmp_path: Path, monkeypatch):
     def mock_execute(*args, **kwargs):
         raise sqlite3.OperationalError("Forced Failure")
 
-    import sqlite3
     original_connect = sqlite3.connect
     class MockConnection:
         def __init__(self, *args, **kwargs):
@@ -66,7 +68,6 @@ def test_checkpoint_get_error(tmp_path: Path, monkeypatch):
     db_path = tmp_path / "checkpoint.db"
     cm = CheckpointManager(db_path)
 
-    import sqlite3
     original_connect = sqlite3.connect
     class MockConnectionGet:
         def __init__(self, *args, **kwargs):
