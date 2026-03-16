@@ -1,73 +1,8 @@
-============================= test session starts ==============================
-platform linux -- Python 3.12.13, pytest-9.0.2, pluggy-1.6.0
-rootdir: /app
-configfile: pyproject.toml
-testpaths: tests
-plugins: cov-7.0.0, anyio-4.12.1
-collected 201 items
-
-tests/e2e/test_skeleton.py s.                                            [  0%]
-tests/uat/test_cycle03_oracle.py ...                                     [  2%]
-tests/uat/test_cycle04_trainer.py ...                                    [  3%]
-tests/uat/test_cycle05_dynamics.py ...                                   [  5%]
-tests/uat/test_cycle06_validator.py ...                                  [  6%]
-tests/uat/test_tutorial.py s....                                         [  9%]
-tests/unit/test_ace_trainer.py ....................                      [ 19%]
-tests/unit/test_adaptive_policy.py .......                               [ 22%]
-tests/unit/test_config.py ........................                       [ 34%]
-tests/unit/test_defect_builder.py ...                                    [ 36%]
-tests/unit/test_dft_oracle.py ...............                            [ 43%]
-tests/unit/test_domain_models.py .                                       [ 44%]
-tests/unit/test_dynamics_engine.py ...........................           [ 57%]
-tests/unit/test_eon_driver.py .............                              [ 64%]
-tests/unit/test_eon_wrapper.py .................                         [ 72%]
-tests/unit/test_finetune_manager.py ....                                 [ 74%]
-tests/unit/test_mace_manager.py .                                        [ 75%]
-tests/unit/test_orchestrator.py ................                         [ 83%]
-tests/unit/test_reporter.py ..                                           [ 84%]
-tests/unit/test_security_utils.py .........                              [ 88%]
-tests/unit/test_stability.py ........                                    [ 92%]
-tests/unit/test_structure_generator.py ......                            [ 95%]
-tests/unit/test_tiered_oracle.py .                                       [ 96%]
-tests/unit/test_validator.py ........                                    [100%]
-
-================================ tests coverage ================================
-_______________ coverage: platform linux, python 3.12.13-final-0 _______________
-
-Name                                    Stmts   Miss  Cover   Missing
----------------------------------------------------------------------
-src/__init__.py                             0      0   100%
-src/core/__init__.py                       21      0   100%
-src/core/checkpoint.py                     65     21    68%   19-22, 46-51, 68-78
-src/core/exceptions.py                      2      0   100%
-src/core/orchestrator.py                  410    110    73%   47, 73-74, 79, 111-112, 115-116, 121-123, 135-149, 155-156, 182-197, 202-204, 208-210, 213-217, 229, 274-275, 284-285, 296-297, 304-305, 309-310, 318-319, 350-351, 378, 397-404, 429-430, 442-444, 453-481, 493-494, 509, 553-557, 579, 589-591, 599-600, 621-630
-src/domain_models/__init__.py               3      0   100%
-src/domain_models/config.py               451    111    75%   35-36, 39-40, 46-47, 49-50, 56-57, 60-61, 71-72, 154, 182-183, 203-217, 221, 224, 264-265, 270-275, 391-394, 410-412, 459-462, 467-470, 524-529, 547-548, 556-557, 568, 572-590, 724-750, 759-760, 762-763, 781-782, 784-785, 791-792, 795-796, 804-805, 812-813, 817-818
-src/domain_models/dtos.py                  50      4    92%   41-44
-src/dynamics/__init__.py                    0      0   100%
-src/dynamics/dynamics_engine.py           229     52    77%   33-34, 41-42, 45-46, 49-50, 53-54, 58-59, 63-64, 109-110, 118-119, 132-133, 139-140, 143-144, 147-148, 151-152, 155-156, 160-161, 165-166, 212, 221-222, 231-232, 247-248, 254-255, 257-258, 274-277, 330-332, 413
-src/dynamics/eon_driver.py                167     51    69%   13-14, 28-29, 42-51, 81-84, 88-89, 94-95, 121-124, 135-136, 138-139, 152-154, 157-158, 166-173, 177-179, 187-189, 192-193, 235
-src/dynamics/eon_wrapper.py               205     37    82%   40-41, 72-73, 76-77, 158-159, 161-162, 173-174, 184-185, 190-202, 209, 222, 232-233, 236-237, 256, 260, 285-286, 321-322
-src/dynamics/security_utils.py            110     26    76%   17-18, 26-32, 47-48, 78, 101-102, 110-111, 121-122, 133-134, 137-138, 141-142, 162-163
-src/generators/__init__.py                  0      0   100%
-src/generators/adaptive_policy.py          67      5    93%   16, 44-45, 123-124
-src/generators/defect_builder.py           72     15    79%   14, 22-23, 26, 43-44, 47, 66-67, 76-77, 81, 103, 105-106
-src/generators/structure_generator.py      62      9    85%   47-48, 52-53, 99, 105-108
-src/oracles/__init__.py                     0      0   100%
-src/oracles/base.py                         6      0   100%
-src/oracles/dft_oracle.py                 258     61    76%   22-23, 26-27, 33-34, 38-39, 42-43, 48-49, 59-60, 79-80, 86-87, 117-118, 120-121, 123-124, 142, 145, 150, 160, 172-173, 177-179, 184-185, 190-195, 222-224, 227-228, 239-240, 259-260, 275, 288-291, 294-295, 301-303, 364-365
-src/oracles/mace_manager.py                42      5    88%   23-26, 63, 65, 67
-src/oracles/tiered_oracle.py               25      1    96%   31
-src/trainers/__init__.py                    0      0   100%
-src/trainers/ace_trainer.py               176     28    84%   27-30, 33, 42-45, 55-58, 90-91, 110, 138-141, 193-199, 202-203, 253-254
-src/trainers/binary_resolver.py            80     55    31%   19, 25-57, 63-71, 77-78, 85-93, 96-106, 111
-src/trainers/finetune_manager.py           73     19    74%   28-36, 39-40, 58-59, 111-115, 119-121, 141-144
-src/validators/__init__.py                  0      0   100%
-src/validators/reporter.py                  7      0   100%
-src/validators/stability_tests.py         119      5    96%   51, 59-60, 63-66
-src/validators/validator.py                90     11    88%   20-22, 28-30, 34-36, 80, 94-95
----------------------------------------------------------------------
-TOTAL                                    2790    626    78%
-======================== 199 passed, 2 skipped in 7.72s ========================
-/app/.venv/lib/python3.12/site-packages/coverage/inorout.py:561: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.4/messages.html#warning-module-not-imported
-  self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")
+ImportError while loading conftest '/app/tests/conftest.py'.
+tests/conftest.py:6: in <module>
+    from src.domain_models.config import (
+src/domain_models/__init__.py:1: in <module>
+    from .config import (
+src/domain_models/config.py:7: in <module>
+    from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+E   ModuleNotFoundError: No module named 'pydantic'

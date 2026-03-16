@@ -288,6 +288,23 @@ class Orchestrator:
     def _secure_copy_potential(
         self, src_pot: Path, pot_dir: Path, iteration: int, tmp_work_dir: Path
     ) -> Path:
+        import tempfile
+        from pathlib import Path
+
+        from src.domain_models.config import _secure_resolve_and_validate_dir
+        tmp_dirs = [str(self.config.project_root), tempfile.gettempdir()]
+
+        # We need exist_ok creation before validating it
+        if isinstance(pot_dir, str):
+            pot_dir = Path(pot_dir)
+        pot_dir.mkdir(parents=True, exist_ok=True)
+
+        tmp_work_dir = Path(_secure_resolve_and_validate_dir(tmp_work_dir, trusted_bases=tmp_dirs))
+        pot_dir = Path(_secure_resolve_and_validate_dir(pot_dir, trusted_bases=tmp_dirs))
+        if isinstance(src_pot, str):
+            src_pot = Path(src_pot)
+        # Assuming src_pot is a file within tmp_work_dir, we validate its parent.
+        Path(_secure_resolve_and_validate_dir(src_pot.parent, trusted_bases=tmp_dirs))
         import hashlib
         import os
         import tempfile
@@ -368,11 +385,20 @@ class Orchestrator:
         return canonical_dest
 
     def _copy_potential(self, tmp_work_dir: Path, pot_dir: Path, iteration: int) -> Path:
-        src_pot = tmp_work_dir / "training" / "output_potential.yace"
+        from src.domain_models.config import _secure_resolve_and_validate_dir
+        tmp_dirs = [str(self.config.project_root), tempfile.gettempdir()]
+        tmp_work_dir = _secure_resolve_and_validate_dir(tmp_work_dir, tmp_dirs)
+        pot_dir = _secure_resolve_and_validate_dir(pot_dir, tmp_dirs)
+        src_pot = Path(tmp_work_dir) / "training" / "output_potential.yace"
+        # We don't validate src_pot as a dir because it's a file, but _secure_copy_potential handles it.
         return self._secure_copy_potential(src_pot, pot_dir, iteration, tmp_work_dir)
 
     def _validate_tmp_directories(self, tmp_work_dir: Path) -> None:
-
+        from src.domain_models.config import _secure_resolve_and_validate_dir
+        tmp_dirs = [str(self.config.project_root), tempfile.gettempdir()]
+        tmp_work_dir = _secure_resolve_and_validate_dir(tmp_work_dir, tmp_dirs)
+        if isinstance(tmp_work_dir, str):
+            tmp_work_dir = Path(tmp_work_dir)
         expected_dirs = ["training"]
         if not (tmp_work_dir / "md_run").exists() and not (tmp_work_dir / "kmc_run").exists():
             (tmp_work_dir / "md_run").mkdir(parents=True, exist_ok=True)
@@ -380,6 +406,10 @@ class Orchestrator:
             (tmp_work_dir / expected).mkdir(parents=True, exist_ok=True)
 
     def _swap_directories(self, tmp_work_dir: Path, work_dir: Path) -> None:
+        from src.domain_models.config import _secure_resolve_and_validate_dir
+        tmp_dirs = [str(self.config.project_root), tempfile.gettempdir()]
+        tmp_work_dir = _secure_resolve_and_validate_dir(tmp_work_dir, tmp_dirs)
+        work_dir = _secure_resolve_and_validate_dir(work_dir, tmp_dirs)
         import shutil
 
         # To prevent race conditions and cross-filesystem issues, we will just use a direct copytree
@@ -512,7 +542,6 @@ class Orchestrator:
         base_dir.mkdir(parents=True, exist_ok=True)
         work_dir: Path = base_dir / f"iter_{self.iteration:03d}"
 
-        import tempfile
 
         @contextlib.contextmanager
         def isolated_work_dir(base: Path) -> Generator[Path, None, None]:

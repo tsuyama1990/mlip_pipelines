@@ -61,7 +61,11 @@ def _check_ownership_and_perms(resolved: Path, path_str: str) -> None:
         raise ValueError(msg)
 
 
-def _secure_resolve_and_validate_dir(path_str: str, check_exists: bool = True) -> str:
+def _secure_resolve_and_validate_dir(
+    path_str: str | Path,
+    trusted_bases: list[str] | None = None,
+    check_exists: bool = False
+) -> Path:
     # Use realpath for canonicalization
     import os
 
@@ -73,19 +77,21 @@ def _secure_resolve_and_validate_dir(path_str: str, check_exists: bool = True) -
 
     if check_exists:
         if not canonical_path.exists():
-            msg = f"Directory does not exist: {path_str}"
-            raise ValueError(msg)
+            canonical_path.mkdir(parents=True, exist_ok=True)
+            if not canonical_path.exists():
+                msg = f"Directory does not exist: {path_str}"
+                raise ValueError(msg)
 
         if not canonical_path.is_dir():
             msg = f"Path must be a directory: {path_str}"
             raise ValueError(msg)
 
-    _check_allowed_base_dirs(str(canonical_path), path_str)
+    _check_allowed_base_dirs(str(canonical_path), str(path_str))
 
     if check_exists:
-        _check_ownership_and_perms(canonical_path, path_str)
+        _check_ownership_and_perms(canonical_path, str(path_str))
 
-    return str(canonical_path)
+    return canonical_path
 
 
 class SystemConfig(BaseModel):
@@ -263,7 +269,7 @@ class DynamicsConfig(BaseModel):
         if res is None:
             msg = f"project_root skipped or invalid: {v}"
             raise ValueError(msg)
-        return res
+        return str(res)
 
     @classmethod
     def validate_trusted_directories(cls, v: list[str]) -> list[str]:
@@ -271,7 +277,7 @@ class DynamicsConfig(BaseModel):
         for path in v:
             res = _secure_resolve_and_validate_dir(path, check_exists=True)
             if res:
-                validated.append(res)
+                validated.append(str(res))
         return validated
 
     eon_config_template: str = Field(
@@ -409,7 +415,7 @@ class TrainerConfig(BaseModel):
         for path in v:
             res = _secure_resolve_and_validate_dir(path, check_exists=True)
             if res:
-                validated.append(res)
+                validated.append(str(res))
         return validated
 
 

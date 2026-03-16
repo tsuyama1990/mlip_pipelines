@@ -9,8 +9,23 @@ class CheckpointManager:
     """Manages the application state and artifacts using a SQLite database."""
 
     def __init__(self, db_path: Path) -> None:
-        self.db_path = db_path
+        import os
+
+        # Check path traversal
+        if ".." in str(db_path):
+            msg = "Path traversal detected"
+            raise ValueError(msg)
+
+        # Canonicalize securely
+        self.db_path = Path(os.path.realpath(str(db_path)))
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
+
+    def _validate_key(self, key: str) -> None:
+        import re
+        if not re.match(r"^[a-zA-Z0-9_]+$", key):
+            msg = f"Invalid key: {key}"
+            raise ValueError(msg)
 
     def _init_db(self) -> None:
         try:
@@ -23,6 +38,7 @@ class CheckpointManager:
 
     def set_state(self, key: str, value: Any) -> None:
         """Sets a state value in the database with JSON serialization."""
+        self._validate_key(key)
         import time
         try:
             json_value = json.dumps(value)
@@ -52,6 +68,7 @@ class CheckpointManager:
 
     def get_state(self, key: str) -> Any | None:
         """Gets a state value from the database, deserializing from JSON."""
+        self._validate_key(key)
         import time
         max_retries = 5
         base_delay = 0.1

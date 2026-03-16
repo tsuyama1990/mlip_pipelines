@@ -158,13 +158,18 @@ class PacemakerWrapper(AbstractTrainer, BinaryResolverMixin):
     def _validate_train_directories(self, dataset: Path, output_dir: Path) -> tuple[Path, Path]:
         import fcntl
         import os
-        import tempfile
+        from src.domain_models.config import _secure_resolve_and_validate_dir
 
         if not dataset.exists():
             msg = f"Dataset not found: {dataset}"
             raise FileNotFoundError(msg)
 
         resolved_dataset = dataset.resolve(strict=True)
+
+        import tempfile
+        tmp_dirs = [str(self.config.trusted_directories) if hasattr(self.config, 'trusted_directories') else '', tempfile.gettempdir()]
+        resolved_output_dir = Path(_secure_resolve_and_validate_dir(output_dir, trusted_bases=tmp_dirs, check_exists=False))
+        resolved_output_dir.mkdir(parents=True, exist_ok=True)
 
         # Verify it's an extxyz file case-insensitively
         if resolved_dataset.suffix.lower() != ".extxyz":
@@ -188,15 +193,6 @@ class PacemakerWrapper(AbstractTrainer, BinaryResolverMixin):
 
         Path(output_dir).mkdir(parents=True, exist_ok=True)
         resolved_output_dir = output_dir.resolve(strict=True)
-
-        if hasattr(self.config, "project_root"):
-            proj_root = Path(self.config.project_root).resolve(strict=True)
-            tmp_root = Path(tempfile.gettempdir()).resolve(strict=True)
-            if not str(resolved_output_dir).startswith(str(proj_root)) and not str(
-                resolved_output_dir
-            ).startswith(str(tmp_root)):
-                msg = f"output_dir is outside the trusted base directory or temp dir: {resolved_output_dir}"
-                raise ValueError(msg)
 
         if not os.access(resolved_output_dir, os.W_OK):
             msg = f"output_dir is not writable: {resolved_output_dir}"
