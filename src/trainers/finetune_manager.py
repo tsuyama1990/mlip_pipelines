@@ -19,6 +19,8 @@ class FinetuneManager(BinaryResolverMixin):
         self.config = config
 
     def _validate_output_path(self, output_path: Path) -> Path:
+        from src.domain_models.config import _secure_resolve_and_validate_dir
+        _secure_resolve_and_validate_dir(str(output_path), check_exists=False)
         if not output_path.exists():
             output_path.mkdir(parents=True, exist_ok=True)
 

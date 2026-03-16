@@ -155,6 +155,9 @@ class PacemakerWrapper(AbstractTrainer, BinaryResolverMixin):
         return combined_data
 
     def _validate_train_directories(self, dataset: Path, output_dir: Path) -> tuple[Path, Path]:
+        from src.domain_models.config import _secure_resolve_and_validate_dir
+        _secure_resolve_and_validate_dir(str(dataset), check_exists=False)
+        _secure_resolve_and_validate_dir(str(output_dir), check_exists=False)
         import fcntl
         import os
         import tempfile

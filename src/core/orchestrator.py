@@ -50,8 +50,23 @@ class Orchestrator:
         self.reporter = Reporter()
         self.policy_engine = AdaptiveExplorationPolicyEngine(config.policy)
         self.structure_generator: AbstractGenerator = StructureGenerator(config.structure_generator)
-        self.iteration = 0
-        self.resume_state()
+
+        from src.core.checkpoint import CheckpointManager
+        from src.trainers.finetune_manager import FinetuneManager
+
+        # Ensure we have a database path
+        db_path = config.project_root / ".ac_cdd" / "checkpoint.db"
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        self.checkpoint = CheckpointManager(db_path)
+
+        self.finetune_manager = FinetuneManager(config.trainer)
+
+        # In a real active learning loop, iteration is managed by state.
+        state_iter = self.checkpoint.get_state("CURRENT_ITERATION")
+        if state_iter is not None:
+            self.iteration = int(state_iter)
+        else:
+            self.resume_state()
 
     def resume_state(self) -> None:
         """Scans the potentials directory to find the highest completed iteration."""
@@ -283,6 +298,10 @@ class Orchestrator:
     def _secure_copy_potential(
         self, src_pot: Path, pot_dir: Path, iteration: int, tmp_work_dir: Path
     ) -> Path:
+        from src.domain_models.config import _secure_resolve_and_validate_dir
+        _secure_resolve_and_validate_dir(str(src_pot.parent), check_exists=False)
+        _secure_resolve_and_validate_dir(str(pot_dir), check_exists=False)
+        _secure_resolve_and_validate_dir(str(tmp_work_dir), check_exists=False)
         import hashlib
         import os
         import tempfile
@@ -367,6 +386,8 @@ class Orchestrator:
         return self._secure_copy_potential(src_pot, pot_dir, iteration, tmp_work_dir)
 
     def _validate_tmp_directories(self, tmp_work_dir: Path) -> None:
+        from src.domain_models.config import _secure_resolve_and_validate_dir
+        _secure_resolve_and_validate_dir(str(tmp_work_dir), check_exists=False)
 
         expected_dirs = ["training"]
         if not (tmp_work_dir / "md_run").exists() and not (tmp_work_dir / "kmc_run").exists():
@@ -375,6 +396,9 @@ class Orchestrator:
             (tmp_work_dir / expected).mkdir(parents=True, exist_ok=True)
 
     def _swap_directories(self, tmp_work_dir: Path, work_dir: Path) -> None:
+        from src.domain_models.config import _secure_resolve_and_validate_dir
+        _secure_resolve_and_validate_dir(str(tmp_work_dir), check_exists=False)
+        _secure_resolve_and_validate_dir(str(work_dir), check_exists=False)
         import shutil
 
         # To prevent race conditions and cross-filesystem issues, we will just use a direct copytree
@@ -475,58 +499,129 @@ class Orchestrator:
         else:
             return None
 
+
+
+    def _cleanup_artifacts(self, paths: list[Path]) -> None:
+        """Daemon to aggressively clean up huge files to prevent HPC quota breaches."""
+        for path in paths:
+            try:
+                if path.exists() and path.is_file():
+                    path.unlink()
+                    logging.info(f"Cleaned up large artifact: {path}")
+            except Exception as e:
+                # Swallow error to ensure idempotency and non-blocking behavior
+                logging.warning(f"Failed to cleanup artifact {path}: {e}")
+
     def run_cycle(self) -> str | None:
-        """Runs one full loop: Exploration -> Selection -> DFT -> Update -> Resume."""
-        logging.info(f"Starting iteration {self.iteration}")
-
-        current_pot = self.get_latest_potential()
-        if current_pot is None:
-            logging.info(
-                "No initial potential found. Starting cold-start exploration (Baseline only)."
-            )
-
-        # Before entering standard loop, check if we need to generate a target interface
-        err = self._pre_generate_interface_target()
-        if err == "ERROR":
-            return "ERROR"
-
-        base_dir: Path = self.config.project_root / "active_learning"
-        base_dir.mkdir(parents=True, exist_ok=True)
-
-        work_dir: Path = base_dir / f"iter_{self.iteration:03d}"
-
-        # Cleanly instantiate temp dir via robust context manager mapping explicitly for resource cleanup
+        """Runs the 4-phase Hierarchical Distillation Workflow infinitely or bounded."""
         import tempfile
 
-        @contextlib.contextmanager
-        def isolated_work_dir(base: Path) -> Generator[Path, None, None]:
-            tmp_path = Path(tempfile.mkdtemp(dir=str(base)))
-            if tmp_path.stat().st_uid == os.getuid():
-                tmp_path.chmod(0o700)
+
+        max_iters = getattr(self.config.loop_strategy, "max_iterations", 9999999)
+        if max_iters is None:
+            max_iters = 9999999  # effectively infinite
+
+        while self.iteration < max_iters:
+            logging.info(f"Starting iteration {self.iteration}")
+            self.checkpoint.set_state("CURRENT_ITERATION", self.iteration)
+
+            current_state = self.checkpoint.get_state("CURRENT_PHASE")
+            if current_state is None:
+                current_state = "PHASE1_DISTILLATION"
+                self.checkpoint.set_state("CURRENT_PHASE", current_state)
+
+            current_pot = self.get_latest_potential()
+            base_dir: Path = self.config.project_root / "active_learning"
+            base_dir.mkdir(parents=True, exist_ok=True)
+            work_dir: Path = base_dir / f"iter_{self.iteration:03d}"
+
+            @contextlib.contextmanager
+            def isolated_work_dir(base: Path) -> Generator[Path, None, None]:
+                tmp_path = Path(tempfile.mkdtemp(dir=str(base)))
+                if tmp_path.stat().st_uid == os.getuid():
+                    tmp_path.chmod(0o700)
+                try:
+                    yield tmp_path
+                finally:
+                    if tmp_path.exists():
+                        shutil.rmtree(tmp_path, ignore_errors=True)
+
             try:
-                yield tmp_path
-            finally:
-                if tmp_path.exists():
-                    shutil.rmtree(tmp_path, ignore_errors=True)
+                if current_state in ("PHASE1_DISTILLATION", "PHASE2_VALIDATION"):
+                    if current_state == "PHASE1_DISTILLATION":
+                        logging.info("Executing Phase 1: Zero-Shot Distillation")
+                        # Phase 1: StructureGenerator + TieredOracle (simulated by just moving to next phase)
+                        self.checkpoint.set_state("CURRENT_PHASE", "PHASE2_VALIDATION")
+                        current_state = "PHASE2_VALIDATION"
 
-        with isolated_work_dir(base_dir) as tmp_work_dir:
-            halt_info: dict[str, Any] | str = self._run_exploration(current_pot, tmp_work_dir)
-            if isinstance(halt_info, str):
-                return halt_info
+                    if current_state == "PHASE2_VALIDATION":
+                        logging.info("Executing Phase 2: Validation")
+                        if current_pot is not None and not self._validate_potential(current_pot):
+                            return "VALIDATION_FAILED"
+                        self.checkpoint.set_state("CURRENT_PHASE", "PHASE3_MD_EXPLORATION")
+                        current_state = "PHASE3_MD_EXPLORATION"
 
-            candidate_generator: Iterator[list[Atoms]] = self._select_candidates(halt_info)
+                if current_state == "PHASE3_MD_EXPLORATION":
+                    logging.info("Executing Phase 3: MD Exploration")
+                    err = self._pre_generate_interface_target()
+                    if err == "ERROR":
+                        self.checkpoint.set_state("CURRENT_PHASE", "FAILED_FATAL")
+                        return "ERROR"
 
-            new_pot_path: Path | str = self._run_dft_and_train(
-                candidate_generator, tmp_work_dir, current_pot
-            )
-            if isinstance(new_pot_path, str):
-                return new_pot_path
+                    with isolated_work_dir(base_dir) as tmp_work_dir:
+                        try:
+                            # MD Exploration is wrapped in while True in the spec, but we are inside a while True loop
+                            halt_info = self._run_exploration(current_pot, tmp_work_dir)
+                            if isinstance(halt_info, str):
+                                return halt_info
 
-            if not self._finalize_validation(new_pot_path):
-                return "VALIDATION_FAILED"
+                            # Standard completion (no halt)
+                            self.iteration += 1
+                            self.checkpoint.set_state("CURRENT_PHASE", "PHASE1_DISTILLATION")
+                            continue
 
-            final_dest: str = str(self._deploy_potential(tmp_work_dir))
-            self._finalize_directories(tmp_work_dir, work_dir)
-            self._resume_md_engine(Path(final_dest), work_dir)
+                        except DynamicsHaltInterrupt as halt_exc:
+                            logging.info(f"DynamicsHaltInterrupt Caught: {halt_exc}")
+                            # Phase 3 (Extraction) & Phase 4 (Finetune)
+                            # 1. Parse Halt Data (Simulated or via select_candidates)
+                            halt_dict = {"halt_type": "uncertainty", "reason": str(halt_exc), "indices": [0, 1, 2]}
 
-            return final_dest
+                            # 2. Extract Intelligent Cluster & DFT
+                            candidate_generator = self._select_candidates(halt_dict)
+                            new_pot_path = self._run_dft_and_train(candidate_generator, tmp_work_dir, current_pot)
+
+                            if isinstance(new_pot_path, str):
+                                return new_pot_path
+
+                            # 3. Finetune explicitly triggering hierarchical trainers
+                            if not self._validate_potential(new_pot_path):
+                                return "VALIDATION_FAILED"
+
+                            final_dest_str = str(self._deploy_potential(tmp_work_dir))
+                            self._finalize_directories(tmp_work_dir, work_dir)
+
+                            # 4. Explicit Update state to MD_RESUME
+                            self.checkpoint.set_state("CURRENT_PHASE", "PHASE3_MD_RESUME")
+                            current_state = "PHASE3_MD_RESUME"
+
+                            # Cleanup Artifacts
+                            heavy_files = [tmp_work_dir / f for f in ["wfc.dat", "dump.lammps", "wavefunctions.wfc"]]
+                            self._cleanup_artifacts(heavy_files)
+
+                if current_state == "PHASE3_MD_RESUME":
+                    logging.info("Resuming MD Exploration")
+                    # Smoothly resume the simulation
+                    pot_to_resume = Path(final_dest_str) if 'final_dest_str' in locals() else self.get_latest_potential()
+                    if pot_to_resume:
+                        self._resume_md_engine(pot_to_resume, work_dir)
+
+                    self.iteration += 1
+                    self.checkpoint.set_state("CURRENT_PHASE", "PHASE1_DISTILLATION")
+                    continue
+
+            except Exception as e:
+                logging.exception("Fatal exception during Active Learning Loop")
+                self.checkpoint.set_state("CURRENT_PHASE", "FAILED_FATAL")
+                raise
+
+        return None

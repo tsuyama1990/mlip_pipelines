@@ -26,6 +26,8 @@ class MDInterface(AbstractDynamics):
         return " ".join(str(atomic_numbers.get(el, 1)) for el in self.system_config.elements)
 
     def _write_cold_start_input(self, tmp_in_file: Any, dump_name: str, work_dir: Path) -> None:
+        from src.domain_models.config import _secure_resolve_and_validate_dir
+        _secure_resolve_and_validate_dir(str(work_dir), check_exists=False)
         import string
 
         base_dump_name = Path(dump_name).name
@@ -122,6 +124,8 @@ write_data ${work_dir_str}/data.lammps
     def _write_potential_input(
         self, tmp_in_file: Any, potential: Path, dump_name: str, work_dir: Path
     ) -> None:
+        from src.domain_models.config import _secure_resolve_and_validate_dir
+        _secure_resolve_and_validate_dir(str(work_dir), check_exists=False)
         import string
 
         pot_path_str = self._validate_potential_path(potential)
@@ -340,6 +344,8 @@ write_data ${work_dir_str}/data.lammps
         dump_file_name: str,
         work_dir: Path,
     ) -> None:
+        from src.domain_models.config import _secure_resolve_and_validate_dir
+        _secure_resolve_and_validate_dir(str(work_dir), check_exists=False)
         import string
 
         zbl_elements = " ".join(

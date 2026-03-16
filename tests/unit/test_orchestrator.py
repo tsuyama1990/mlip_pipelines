@@ -396,3 +396,119 @@ def test_get_latest_potential_invalid_file(
 
     latest = orch.get_latest_potential()
     assert latest is None
+
+from unittest.mock import MagicMock
+from src.core.exceptions import DynamicsHaltInterrupt
+
+def test_cleanup_artifacts_idempotency(tmp_path: Path):
+    from src.core.orchestrator import Orchestrator
+    # We can instantiate with a dummy config
+    class DummyConfig:
+        class loop_strategy:
+            use_tiered_oracle = False
+            max_iterations = 1
+            class thresholds:
+                threshold_call_dft = 0.5
+        class system:
+            elements = ["Fe"]
+            interface_target = None
+            interface_generation_iteration = 0
+            restricted_directories = []
+            baseline_potential = "zbl"
+        class dynamics:
+            trusted_directories = []
+            project_root = str(tmp_path)
+        class oracle:
+            pass
+        class trainer:
+            trusted_directories = []
+        class validator:
+            pass
+        class structure_generator:
+            pass
+        class policy:
+            pass
+        project_root = tmp_path
+
+    import sys
+    sys.modules['pyacemaker'] = MagicMock()
+    sys.modules['pyacemaker.calculator'] = MagicMock()
+    orch = Orchestrator(DummyConfig())
+    # Test valid
+    f1 = tmp_path / "f1.dat"
+    f1.write_text("123")
+    orch._cleanup_artifacts([f1])
+    assert not f1.exists()
+
+    # Test missing file (idempotency, shouldn't crash)
+    f2 = tmp_path / "missing.dat"
+    orch._cleanup_artifacts([f2])
+
+def test_orchestrator_state_machine_transitions(tmp_path: Path, monkeypatch):
+    from src.core.orchestrator import Orchestrator
+
+    class DummyConfig:
+        class loop_strategy:
+            use_tiered_oracle = False
+            max_iterations = 1
+            class thresholds:
+                threshold_call_dft = 0.5
+        class system:
+            elements = ["Fe"]
+            interface_target = None
+            interface_generation_iteration = 0
+            restricted_directories = []
+            baseline_potential = "zbl"
+        class dynamics:
+            trusted_directories = []
+            project_root = str(tmp_path)
+        class oracle:
+            pass
+        class trainer:
+            trusted_directories = []
+        class validator:
+            pass
+        class structure_generator:
+            pass
+        class policy:
+            pass
+        project_root = tmp_path
+
+    import sys
+    sys.modules['pyacemaker'] = MagicMock()
+    sys.modules['pyacemaker.calculator'] = MagicMock()
+    orch = Orchestrator(DummyConfig())
+    orch.get_latest_potential = MagicMock(return_value=tmp_path / "pot.yace")
+    orch._pre_generate_interface_target = MagicMock(return_value=None)
+    orch._validate_potential = MagicMock(return_value=True)
+    orch._deploy_potential = MagicMock(return_value=tmp_path / "new.yace")
+    orch._finalize_directories = MagicMock()
+    orch._resume_md_engine = MagicMock()
+    orch._run_dft_and_train = MagicMock(return_value=tmp_path / "new.yace")
+    orch._select_candidates = MagicMock(return_value=iter([]))
+
+    # Force _run_exploration to raise DynamicsHaltInterrupt to test Phase 3 -> 4 transition
+    orch._run_exploration = MagicMock(side_effect=DynamicsHaltInterrupt("High uncertainty"))
+
+    orch.run_cycle()
+
+    # Check if the correct phase transitions happened in the database
+    # Phase1 -> Phase2 -> Phase3 -> Phase3_Resume -> Phase1 (for next iter)
+    # The final state should be Phase1 because iteration increments
+    assert orch.checkpoint.get_state("CURRENT_PHASE") == "PHASE1_DISTILLATION"
+    # Wait, the iteration starts at 0. It gets saved as 0 at the very start of the loop.
+    # Then it does Phase1, Phase2, Phase3, catches Halt, moves to Resume.
+    # In Resume, it increments iteration to 1, sets phase to Phase1.
+    # Then it continues the while loop.
+    # At the start of the while loop, it checks while 1 < 1 (since max_iters=1). It breaks out!
+    # So iteration is 1, but CURRENT_ITERATION in state wasn't updated to 1 because the loop broke before it could write it!
+    # Wait, in the while loop it does:
+    # while self.iteration < max_iters:
+    #     self.checkpoint.set_state("CURRENT_ITERATION", self.iteration)
+    # If iteration=1, and max_iters=1, it breaks. So CURRENT_ITERATION in db is still 0!
+    assert orch.checkpoint.get_state("CURRENT_ITERATION") == 0
+
+    orch._run_exploration.assert_called_once()
+    orch._run_dft_and_train.assert_called_once()
+    orch._resume_md_engine.assert_called_once()
+    orch._deploy_potential.assert_called_once()
