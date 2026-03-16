@@ -5,9 +5,9 @@ app = marimo.App()
 
 @app.cell
 def _():
-    import os
     import sys
-    sys.path.insert(0, os.getcwd())
+    from pathlib import Path
+    sys.path.insert(0, str(Path.cwd()))
     import logging
     import shutil
     import sqlite3
@@ -164,7 +164,7 @@ def test_scenario_4(DummyConfig, Orchestrator, tmp_path, sqlite3):
     db_path = tmp_path / ".ac_cdd" / "checkpoint.db"
 
     # Make DB read only to simulate lock/permission error
-    _os.chmod(db_path, 0o400)
+    Path(db_path).chmod(0o400)
 
     try:
         _orch3 = Orchestrator(DummyConfig())
@@ -172,12 +172,14 @@ def test_scenario_4(DummyConfig, Orchestrator, tmp_path, sqlite3):
         failed = False
     except RuntimeError as e:
         failed = True
-        assert "Failed to set state" in str(e), "Did not raise expected error message"
+        if "Failed to set state" not in str(e):
+            raise AssertionError("Did not raise expected error message") from e
 
     # restore permission so it can be deleted later
-    _os.chmod(db_path, 0o600)
+    Path(db_path).chmod(0o600)
 
-    assert failed, "Orchestrator did not fail loudly on corrupted DB"
+    if not failed:
+        raise AssertionError("Orchestrator did not fail loudly on corrupted DB")
     print("✓ Orchestrator successfully failed loudly without overwriting locked DB")
     return db_path
 

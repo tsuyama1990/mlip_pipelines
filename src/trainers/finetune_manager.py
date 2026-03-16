@@ -49,91 +49,78 @@ class FinetuneManager(BinaryResolverMixin):
 
         resolved_out = self._validate_output_path(output_path)
 
-        import fcntl
 
+        # Refactored to reduce complexity
         with tempfile.TemporaryDirectory(prefix="pyacemaker_mace_") as tmp:
             temp_dir = Path(tmp).resolve(strict=True)
-
-            # Verify the temporary directory was created in a trusted location
-            tmp_root = Path(tempfile.gettempdir()).resolve(strict=True)
-            if not temp_dir.is_relative_to(tmp_root):
-                msg = f"Temporary directory {temp_dir} is not within trusted temp root {tmp_root}."
-                raise ValueError(msg)
-
+            self._verify_tmp_dir(temp_dir)
             train_xyz = temp_dir / "train.extxyz"
+            self._secure_write_xyz(train_xyz, structures)
+            self._run_mace_subprocess(mace_train_bin, train_xyz, model_path, temp_dir)
+            return self._extract_and_cleanup_mace_output(temp_dir, resolved_out)
 
-            # Secure atomic file creation with lock
-            fd = os.open(train_xyz, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, 'O_NOFOLLOW', 0), 0o600)
-            try:
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                with os.fdopen(fd, "w") as f_out:
-                    # Write directly to the securely opened file descriptor instead of closing and reopening
-                    write(f_out, structures, format="extxyz")
-            except Exception as e:
-                import contextlib
-                with contextlib.suppress(OSError):
-                    os.close(fd)
-                msg = f"Failed to securely create or write to {train_xyz}"
-                raise RuntimeError(msg) from e
+    def _verify_tmp_dir(self, temp_dir: Path) -> None:
+        tmp_root = Path(tempfile.gettempdir()).resolve(strict=True)
+        if not temp_dir.is_relative_to(tmp_root):
+            msg = f"Temporary directory {temp_dir} is not within trusted temp root {tmp_root}."
+            raise ValueError(msg)
 
-            cmd = [
-                mace_train_bin,
-                "--train_file",
-                str(train_xyz),
-                "--model",
-                model_path,
-                "--output_dir",
-                str(temp_dir),
-            ]
+    def _secure_write_xyz(self, train_xyz: Path, structures: list[Atoms]) -> None:
+        import fcntl
+        fd = os.open(train_xyz, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, 'O_NOFOLLOW', 0), 0o600)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            with os.fdopen(fd, "w") as f_out:
+                write(f_out, structures, format="extxyz")
+        except Exception as e:
+            import contextlib
+            with contextlib.suppress(OSError):
+                os.close(fd)
+            msg = f"Failed to securely create or write to {train_xyz}"
+            raise RuntimeError(msg) from e
 
-            if self.config.mace_freeze_body:
-                cmd.append("--freeze_body")
+    def _run_mace_subprocess(self, mace_train_bin: str, train_xyz: Path, model_path: str, temp_dir: Path) -> None:
+        cmd = [
+            mace_train_bin,
+            "--train_file", str(train_xyz),
+            "--model", model_path,
+            "--output_dir", str(temp_dir),
+        ]
+        if self.config.mace_freeze_body:
+            cmd.append("--freeze_body")
+        cmd.extend([
+            "--max_num_epochs", str(self.config.mace_finetuning_epochs),
+            "--lr", str(self.config.mace_learning_rate),
+        ])
 
-            cmd.extend([
-                "--max_num_epochs",
-                str(self.config.mace_finetuning_epochs),
-                "--lr",
-                str(self.config.mace_learning_rate),
-            ])
+        try:
+            subprocess.run(  # noqa: S603
+                cmd, check=True, capture_output=True, text=True, shell=False, timeout=self.config.timeout,
+            )
+        except subprocess.TimeoutExpired as e:
+            logging.exception(f"mace_run_train execution timed out after {self.config.timeout} seconds.")
+            msg = "mace_run_train execution timed out."
+            raise RuntimeError(msg) from e
+        except subprocess.CalledProcessError as e:
+            msg = f"mace_run_train execution failed: {e.stderr}"
+            raise RuntimeError(msg) from e
+        except FileNotFoundError as e:
+            msg = "mace_run_train executable not found in PATH."
+            raise RuntimeError(msg) from e
 
-            try:
-                _res: subprocess.CompletedProcess[str] = subprocess.run(  # noqa: S603
-                    cmd,
-                    check=True,
-                    capture_output=True,
-                    text=True,
-                    shell=False,
-                    timeout=self.config.timeout,
-                )
-            except subprocess.TimeoutExpired as e:
-                logging.exception(
-                    f"mace_run_train execution timed out after {self.config.timeout} seconds."
-                )
-                msg = "mace_run_train execution timed out."
-                raise RuntimeError(msg) from e
-            except subprocess.CalledProcessError as e:
-                msg = f"mace_run_train execution failed: {e.stderr}"
-                raise RuntimeError(msg) from e
-            except FileNotFoundError as e:
-                msg = "mace_run_train executable not found in PATH."
-                raise RuntimeError(msg) from e
+    def _extract_and_cleanup_mace_output(self, temp_dir: Path, resolved_out: Path) -> Path:
+        model_files = list(temp_dir.glob("*.model"))
+        if not model_files:
+            msg = "mace_run_train completed but failed to produce a .model file."
+            raise RuntimeError(msg)
 
-            # Typically MACE saves the model with a .model extension
-            # For simplicity, we assume we find one .model file or copy the entire output
-            model_files = list(temp_dir.glob("*.model"))
-            if not model_files:
-                msg = "mace_run_train completed but failed to produce a .model file."
-                raise RuntimeError(msg)
+        shutil.copy2(str(model_files[0]), str(resolved_out / "finetuned.model"))
 
-            shutil.copy2(str(model_files[0]), str(resolved_out / "finetuned.model"))
+        try:
+            shutil.rmtree(str(temp_dir), ignore_errors=False)
+        except PermissionError as e:
+            logging.warning(f"Could not fully remove temp directory {temp_dir}: {e}")
+        except Exception as e:
+            logging.warning(f"Error removing temp directory {temp_dir}: {e}")
 
-            # Cleanup is handled automatically by TemporaryDirectory,
-            # but we explicitly catch cleanup errors per system requirements.
-            try:
-                shutil.rmtree(str(temp_dir), ignore_errors=False)
-            except PermissionError as e:
-                logging.warning(f"Could not fully remove temp directory {temp_dir}: {e}")
-            except Exception as e:
-                logging.warning(f"Error removing temp directory {temp_dir}: {e}")
-
-            return resolved_out / "finetuned.model"
+        return resolved_out / "finetuned.model"

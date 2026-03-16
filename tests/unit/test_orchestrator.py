@@ -454,8 +454,7 @@ def test_cleanup_artifacts_idempotency(tmp_path: Path):
         project_root = tmp_path
 
     import sys
-    from unittest.mock import MagicMock
-    from src.core.exceptions import DynamicsHaltInterrupt
+
     sys.modules['pyacemaker'] = MagicMock()
     sys.modules['pyacemaker.calculator'] = MagicMock()
     orch = Orchestrator(DummyConfig())
@@ -521,6 +520,7 @@ def test_orchestrator_state_machine_transitions(tmp_path: Path, monkeypatch):
 
     import sys
     from unittest.mock import MagicMock
+
     from src.core.exceptions import DynamicsHaltInterrupt
     sys.modules['pyacemaker'] = MagicMock()
     sys.modules['pyacemaker.calculator'] = MagicMock()
