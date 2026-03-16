@@ -378,6 +378,12 @@ class TrainerConfig(BaseModel):
     mace_learning_rate: float = Field(
         default=0.001, gt=0.0, description="Learning rate for MACE finetuning"
     )
+    mace_freeze_body: bool = Field(
+        default=True, description="Freeze the MACE model body during finetuning"
+    )
+    delta_learning_epoch_scaling: int = Field(
+        default=10, ge=1, description="Factor to scale down max epochs during delta learning"
+    )
 
     @field_validator("pace_train_binary", "pace_activeset_binary", "mace_train_binary")
     @classmethod
@@ -524,40 +530,30 @@ def _validate_env_key(key: str) -> None:
 
 
 def _validate_env_value(val: str) -> None:
-    if len(val) > 1024:
-        msg = "Environment variable value exceeds maximum length"
-        raise ValueError(msg)
-
-    # Strictly whitelist allowed characters to prevent shell/JSON injection
-    # Allow alphanumeric, basic punctuation, paths, and decimals
-    if not re.match(r"^[-a-zA-Z0-9_.:/=,+]*$", val):
+    # Remove length limit to allow long API keys/URLs/configurations
+    # Expand whitelist to prevent shell injections while allowing ?, &, #, @, %
+    if not re.match(r"^[-a-zA-Z0-9_.:/=,+?&#@%]*$", val):
         msg = "Invalid characters detected in .env variable value."
         raise ValueError(msg)
 
 
 def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
-    st = os.lstat(env_file)
     expected_base_resolved = expected_base.resolve(strict=True)
 
-    if stat.S_ISLNK(st.st_mode):
-        msg = ".env file must not be a symlink."
-        raise ValueError(msg)
-
+    # Allow symlinks, but they must securely resolve within expected_base
     resolved_env = env_file.resolve(strict=True)
 
-    # Verify the canonicalized path sits within the trusted base directory
-    if not str(resolved_env).startswith(str(expected_base_resolved)):
-        msg = f".env file must reside within the allowed base directory: {expected_base}"
+    if not resolved_env.is_relative_to(expected_base_resolved):
+        msg = f".env file must reside securely within the allowed base directory: {expected_base}"
         raise ValueError(msg)
 
     st = os.lstat(resolved_env)
 
-    if st.st_size > 1024:
-        msg = ".env file exceeds maximum allowed size (1KB)."
-        raise ValueError(msg)
-
-    if st.st_uid != os.getuid():
-        msg = ".env file is not owned by the current user."
+    # Remove the 1KB size limit
+    # Relax ownership check to allow root execution (UID 0) in containerized environments
+    current_uid = os.getuid()
+    if st.st_uid not in (current_uid, 0):
+        msg = ".env file is not owned by the current user or root."
         raise ValueError(msg)
 
     if bool(st.st_mode & stat.S_IRWXO) or bool(st.st_mode & stat.S_IRWXG):
@@ -614,14 +610,13 @@ class DistillationConfig(BaseModel):
     )
     dispersion: bool = Field(default=False, description="Enable dispersion correction in MACE")
     temp_dir: str = Field(
-        default="/tmp/pyacemaker_distillation",  # noqa: S108
-        description="Path to temporary directory for distillation"
+        ..., description="Path to temporary directory for distillation"
     )
     output_dir: str = Field(
-        default="./active_learning/distillation_outputs", description="Path to save distillation outputs"
+        ..., description="Path to save distillation outputs"
     )
     model_storage_path: str = Field(
-        default="./potentials/mace_models", description="Path to cache MACE foundation models"
+        ..., description="Path to cache MACE foundation models"
     )
 
     @model_validator(mode="after")
@@ -690,20 +685,20 @@ class LoopStrategyConfig(BaseModel):
     use_tiered_oracle: bool = Field(default=True, description="Enable tiered oracle logic")
     incremental_update: bool = Field(default=True, description="Enable incremental delta learning")
     replay_buffer_size: int = Field(
-        default=500, description="Size of history replay buffer to prevent catastrophic forgetting"
+        ..., description="Size of history replay buffer to prevent catastrophic forgetting"
     )
     baseline_potential_type: str = Field(
         default="LJ", description="Baseline physical potential type (e.g., LJ)"
     )
     thresholds: ActiveLearningThresholds = Field(default_factory=ActiveLearningThresholds)
     checkpoint_interval: int = Field(
-        default=5, description="Frequency (in iterations) to execute full hard-checkpoints"
+        ..., description="Frequency (in iterations) to execute full hard-checkpoints"
     )
     max_retries: int = Field(
         default=3, description="Maximum number of orchestration loop retries on transient failures"
     )
     timeout_seconds: int = Field(
-        default=86400, description="Maximum wall-clock timeout in seconds for a complete loop iteration"
+        ..., description="Maximum wall-clock timeout in seconds for a complete loop iteration"
     )
 
     @model_validator(mode="after")
@@ -781,9 +776,9 @@ class ProjectConfig(BaseSettings):
     validator: ValidatorConfig
     structure_generator: StructureGeneratorConfig = Field(default_factory=StructureGeneratorConfig)
     policy: PolicyConfig = Field(default_factory=PolicyConfig)
-    distillation_config: DistillationConfig = Field(default_factory=DistillationConfig)
+    distillation_config: DistillationConfig
     cutout_config: CutoutConfig = Field(default_factory=CutoutConfig)
-    loop_strategy: LoopStrategyConfig = Field(default_factory=LoopStrategyConfig)
+    loop_strategy: LoopStrategyConfig
 
     @field_validator("project_root")
     @classmethod

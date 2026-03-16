@@ -22,12 +22,27 @@ class BinaryResolverMixin:
     def _validate_binary_properties(
         self, resolved_bin: Path, binary_name: str, trusted_dirs: list[str]
     ) -> None:
-        if not resolved_bin.is_file() or not os.access(resolved_bin, os.X_OK):
+        import stat
+
+        # Use os.lstat to avoid TOCTOU if symlinks are swapped
+        try:
+            st = os.lstat(resolved_bin)
+        except OSError as e:
+            msg = f"Binary not found or inaccessible: {resolved_bin}"
+            raise ValueError(msg) from e
+
+        if stat.S_ISLNK(st.st_mode):
+            msg = f"Binary path resolves to a symlink unexpectedly: {resolved_bin}"
+            raise ValueError(msg)
+
+        if not stat.S_ISREG(st.st_mode) or not os.access(resolved_bin, os.X_OK):
             msg = f"Binary is not an executable file: {resolved_bin}"
             raise ValueError(msg)
+
         if resolved_bin.name != binary_name:
             msg = f"Resolved binary name must be '{binary_name}', got '{resolved_bin.name}'"
             raise ValueError(msg)
+
         is_trusted = False
         for trusted_path in trusted_dirs:
             try:
@@ -38,27 +53,18 @@ class BinaryResolverMixin:
             except OSError:
                 continue
         if not is_trusted:
-            msg = f"Resolved binary must reside in a trusted directory: {resolved_bin}"
+            msg = f"Resolved binary must reside securely in a trusted directory: {resolved_bin}"
             raise ValueError(msg)
 
     def _resolve_absolute_binary(
         self, binary_setting: str, binary_name: str, trusted_dirs: list[str]
     ) -> str:
-        canonical_bin = Path(binary_setting).resolve(strict=True)
-
-        in_trusted_dir = False
-        for td in trusted_dirs:
-            try:
-                canonical_td = Path(td).resolve(strict=True)
-                if str(canonical_bin).startswith(str(canonical_td)):
-                    in_trusted_dir = True
-                    break
-            except (OSError, ValueError):
-                continue
-
-        if not in_trusted_dir:
-            msg = "Resolved binary path is not securely within trusted directories."
+        # Detect symlinks before strict resolution
+        if Path(binary_setting).is_symlink():
+            msg = "Absolute binary path cannot be a symlink."
             raise ValueError(msg)
+
+        canonical_bin = Path(binary_setting).resolve(strict=True)
 
         self._validate_binary_properties(canonical_bin, binary_name, trusted_dirs)
         self._verify_hash(canonical_bin, binary_name)
@@ -75,21 +81,12 @@ class BinaryResolverMixin:
         if resolved_which is None:
             return binary_setting
 
-        canonical_bin = Path(resolved_which).resolve(strict=True)
-
-        in_trusted_dir = False
-        for td in trusted_dirs:
-            try:
-                canonical_td = Path(td).resolve(strict=True)
-                if str(canonical_bin).startswith(str(canonical_td)):
-                    in_trusted_dir = True
-                    break
-            except (OSError, ValueError):
-                continue
-
-        if not in_trusted_dir:
-            msg = "Resolved binary path is not securely within trusted directories."
+        # Detect symlinks before strict resolution
+        if Path(resolved_which).is_symlink():
+            msg = "Resolved relative binary path cannot be a symlink."
             raise ValueError(msg)
+
+        canonical_bin = Path(resolved_which).resolve(strict=True)
 
         self._validate_binary_properties(canonical_bin, binary_name, trusted_dirs)
         self._verify_hash(canonical_bin, binary_name)

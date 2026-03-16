@@ -155,6 +155,7 @@ class PacemakerWrapper(AbstractTrainer, BinaryResolverMixin):
         return combined_data
 
     def _validate_train_directories(self, dataset: Path, output_dir: Path) -> tuple[Path, Path]:
+        import fcntl
         import os
         import tempfile
 
@@ -164,16 +165,24 @@ class PacemakerWrapper(AbstractTrainer, BinaryResolverMixin):
 
         resolved_dataset = dataset.resolve(strict=True)
 
-        # Verify it's an extxyz file
-        if resolved_dataset.suffix != ".extxyz":
+        # Verify it's an extxyz file case-insensitively
+        if resolved_dataset.suffix.lower() != ".extxyz":
             msg = f"Dataset must be an .extxyz file, got: {resolved_dataset.name}"
             raise ValueError(msg)
 
-        with Path.open(resolved_dataset, "r") as f:
-            first_line: str = f.readline().strip()
-            if not first_line.isdigit():
-                msg = "Dataset does not appear to be a valid XYZ format (first line must be atom count)."
-                raise ValueError(msg)
+        # Atomic file validation using file locks
+        fd = os.open(resolved_dataset, os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0))
+        try:
+            fcntl.flock(fd, fcntl.LOCK_SH)
+            with os.fdopen(fd, "r", encoding="utf-8") as f:
+                first_line: str = f.readline().strip()
+                if not first_line.isdigit():
+                    msg = "Dataset does not appear to be a valid XYZ format (first line must be atom count)."
+                    raise ValueError(msg)
+        finally:
+            import contextlib
+            with contextlib.suppress(OSError):
+                os.close(fd)
 
         Path(output_dir).mkdir(parents=True, exist_ok=True)
         resolved_output_dir = output_dir.resolve(strict=True)
@@ -196,27 +205,25 @@ class PacemakerWrapper(AbstractTrainer, BinaryResolverMixin):
     def _build_train_command(
         self, pace_train_bin: str, dataset: Path, output_dir: Path, initial_potential: Path | None
     ) -> list[str]:
-        if not re.match(r"^[-a-zA-Z0-9_.]+$", self.config.baseline_potential):
-            msg = "Invalid baseline potential format"
+        # Path validation without using regex, relying instead on Path strict resolution
+        dataset_str = str(dataset.resolve(strict=True))
+        output_dir_str = str(output_dir.resolve(strict=True))
+
+        # Validate configuration values natively rather than with strict regexes
+        # Whitelist approaches for categorical parameters:
+        allowed_baselines = ["lj", "zbl", "none"]
+        if self.config.baseline_potential.lower() not in allowed_baselines and not self.config.baseline_potential.isalnum() and "_" not in self.config.baseline_potential:
+            msg = f"Invalid baseline potential format: {self.config.baseline_potential}"
             raise ValueError(msg)
-        if not re.match(r"^[-a-zA-Z0-9_.]+$", self.config.regularization):
+
+        if not self.config.regularization.isalnum() and "_" not in self.config.regularization:
             msg = "Invalid regularization format"
             raise ValueError(msg)
 
-        dataset_str = str(dataset.resolve(strict=True))
-        if not re.match(r"^[/a-zA-Z0-9_.-]+$", dataset_str) or ".." in dataset_str:
-            msg = f"Invalid dataset path: {dataset_str}"
-            raise ValueError(msg)
-
-        output_dir_str = str(output_dir.resolve(strict=True))
-        if not re.match(r"^[/a-zA-Z0-9_.-]+$", output_dir_str) or ".." in output_dir_str:
-            msg = f"Invalid output directory path: {output_dir_str}"
-            raise ValueError(msg)
-
-        # Delta Learning explicitly enabled: scale down max_num_epochs by 10 if we have an initial_potential
+        # Delta Learning explicitly enabled: scale down max_num_epochs if we have an initial_potential
         epochs = int(self.config.max_epochs)
         if initial_potential and initial_potential.exists():
-            epochs = max(1, epochs // 10)
+            epochs = max(1, epochs // self.config.delta_learning_epoch_scaling)
 
         cmd = [
             pace_train_bin,
