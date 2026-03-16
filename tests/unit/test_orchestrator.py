@@ -29,7 +29,7 @@ def test_orchestrator_oracle_convergence_error(
 
     from ase import Atoms
 
-    from src.core import AbstractOracle
+    from src.core import BaseOracle
     from src.core.exceptions import OracleConvergenceError
 
     monkeypatch.setitem(
@@ -37,7 +37,7 @@ def test_orchestrator_oracle_convergence_error(
     )
     orch = Orchestrator(mock_project_config)
 
-    class FailingOracle(AbstractOracle):
+    class FailingOracle(BaseOracle):
         def compute_batch(self, structures: list[Atoms], calc_dir: Path) -> list[Atoms]:
             msg = "Mocked SCF failure"
             raise OracleConvergenceError(msg)
