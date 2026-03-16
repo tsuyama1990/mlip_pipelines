@@ -154,13 +154,26 @@ def _(Path, TrainerConfig, FinetuneManager, Atoms, subprocess, mo):
         # We must mock subprocess.run to intercept the command and avoid actually running mace
         _executed_cmd = []
 
+        class _MockProcess:
+            def __init__(self, args, returncode, stdout, stderr) -> None:
+                self.args = args
+                self.returncode = returncode
+                self.stdout = stdout
+                self.stderr = stderr
+
         def _mock_subprocess_run(cmd, *args, **kwargs):
             _executed_cmd.extend(cmd)
-            # Create a dummy model file to satisfy output validation
+
             _out_dir_arg_idx = cmd.index("--output_dir") + 1
             _temp_dir = Path(cmd[_out_dir_arg_idx])
+
+            _in_idx = cmd.index("--train_file") + 1
+            _in_file = Path(cmd[_in_idx])
+            if not _in_file.exists():
+                return _MockProcess(args=cmd, returncode=1, stdout="", stderr="File missing")
+
             (_temp_dir / "model.model").write_text("mock")
-            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+            return _MockProcess(args=cmd, returncode=0, stdout="Success", stderr="")
 
         with _patch("subprocess.run", side_effect=_mock_subprocess_run):
             with _patch.object(_finetune_mgr, "_resolve_binary_path", return_value="mace_run_train"):
@@ -228,16 +241,23 @@ def _(Path, TrainerConfig, FinetuneManager, Atoms, subprocess, shutil, logging, 
         _config_ext = TrainerConfig(trusted_directories=[], mace_train_binary="mace_run_train")
         _finetune_mgr = FinetuneManager(_config_ext)
 
-        def _mock_subprocess_run(cmd, *args, **kwargs):
+        class _MockProcessClean:
+            def __init__(self, args, returncode, stdout, stderr) -> None:
+                self.args = args
+                self.returncode = returncode
+                self.stdout = stdout
+                self.stderr = stderr
+
+        def _mock_subprocess_run_clean(cmd, *args, **kwargs):
             _out_dir_arg_idx = cmd.index("--output_dir") + 1
             _temp_dir = Path(cmd[_out_dir_arg_idx])
             (_temp_dir / "model.model").write_text("mock")
-            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+            return _MockProcessClean(args=cmd, returncode=0, stdout="Success", stderr="")
 
         # GIVEN the orchestrator has passed the final updated potential back
         # WHEN the FinetuneManager attempts to clean up its temporary HDF5 PyTorch datasets
         # AND shutil.rmtree raises a PermissionError
-        with _patch("subprocess.run", side_effect=_mock_subprocess_run):
+        with _patch("subprocess.run", side_effect=_mock_subprocess_run_clean):
             with _patch.object(_finetune_mgr, "_resolve_binary_path", return_value="mace_run_train"):
                 with _patch("shutil.rmtree", side_effect=PermissionError("Mock Permission Denied")):
                     with _patch("logging.warning") as _mock_warning:

@@ -18,6 +18,25 @@ class FinetuneManager(BinaryResolverMixin):
     def __init__(self, config: TrainerConfig) -> None:
         self.config = config
 
+    def _validate_output_path(self, output_path: Path) -> Path:
+        if not output_path.exists():
+            output_path.mkdir(parents=True, exist_ok=True)
+
+        resolved_out = output_path.resolve(strict=True)
+
+        if hasattr(self.config, "project_root"):
+            proj_root = Path(self.config.project_root).resolve(strict=True)
+            tmp_root = Path(tempfile.gettempdir()).resolve(strict=True)
+            if not str(resolved_out).startswith(str(proj_root)) and not str(resolved_out).startswith(str(tmp_root)):
+                msg = f"output_path is outside the trusted base directory or temp dir: {resolved_out}"
+                raise ValueError(msg)
+
+        if not os.access(resolved_out, os.W_OK):
+            msg = f"output_path is not writable: {resolved_out}"
+            raise PermissionError(msg)
+
+        return resolved_out
+
     def finetune_mace(
         self, structures: list[Atoms], model_path: str, output_path: Path
     ) -> Path:
@@ -26,13 +45,7 @@ class FinetuneManager(BinaryResolverMixin):
             self.config.mace_train_binary, "mace_run_train"
         )
 
-        resolved_out = Path(os.path.realpath(output_path))
-        if not resolved_out.exists():
-            resolved_out.mkdir(parents=True, exist_ok=True)
-
-        if not os.access(resolved_out, os.W_OK):
-            msg = f"output_path is not writable: {resolved_out}"
-            raise PermissionError(msg)
+        resolved_out = self._validate_output_path(output_path)
 
         temp_dir = Path(tempfile.mkdtemp(prefix="pyacemaker_mace_"))
         try:

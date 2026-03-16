@@ -529,24 +529,24 @@ def _validate_env_value(val: str) -> None:
         raise ValueError(msg)
 
     # Strictly whitelist allowed characters to prevent shell/JSON injection
-    if not re.match(r"^[-a-zA-Z0-9_]+$", val):
+    # Allow alphanumeric, basic punctuation, paths, and decimals
+    if not re.match(r"^[-a-zA-Z0-9_.:/=,+]*$", val):
         msg = "Invalid characters detected in .env variable value."
         raise ValueError(msg)
 
 
 def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
     st = os.lstat(env_file)
+    expected_base_resolved = expected_base.resolve(strict=True)
+
     if stat.S_ISLNK(st.st_mode):
-        target = Path(env_file).readlink()
-        resolved_target = Path(os.path.realpath(env_file.parent / target))
-        if not str(resolved_target).startswith(str(expected_base.resolve(strict=True))):
-            msg = f".env symlink target must reside securely within the allowed base directory: {expected_base}"
-            raise ValueError(msg)
+        msg = ".env file must not be a symlink."
+        raise ValueError(msg)
 
     resolved_env = env_file.resolve(strict=True)
 
     # Verify the canonicalized path sits within the trusted base directory
-    if not str(resolved_env).startswith(str(expected_base.resolve(strict=True))):
+    if not str(resolved_env).startswith(str(expected_base_resolved)):
         msg = f".env file must reside within the allowed base directory: {expected_base}"
         raise ValueError(msg)
 

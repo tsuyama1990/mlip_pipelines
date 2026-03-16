@@ -84,12 +84,25 @@ def test_finetune_mace_permission_error_cleanup(mock_rmtree, finetune_manager, t
     structures = [Atoms("Fe", positions=[(0, 0, 0)])]
     output_path = tmp_path / "output_model"
 
+    class MockProcess:
+        def __init__(self, args, returncode, stdout, stderr) -> None:
+            self.args = args
+            self.returncode = returncode
+            self.stdout = stdout
+            self.stderr = stderr
+
     def mock_run(cmd, *args, **kwargs):
-        # We must create a mock output model file in the temp dir so the manager finds it
         out_dir_idx = cmd.index("--output_dir") + 1
         temp_dir = Path(cmd[out_dir_idx])
+
+        in_idx = cmd.index("--train_file") + 1
+        in_file = Path(cmd[in_idx])
+        if not in_file.exists():
+            return MockProcess(cmd, 1, "", "Missing input file")
+
+        # Simulate proper model output
         (temp_dir / "mock.model").write_text("model weights")
-        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+        return MockProcess(cmd, 0, "Success", "")
 
     monkeypatch.setattr(subprocess, "run", mock_run)
 

@@ -162,7 +162,7 @@ class PacemakerWrapper(AbstractTrainer, BinaryResolverMixin):
             msg = f"Dataset not found: {dataset}"
             raise FileNotFoundError(msg)
 
-        resolved_dataset = Path(os.path.realpath(str(dataset)))
+        resolved_dataset = dataset.resolve(strict=True)
 
         # Verify it's an extxyz file
         if resolved_dataset.suffix != ".extxyz":
@@ -176,11 +176,11 @@ class PacemakerWrapper(AbstractTrainer, BinaryResolverMixin):
                 raise ValueError(msg)
 
         Path(output_dir).mkdir(parents=True, exist_ok=True)
-        resolved_output_dir = Path(os.path.realpath(str(output_dir)))
+        resolved_output_dir = output_dir.resolve(strict=True)
 
         if hasattr(self.config, "project_root"):
-            proj_root = Path(os.path.realpath(str(self.config.project_root)))
-            tmp_root = Path(os.path.realpath(str(tempfile.gettempdir())))
+            proj_root = Path(self.config.project_root).resolve(strict=True)
+            tmp_root = Path(tempfile.gettempdir()).resolve(strict=True)
             if not str(resolved_output_dir).startswith(str(proj_root)) and not str(
                 resolved_output_dir
             ).startswith(str(tmp_root)):

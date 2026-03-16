@@ -44,12 +44,12 @@ class BinaryResolverMixin:
     def _resolve_absolute_binary(
         self, binary_setting: str, binary_name: str, trusted_dirs: list[str]
     ) -> str:
-        canonical_bin = Path(os.path.realpath(binary_setting))
+        canonical_bin = Path(binary_setting).resolve(strict=True)
 
         in_trusted_dir = False
         for td in trusted_dirs:
             try:
-                canonical_td = Path(os.path.realpath(str(td)))
+                canonical_td = Path(td).resolve(strict=True)
                 if str(canonical_bin).startswith(str(canonical_td)):
                     in_trusted_dir = True
                     break
@@ -75,12 +75,12 @@ class BinaryResolverMixin:
         if resolved_which is None:
             return binary_setting
 
-        canonical_bin = Path(os.path.realpath(resolved_which))
+        canonical_bin = Path(resolved_which).resolve(strict=True)
 
         in_trusted_dir = False
         for td in trusted_dirs:
             try:
-                canonical_td = Path(os.path.realpath(str(td)))
+                canonical_td = Path(td).resolve(strict=True)
                 if str(canonical_bin).startswith(str(canonical_td)):
                     in_trusted_dir = True
                     break

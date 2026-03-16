@@ -38,17 +38,28 @@ def test_select_local_active_set(monkeypatch: pytest.MonkeyPatch) -> None:
     from collections.abc import Sequence
     from typing import Any
 
-    def mock_run(cmd: Sequence[str], *args: Any, **kwargs: Any) -> subprocess.CompletedProcess[Any]:
-        # Mocking pace_activeset to write a dummy file.
-        # In the builder, out_file is the 4th item because of quotes: ['pace_activeset', '--input', "'input_path'", '--output', "'output_path'", '--n', "'5'"]
-        # To be robust, search for '--output'
+    class MockProcess:
+        def __init__(self, args: Any, returncode: int, stdout: str, stderr: str) -> None:
+            self.args = args
+            self.returncode = returncode
+            self.stdout = stdout
+            self.stderr = stderr
+
+    def mock_run(cmd: Sequence[str], *args: Any, **kwargs: Any) -> MockProcess:
+        # Mocking pace_activeset to properly simulate subprocess behavior and write dummy files
         out_idx = cmd.index("--output") + 1
         out_file = Path(cmd[out_idx].strip("'\""))
-        from ase.io import write
 
-        # Write dummy
+        # Simulate pace_activeset input validation
+        in_idx = cmd.index("--input") + 1
+        in_file = Path(cmd[in_idx].strip("'\""))
+        if not in_file.exists():
+            return MockProcess(args=cmd, returncode=1, stdout="", stderr="Input file not found")
+
+        from ase.io import write
         write(str(out_file), [anchor, *candidates[:4]], format="extxyz")
-        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+        return MockProcess(args=cmd, returncode=0, stdout="Success", stderr="")
 
     monkeypatch.setattr(subprocess, "run", mock_run)
 
