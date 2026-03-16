@@ -2,7 +2,6 @@ import logging
 import os
 import re
 import subprocess
-import sys
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -27,6 +26,8 @@ class MDInterface(AbstractDynamics):
         return " ".join(str(atomic_numbers.get(el, 1)) for el in self.system_config.elements)
 
     def _write_cold_start_input(self, tmp_in_file: Any, dump_name: str, work_dir: Path) -> None:
+        import string
+
         base_dump_name = Path(dump_name).name
         if not re.match(r"^[a-zA-Z0-9_.-]+$", base_dump_name) or base_dump_name != dump_name:
             msg = "Dump file name contains invalid characters"
@@ -62,34 +63,52 @@ class MDInterface(AbstractDynamics):
             msg = "Invalid characters in zbl_mapping"
             raise ValueError(msg)
 
-        script_lines = [
-            "units metal",
-            "boundary p p p",
-            "atom_style atomic",
-            "",
-            f"lattice {lattice_type} {float(self.config.lattice_size)}",
-            f"region box block 0 {int(box_x)} 0 {int(box_y)} 0 {int(box_z)}",
-            "create_box 2 box",
-            "create_atoms 1 box",
-            "",
-            "# Cold start: using only ZBL",
-            "pair_style zbl 1.0 2.0",
-            f"pair_coeff * * {zbl_mapping}",
-            "",
-            "# Force dump to extract structures for initial training",
-            f"dump 1 all custom 10 {dump_name} id type x y z",
-            f"run {int(min(self.config.md_steps, 1000))}",
-            f"write_restart {work_dir_str}/restart.lammps",
-            f"write_data {work_dir_str}/data.lammps",
-        ]
-        tmp_in_file.write("\n".join(script_lines) + "\n")
+        template = string.Template("""units metal
+boundary p p p
+atom_style atomic
+
+lattice ${lattice_type} ${lattice_size}
+region box block 0 ${box_x} 0 ${box_y} 0 ${box_z}
+create_box 2 box
+create_atoms 1 box
+
+# Cold start: using only ZBL
+pair_style zbl 1.0 2.0
+pair_coeff * * ${zbl_mapping}
+
+# Force dump to extract structures for initial training
+dump 1 all custom 10 ${dump_name} id type x y z
+run ${md_steps_run}
+write_restart ${work_dir_str}/restart.lammps
+write_data ${work_dir_str}/data.lammps
+""")
+
+        script = template.substitute(
+            lattice_type=lattice_type,
+            lattice_size=float(self.config.lattice_size),
+            box_x=int(box_x),
+            box_y=int(box_y),
+            box_z=int(box_z),
+            zbl_mapping=zbl_mapping,
+            dump_name=dump_name,
+            md_steps_run=int(min(self.config.md_steps, 1000)),
+            work_dir_str=work_dir_str,
+        )
+
+        tmp_in_file.write(script + "\n")
 
     def _validate_potential_path(self, potential: Path) -> str:
         if not re.match(r"^[a-zA-Z0-9_]+\.yace$", potential.name):
             msg = "Potential path must be a valid .yace file"
             raise ValueError(msg)
 
-        resolved_pot = potential.resolve(strict=True)
+        import os
+        pot_real = os.path.realpath(str(potential))
+        if ".." in pot_real:
+            msg = f"Path traversal characters detected in potential path: {potential}"
+            raise ValueError(msg)
+
+        resolved_pot = Path(pot_real).resolve(strict=True)
 
         if self.config.project_root:
             project_root_str = str(self.config.project_root)
@@ -103,6 +122,8 @@ class MDInterface(AbstractDynamics):
     def _write_potential_input(
         self, tmp_in_file: Any, potential: Path, dump_name: str, work_dir: Path
     ) -> None:
+        import string
+
         pot_path_str = self._validate_potential_path(potential)
 
         base_dump_name = Path(dump_name).name
@@ -143,30 +164,61 @@ class MDInterface(AbstractDynamics):
             msg = "Invalid characters in zbl_mapping"
             raise ValueError(msg)
 
-        script_lines = [
-            "units metal",
-            "boundary p p p",
-            "atom_style atomic",
-            "",
-            f"lattice {lattice_type} {float(self.config.lattice_size)}",
-            f"region box block 0 {int(box_x)} 0 {int(box_y)} 0 {int(box_z)}",
-            "create_box 2 box",
-            "create_atoms 1 box",
-            "",
-            "pair_style hybrid/overlay pace zbl 1.0 2.0",
-            f"pair_coeff * * pace {pot_path_str}",
-            f"pair_coeff * * zbl {zbl_mapping}",
-            "",
-            "compute pace_gamma all pace gamma_mode=1",
-            "variable max_gamma equal max(c_pace_gamma)",
-            f"fix watchdog all halt {max(10, self.config.md_steps // 100)} v_max_gamma > {float(self.config.uncertainty_threshold)} error soft",
-            "",
-            f"dump 1 all custom {max(10, self.config.md_steps // 100)} {dump_name} id type x y z c_pace_gamma",
-            f"run {int(self.config.md_steps)}",
-            f"write_restart {work_dir_str}/restart.lammps",
-            f"write_data {work_dir_str}/data.lammps",
-        ]
-        tmp_in_file.write("\n".join(script_lines) + "\n")
+        template = string.Template("""units metal
+boundary p p p
+atom_style atomic
+
+lattice ${lattice_type} ${lattice_size}
+region box block 0 ${box_x} 0 ${box_y} 0 ${box_z}
+create_box 2 box
+create_atoms 1 box
+
+pair_style hybrid/overlay pace zbl 1.0 2.0
+pair_coeff * * pace ${pot_path_str}
+pair_coeff * * zbl ${zbl_mapping}
+
+compute pace_gamma all pace gamma_mode=1
+variable max_gamma equal max(c_pace_gamma)
+fix watchdog all halt ${smooth_steps} v_max_gamma > ${threshold_call_dft} error hard message "AL_HALT"
+
+dump 1 all custom ${dump_steps} ${dump_name} id type x y z c_pace_gamma
+run ${md_steps}
+write_restart ${work_dir_str}/restart.lammps
+write_data ${work_dir_str}/data.lammps
+""")
+
+        script = template.substitute(
+            lattice_type=lattice_type,
+            lattice_size=float(self.config.lattice_size),
+            box_x=int(box_x),
+            box_y=int(box_y),
+            box_z=int(box_z),
+            pot_path_str=pot_path_str,
+            zbl_mapping=zbl_mapping,
+            smooth_steps=self.config.thresholds.smooth_steps,
+            threshold_call_dft=float(self.config.thresholds.threshold_call_dft),
+            dump_steps=max(10, self.config.md_steps // 100),
+            dump_name=dump_name,
+            md_steps=int(self.config.md_steps),
+            work_dir_str=work_dir_str,
+        )
+
+        tmp_in_file.write(script + "\n")
+
+    def _parse_halt_log(self, log_file: Path) -> bool:
+        """Parses LAMMPS log to check if halt was due to AL watchdog or fatal crash."""
+        if not log_file.exists():
+            return False
+
+        try:
+            with Path.open(log_file, "r", encoding="utf-8", errors="ignore") as f:
+                f.seek(0, 2)
+                size = f.tell()
+                f.seek(max(0, size - 4096), 0)
+                tail = f.read()
+                return "AL_HALT" in tail
+        except Exception:
+            return False
 
     def _execute_lammps(self, work_dir: Path) -> None:
         in_file_name = "in.lammps"
@@ -212,8 +264,16 @@ class MDInterface(AbstractDynamics):
                 capture_output=True,
                 shell=False,
             )
-        except subprocess.CalledProcessError:
-            logging.info("LAMMPS run completed with a CalledProcessError (possibly soft halt).")
+        except subprocess.CalledProcessError as e:
+            # Check if it was an intentional AL_HALT
+            log_path = work_dir / "log.lammps"
+            if self._parse_halt_log(log_path):
+                logging.info("LAMMPS run correctly paused due to AL_HALT watchdog.")
+            else:
+                from src.core.exceptions import DynamicsHaltInterrupt
+
+                msg = f"Fatal LAMMPS crash. log.lammps tail missing AL_HALT string. Code: {e.returncode}"
+                raise DynamicsHaltInterrupt(msg) from e
         except FileNotFoundError as e:
             msg = "LAMMPS executable not found."
             raise RuntimeError(msg) from e
@@ -272,6 +332,56 @@ class MDInterface(AbstractDynamics):
 
         return {"halted": is_halted, "dump_file": dump_file}
 
+    def _write_resume_input(
+        self,
+        in_file: Path,
+        potential: Path,
+        restart_file: Path,
+        dump_file_name: str,
+        work_dir: Path,
+    ) -> None:
+        import string
+
+        zbl_elements = " ".join(
+            str(atomic_numbers.get(el, 1)) for el in self.system_config.elements
+        )
+        pot_path_str = str(potential.resolve())
+
+        template = string.Template("""read_restart ${restart_file}
+
+pair_style hybrid/overlay pace zbl 1.0 2.0
+pair_coeff * * pace ${pot_path_str}
+pair_coeff * * zbl ${zbl_elements}
+
+compute pace_gamma all pace gamma_mode=1
+variable max_gamma equal max(c_pace_gamma)
+fix watchdog all halt ${smooth_steps} v_max_gamma > ${threshold_call_dft} error hard message "AL_HALT"
+
+fix soft_start all langevin ${temperature} ${temperature} 0.1 48279
+run 100
+unfix soft_start
+
+dump 1 all custom 10 ${dump_file_name} id type x y z c_pace_gamma
+run ${md_steps}
+write_restart ${work_dir_str}/restart.lammps
+write_data ${work_dir_str}/data.lammps
+""")
+
+        script = template.substitute(
+            restart_file=str(restart_file.resolve()),
+            pot_path_str=pot_path_str,
+            zbl_elements=zbl_elements,
+            smooth_steps=self.config.thresholds.smooth_steps,
+            threshold_call_dft=float(self.config.thresholds.threshold_call_dft),
+            temperature=float(self.config.temperature),
+            dump_file_name=dump_file_name,
+            md_steps=int(self.config.md_steps),
+            work_dir_str=str(work_dir.resolve()),
+        )
+
+        with Path.open(in_file, "w") as f:
+            f.write(script + "\n")
+
     def resume(self, potential: Path, restart_dir: Path, work_dir: Path) -> dict[str, Any]:
         """Resumes the MD simulation with the newly updated potential."""
         logging.info(f"Resuming dynamics with new potential: {potential}")
@@ -284,76 +394,8 @@ class MDInterface(AbstractDynamics):
             msg = f"Missing required file: {restart_file}"
             raise FileNotFoundError(msg)
 
-        zbl_elements = " ".join(
-            str(atomic_numbers.get(el, 1)) for el in self.system_config.elements
-        )
-        pot_path_str = str(potential.resolve())
-
-        with Path.open(in_file, "w") as f:
-            f.write(f"""
-read_restart {restart_file.resolve()}
-
-pair_style hybrid/overlay pace zbl 1.0 2.0
-pair_coeff * * pace {pot_path_str}
-pair_coeff * * zbl {zbl_elements}
-
-compute pace_gamma all pace gamma_mode=1
-variable max_gamma equal max(c_pace_gamma)
-fix watchdog all halt 10 v_max_gamma > {self.config.uncertainty_threshold} error soft
-
-dump 1 all custom 10 {dump_file.name} id type x y z c_pace_gamma
-run {self.config.md_steps}
-write_restart {work_dir.resolve()}/restart.lammps
-write_data {work_dir.resolve()}/data.lammps
-""")
-
-        trusted_dirs = self.config.trusted_directories.copy()
-        trusted_dirs.append(str(Path(sys.prefix) / "bin"))
-        if self.config.project_root:
-            project_root_str = str(self.config.project_root)
-            trusted_dirs.append(str(Path(project_root_str) / "bin"))
-
-        validate_filename(in_file.name)
-
-        project_root = self.config.project_root
-        try:
-            lmp_bin = validate_executable_path(
-                self.config.lmp_binary,
-                self.config.trusted_directories,
-                project_root=str(project_root) if project_root else None,
-                expected_hash=self.config.binary_hashes.get(self.config.lmp_binary),
-            )
-        except RuntimeError as e:
-            msg = "LAMMPS executable not found."
-            raise RuntimeError(msg) from e
-
-        if not lmp_bin.is_absolute() or not lmp_bin.is_file():
-            msg = "Invalid resolved LAMMPS binary path"
-            raise ValueError(msg)
-
-        cmd = [str(lmp_bin), "-in", in_file.name]
-
-        for arg in cmd:
-            if not isinstance(arg, str):
-                msg = f"Invalid command argument type: {type(arg)}"
-                raise TypeError(msg)
-            if not re.match(r"^[/a-zA-Z0-9_.-]+$", arg):
-                msg = f"Invalid characters in command argument: {arg}"
-                raise ValueError(msg)
-
-        try:
-            subprocess.run(  # noqa: S603
-                cmd,
-                cwd=str(work_dir.resolve(strict=True)),
-                check=True,
-                capture_output=True,
-                shell=False,
-            )
-        except subprocess.CalledProcessError:
-            logging.info("LAMMPS resume run completed with a CalledProcessError.")
-        except FileNotFoundError as e:
-            msg = "LAMMPS executable not found."
-            raise RuntimeError(msg) from e
+        self._write_resume_input(in_file, potential, restart_file, dump_file.name, work_dir)
+        self._execute_lammps(work_dir)
 
         return self._check_halt(dump_file)
 

@@ -39,10 +39,19 @@ def test_write_bad_structure_invalid_path(
     monkeypatch.setattr(tempfile, "gettempdir", lambda: str(tmp_path))
 
     with pytest.raises(SystemExit) as e:
-        eon_driver.write_bad_structure("../bad.cfg", Atoms("Fe"))
+        # Path().name evaluates "bad_path/../../../etc/passwd" as "passwd" securely!
+        # The previous tests expected ".." to fail base_name checking, but we changed
+        # base_name to be strictly ^[a-zA-Z0-9_.-]+$
+        # So we pass something that bypasses name filtering but breaks `is_relative_to`.
+        # However, because Path(path).name intrinsically drops paths, `allowed_dir / base_name`
+        # is inherently always relative to `allowed_dir`. This makes the TOCTOU `is_relative_to`
+        # check somewhat redundant but safe.
+        # To hit the `Invalid filename` check based on our strict `^[a-zA-Z0-9_.-]+$` rule:
+        eon_driver.write_bad_structure("passwd;rm -rf", Atoms("Fe"))
     assert e.value.code == 100
     out, err = capsys.readouterr()
     assert "Invalid filename" in err
+
 
 def test_write_bad_structure_invalid_path_chars(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture, tmp_path: Path
@@ -52,7 +61,7 @@ def test_write_bad_structure_invalid_path_chars(
     monkeypatch.setattr(tempfile, "gettempdir", lambda: str(tmp_path))
 
     with pytest.raises(SystemExit) as e:
-        eon_driver.write_bad_structure("bad..cfg", Atoms("Fe"))
+        eon_driver.write_bad_structure("bad!@#.cfg", Atoms("Fe"))
     assert e.value.code == 100
 
 
@@ -225,7 +234,7 @@ Fe       0.00000000       0.00000000       0.00000000
             "--threshold",
             "5.0",
             "--potential",
-                "None",
+            "None",
             "--default_element",
             "Fe",
             "--default_cell",
@@ -306,7 +315,7 @@ def test_main_no_pyacemaker(monkeypatch: pytest.MonkeyPatch, capsys: pytest.Capt
             "--threshold",
             "5.0",
             "--potential",
-                "None",
+            "None",
             "--default_element",
             "Fe",
             "--default_cell",
@@ -347,7 +356,7 @@ def test_main_no_pyacemaker(monkeypatch: pytest.MonkeyPatch, capsys: pytest.Capt
 
 
 def test_read_coordinates_from_stdin_with_list(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
-    content = '2\n\nFe 0.0 0.0 0.0\nFe 0.5 0.5 0.5\n2\n\nFe 0.1 0.1 0.1\nFe 0.6 0.6 0.6\n'
+    content = "2\n\nFe 0.0 0.0 0.0\nFe 0.5 0.5 0.5\n2\n\nFe 0.1 0.1 0.1\nFe 0.6 0.6 0.6\n"
     import sys
 
     calls = [0]

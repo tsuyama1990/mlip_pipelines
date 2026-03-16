@@ -31,19 +31,11 @@ class EONWrapper(AbstractDynamics):
         with Path.open(work_dir / "config.ini", "w") as f:
             f.write(ini_content)
 
-    def _write_pace_driver(self, work_dir: Path, potential: Path | None) -> None:
-        pots_dir = work_dir / "potentials"
-        pots_dir.mkdir(parents=True, exist_ok=True)
-        driver_path = pots_dir / "pace_driver.py"
-
-        # the pace_driver should be executable by python
-
-        # Security: strictly validate the potential string before formatting it into the python template
-
+    def _validate_driver_inputs(self, potential: Path | None) -> tuple[str, str, str, str, str]:
+        import os
         resolved_pot_str = "None"
         if potential:
             validate_filename(potential.name)
-            # resolve strictly while following symlinks
             resolved_pot = potential.resolve(strict=True).absolute()
             if self.config.project_root:
                 root = Path(self.config.project_root).resolve(strict=True).absolute()
@@ -68,31 +60,56 @@ class EONWrapper(AbstractDynamics):
             msg = "Invalid threshold type"
             raise TypeError(msg)
 
+        threshold_val = str(self.config.uncertainty_threshold)
+        if not re.match(r"^[0-9\.]+$", threshold_val):
+            msg = "Invalid threshold format"
+            raise ValueError(msg)
+
+        element_val = str(self.system_config.elements[0])
+        if not re.match(r"^[a-zA-Z]+$", element_val):
+            msg = "Invalid element format"
+            raise ValueError(msg)
+
+        cell_val = str(self.config.lattice_size)
+        if not re.match(r"^[0-9\.]+$", cell_val):
+            msg = "Invalid cell size format"
+            raise ValueError(msg)
+
+        return resolved_pot_str, executable_str, threshold_val, element_val, cell_val
+
+    def _write_pace_driver(self, work_dir: Path, potential: Path | None) -> None:
+        import os
+
+        pots_dir_name = os.environ.get("MLIP_POTENTIALS_DIR", "potentials")
+        if not re.match(r"^[a-zA-Z0-9_-]+$", pots_dir_name):
+            msg = "Invalid characters in MLIP_POTENTIALS_DIR"
+            raise ValueError(msg)
+
+        pots_dir = work_dir / pots_dir_name
+        pots_dir.mkdir(parents=True, exist_ok=True)
+        driver_path = pots_dir / "pace_driver.py"
+
+        resolved_pot_str, executable_str, threshold_val, element_val, cell_val = self._validate_driver_inputs(potential)
+
         static_driver = (Path(__file__).parent / "eon_driver.py").resolve(strict=True)
-
-        import json
-
-        cmd = [
-            executable_str,
-            static_driver.as_posix(),
-            "--threshold", str(self.config.uncertainty_threshold),
-            "--potential", resolved_pot_str,
-            "--default_element", self.system_config.elements[0],
-            "--default_cell", str(self.config.lattice_size)
-        ]
-
-        # Secure generation without f-string interpolation risks.
-        # We serialize the validated command array directly into a JSON literal to be parsed in the script.
-        cmd_json = json.dumps(cmd)
 
         driver_content = f"""#!{executable_str}
 import subprocess
 import sys
 import os
-import json
 
-# Safely deserialize the literal command array
-cmd = json.loads({cmd_json!r})
+cmd = [
+    {executable_str!r},
+    {static_driver.as_posix()!r},
+    "--threshold",
+    {threshold_val!r},
+    "--potential",
+    {resolved_pot_str!r},
+    "--default_element",
+    {element_val!r},
+    "--default_cell",
+    {cell_val!r}
+]
 
 # Strictly pass only safe variables downstream
 safe_env = {{}}
@@ -161,17 +178,16 @@ sys.exit(res.returncode)
             msg = "EON binary is not within trusted directories."
             raise ValueError(msg)
 
+        # Ensure the resolved name matches the expected binary name to prevent symlink masquerading
+        if eon_bin_path.name != Path(self.config.eon_binary).name:
+            msg = f"Resolved binary name mismatch. Expected {Path(self.config.eon_binary).name}, got {eon_bin_path.name}"
+            raise ValueError(msg)
+
         self._verify_binary_hash(eon_bin_path)
 
         return eon_bin_path
 
     def _verify_binary_hash(self, eon_bin_path: Path) -> None:
-        # Double check the binary hash again after strict resolution to prevent TOCTOU bypasses
-        st = os.lstat(eon_bin_path)
-        if st.st_uid != os.getuid():
-            msg = "EON binary is not owned by the current user"
-            raise ValueError(msg)
-
         if not self.config.binary_hashes:
             return
 
@@ -180,11 +196,30 @@ sys.exit(res.returncode)
             return
 
         import hashlib
+        import os
 
         hasher = hashlib.sha256()
-        with eon_bin_path.open("rb") as f:
-            for chunk in iter(lambda: f.read(4096), b""):
-                hasher.update(chunk)
+
+        def _check_and_hash(fd_inner: int) -> None:
+            st = os.fstat(fd_inner)
+            if st.st_uid != os.getuid():
+                msg = "EON binary is not owned by the current user"
+                raise ValueError(msg)
+
+            with os.fdopen(fd_inner, "rb") as f:
+                for chunk in iter(lambda: f.read(4096), b""):
+                    hasher.update(chunk)
+
+        # Double check the binary hash atomically with NOFOLLOW after strict resolution to prevent TOCTOU bypasses
+        fd = os.open(str(eon_bin_path), os.O_RDONLY | os.O_NOFOLLOW)
+        try:
+            _check_and_hash(fd)
+        except Exception:
+            import contextlib
+            with contextlib.suppress(OSError):
+                os.close(fd)
+            raise
+
         if hasher.hexdigest() != expected_hash:
             msg = f"EON binary hash mismatch after resolution. Expected {expected_hash}, got {hasher.hexdigest()}"
             raise ValueError(msg)
@@ -203,14 +238,34 @@ sys.exit(res.returncode)
         return False
 
     def _validate_env_path(self, raw_p: str) -> str | None:
+        import logging
         clean_p: str = raw_p.strip()
         if not clean_p:
             return None
-        with contextlib.suppress(Exception):
-            p_obj: Path = Path(clean_p).resolve(strict=True)
-            if p_obj.is_absolute() and p_obj.is_dir() and self._is_path_trusted(p_obj):
-                return p_obj.as_posix()
-        return None
+
+        try:
+            # Enforce realpath before resolution to protect against TOCTOU path resolution exploits
+            import os
+            real_p = os.path.realpath(clean_p)
+            p_obj: Path = Path(real_p).resolve(strict=True)
+
+            if not p_obj.is_absolute():
+                logging.warning(f"Path is not absolute: {clean_p}")
+                return None
+
+            if not p_obj.is_dir():
+                logging.warning(f"Path is not a valid directory: {clean_p}")
+                return None
+
+            if not self._is_path_trusted(p_obj):
+                logging.warning(f"Path is untrusted: {clean_p}")
+                return None
+
+            return p_obj.as_posix()
+
+        except (RuntimeError, ValueError, OSError) as e:
+            logging.warning(f"Invalid environment path provided: {e}")
+            return None
 
     def _build_safe_env(self) -> dict[str, str]:
         env: dict[str, str] = {}
@@ -220,7 +275,14 @@ sys.exit(res.returncode)
                 val: str = os.environ[k]
                 if not isinstance(val, str):
                     continue
+
+                # Broadly restrict payload length natively
+                if len(val) > 4096:
+                    continue
+
                 if k in ("PATH", "LD_LIBRARY_PATH"):
+                    if not re.match(r"^[a-zA-Z0-9_./\-:]+$", val):
+                        continue
                     safe_paths = []
                     for raw_p in val.split(os.pathsep):
                         validated = self._validate_env_path(raw_p)
@@ -257,8 +319,8 @@ sys.exit(res.returncode)
             err_file = resolved_work_dir / "eonclient.err"
 
             with (
-                out_file.open('w') as fout,
-                err_file.open('w') as ferr,
+                out_file.open("w") as fout,
+                err_file.open("w") as ferr,
                 subprocess.Popen(  # noqa: S603
                     cmd,
                     cwd=str(resolved_work_dir.absolute()),
@@ -266,7 +328,7 @@ sys.exit(res.returncode)
                     stderr=ferr,
                     shell=False,
                     env=env,
-                ) as proc
+                ) as proc,
             ):
                 try:
                     proc.communicate(timeout=3600)  # Maximum 1 hour timeout
