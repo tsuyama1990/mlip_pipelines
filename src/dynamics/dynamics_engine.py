@@ -102,7 +102,13 @@ write_data ${work_dir_str}/data.lammps
             msg = "Potential path must be a valid .yace file"
             raise ValueError(msg)
 
-        resolved_pot = potential.resolve(strict=True)
+        import os
+        pot_real = os.path.realpath(str(potential))
+        if ".." in pot_real:
+            msg = f"Path traversal characters detected in potential path: {potential}"
+            raise ValueError(msg)
+
+        resolved_pot = Path(pot_real).resolve(strict=True)
 
         if self.config.project_root:
             project_root_str = str(self.config.project_root)

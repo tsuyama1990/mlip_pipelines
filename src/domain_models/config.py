@@ -602,6 +602,16 @@ class DistillationConfig(BaseModel):
         default="float32", description="Default dtype for MACE (e.g., float32, float64)"
     )
     dispersion: bool = Field(default=False, description="Enable dispersion correction in MACE")
+    temp_dir: str = Field(
+        default="/tmp/pyacemaker_distillation",  # noqa: S108
+        description="Path to temporary directory for distillation"
+    )
+    output_dir: str = Field(
+        default="./active_learning/distillation_outputs", description="Path to save distillation outputs"
+    )
+    model_storage_path: str = Field(
+        default="./potentials/mace_models", description="Path to cache MACE foundation models"
+    )
 
     @model_validator(mode="after")
     def validate_thresholds_and_samples(self) -> "DistillationConfig":
@@ -675,6 +685,15 @@ class LoopStrategyConfig(BaseModel):
         default="LJ", description="Baseline physical potential type (e.g., LJ)"
     )
     thresholds: ActiveLearningThresholds = Field(default_factory=ActiveLearningThresholds)
+    checkpoint_interval: int = Field(
+        default=5, description="Frequency (in iterations) to execute full hard-checkpoints"
+    )
+    max_retries: int = Field(
+        default=3, description="Maximum number of orchestration loop retries on transient failures"
+    )
+    timeout_seconds: int = Field(
+        default=86400, description="Maximum wall-clock timeout in seconds for a complete loop iteration"
+    )
 
     @model_validator(mode="after")
     def validate_strategy_consistency(self) -> "LoopStrategyConfig":

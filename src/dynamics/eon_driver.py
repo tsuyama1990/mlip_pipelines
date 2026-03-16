@@ -28,10 +28,9 @@ def _read_stdin_safely(max_size: int) -> str:
             sys.stderr.write(f"Input stream exceeds maximum allowed size ({max_size} bytes).\n")
             sys.exit(100)
 
-        # Basic fast-fail validation for valid characters typically found in extxyz/xyz files
-        # Only allow alphanumeric, spaces, dots, hyphens, plus signs, commas, e/E for scientific notation.
-        # Quotes, equals, and other complex punctuation are rejected for strict security.
-        if not re.match(r"^[a-zA-Z0-9\s\.\-\+\,eE]*$", chunk):
+        # Comprehensive validation for valid characters in extxyz format,
+        # strictly disallowing malicious payloads like backticks, semicolons, shells or null bytes.
+        if not re.match(r"^[a-zA-Z0-9\s\.\-\+\,eE\:\_=]*$", chunk):
             sys.stderr.write("Invalid characters detected in input stream.\n")
             sys.exit(100)
 
