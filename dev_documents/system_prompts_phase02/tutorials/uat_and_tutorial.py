@@ -1,3 +1,4 @@
+# ruff: noqa: S108
 from typing import Any
 
 import marimo
@@ -54,6 +55,7 @@ def __() -> tuple[Any, ...]:
         trainer_config = TrainerConfig(max_epochs=2, trusted_directories=[])
         val_config = ValidatorConfig()
 
+        from src.domain_models.config import DistillationConfig, LoopStrategyConfig
         project_config = ProjectConfig(
             project_root=Path.cwd(),
             system=sys_config,
@@ -61,6 +63,8 @@ def __() -> tuple[Any, ...]:
             oracle=oracle_config,
             trainer=trainer_config,
             validator=val_config,
+            distillation_config=DistillationConfig(temp_dir="/tmp/c06_uat", output_dir="/tmp/c06_uat", model_storage_path="/tmp/c06_uat"),
+            loop_strategy=LoopStrategyConfig(replay_buffer_size=10, checkpoint_interval=5, timeout_seconds=3600),
         )
 
         orchestrator = Orchestrator(project_config)

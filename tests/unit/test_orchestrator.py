@@ -396,3 +396,64 @@ def test_get_latest_potential_invalid_file(
 
     latest = orch.get_latest_potential()
     assert latest is None
+
+
+def test_checkpoint_manager_consistency(tmp_path: Path) -> None:
+    from src.core.checkpoint import CheckpointManager
+
+    db_path = tmp_path / "test.db"
+    mgr = CheckpointManager(db_path)
+
+    # Test set and get
+    mgr.set_state("test_key", {"nested": [1, 2, 3]})
+    res = mgr.get_state("test_key")
+    assert res == {"nested": [1, 2, 3]}
+
+    # Test missing key
+    assert mgr.get_state("missing") is None
+
+    # Test overwrite
+    mgr.set_state("test_key", "new_value")
+    assert mgr.get_state("test_key") == "new_value"
+
+
+def test_checkpoint_manager_invalid_json(tmp_path: Path) -> None:
+    import pytest
+
+    from src.core.checkpoint import CheckpointManager
+
+    db_path = tmp_path / "test.db"
+    mgr = CheckpointManager(db_path)
+
+    with pytest.raises(ValueError, match="not JSON serializable"):
+        mgr.set_state("test_key", object())
+
+
+def test_orchestrator_cleanup_artifacts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mock_project_config: ProjectConfig
+) -> None:
+    import sys
+
+    from src.core.orchestrator import Orchestrator
+
+    monkeypatch.setitem(
+        sys.modules, "pyacemaker.calculator", type("pyacemaker", (), {"pyacemaker": True})
+    )
+    orch = Orchestrator(mock_project_config)
+
+    file1 = tmp_path / "file1.txt"
+    file1.touch()
+
+    dir1 = tmp_path / "dir1"
+    dir1.mkdir()
+    (dir1 / "file2.txt").touch()
+
+    missing_file = tmp_path / "missing.txt"
+
+    paths = [file1, dir1, missing_file]
+
+    # Run cleanup, should not crash on missing file
+    orch._cleanup_artifacts(paths)
+
+    assert not file1.exists()
+    assert not dir1.exists()

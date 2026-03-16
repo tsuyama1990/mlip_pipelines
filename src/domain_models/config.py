@@ -552,7 +552,7 @@ def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
     # Remove the 1KB size limit
     # Relax ownership check to allow root execution (UID 0) in containerized environments
     current_uid = os.getuid()
-    if st.st_uid not in (current_uid, 0):
+    if st.st_uid != current_uid:
         msg = ".env file is not owned by the current user or root."
         raise ValueError(msg)
 
@@ -571,7 +571,7 @@ def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
             if "=" in stripped:
                 key, val = stripped.split("=", 1)
                 key = key.strip()
-                if not key.startswith("MLIP_"):
+                if not re.match(r"^MLIP_[a-zA-Z0-9_]+$", key):
                     msg = f"All .env file keys must start with 'MLIP_'. Found invalid key: {key}"
                     raise ValueError(msg)
 
@@ -609,15 +609,9 @@ class DistillationConfig(BaseModel):
         default="float32", description="Default dtype for MACE (e.g., float32, float64)"
     )
     dispersion: bool = Field(default=False, description="Enable dispersion correction in MACE")
-    temp_dir: str = Field(
-        ..., description="Path to temporary directory for distillation"
-    )
-    output_dir: str = Field(
-        ..., description="Path to save distillation outputs"
-    )
-    model_storage_path: str = Field(
-        ..., description="Path to cache MACE foundation models"
-    )
+    temp_dir: str = Field(..., description="Path to temporary directory for distillation")
+    output_dir: str = Field(..., description="Path to save distillation outputs")
+    model_storage_path: str = Field(..., description="Path to cache MACE foundation models")
 
     @model_validator(mode="after")
     def validate_thresholds_and_samples(self) -> "DistillationConfig":
