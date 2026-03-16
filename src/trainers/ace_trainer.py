@@ -137,6 +137,7 @@ class PacemakerWrapper(AbstractTrainer, BinaryResolverMixin):
                 historical_data = read_data if isinstance(read_data, list) else [read_data]
             except Exception as e:
                 import logging
+
                 logging.warning(f"Failed to read history file {resolved_history}: {e}")
 
         # Sample historical data if it exceeds buffer_size
@@ -171,7 +172,7 @@ class PacemakerWrapper(AbstractTrainer, BinaryResolverMixin):
             raise ValueError(msg)
 
         # Atomic file validation using file locks
-        fd = os.open(resolved_dataset, os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0))
+        fd = os.open(resolved_dataset, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
         try:
             fcntl.flock(fd, fcntl.LOCK_SH)
             with os.fdopen(fd, "r", encoding="utf-8") as f:
@@ -181,6 +182,7 @@ class PacemakerWrapper(AbstractTrainer, BinaryResolverMixin):
                     raise ValueError(msg)
         finally:
             import contextlib
+
             with contextlib.suppress(OSError):
                 os.close(fd)
 
@@ -212,7 +214,11 @@ class PacemakerWrapper(AbstractTrainer, BinaryResolverMixin):
         # Validate configuration values natively rather than with strict regexes
         # Whitelist approaches for categorical parameters:
         allowed_baselines = ["lj", "zbl", "none"]
-        if self.config.baseline_potential.lower() not in allowed_baselines and not self.config.baseline_potential.isalnum() and "_" not in self.config.baseline_potential:
+        if (
+            self.config.baseline_potential.lower() not in allowed_baselines
+            and not self.config.baseline_potential.isalnum()
+            and "_" not in self.config.baseline_potential
+        ):
             msg = f"Invalid baseline potential format: {self.config.baseline_potential}"
             raise ValueError(msg)
 

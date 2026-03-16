@@ -216,6 +216,7 @@ sys.exit(res.returncode)
 
     def _validate_env_path(self, raw_p: str) -> str | None:
         import logging
+
         clean_p: str = raw_p.strip()
         if not clean_p:
             return None
@@ -223,6 +224,7 @@ sys.exit(res.returncode)
         try:
             # Enforce realpath before resolution to protect against TOCTOU path resolution exploits
             import os
+
             real_p = os.path.realpath(clean_p)
             p_obj: Path = Path(real_p).resolve(strict=True)
 

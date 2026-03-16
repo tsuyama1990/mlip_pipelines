@@ -27,8 +27,12 @@ class FinetuneManager(BinaryResolverMixin):
         if hasattr(self.config, "project_root"):
             proj_root = Path(self.config.project_root).resolve(strict=True)
             tmp_root = Path(tempfile.gettempdir()).resolve(strict=True)
-            if not str(resolved_out).startswith(str(proj_root)) and not str(resolved_out).startswith(str(tmp_root)):
-                msg = f"output_path is outside the trusted base directory or temp dir: {resolved_out}"
+            if not str(resolved_out).startswith(str(proj_root)) and not str(
+                resolved_out
+            ).startswith(str(tmp_root)):
+                msg = (
+                    f"output_path is outside the trusted base directory or temp dir: {resolved_out}"
+                )
                 raise ValueError(msg)
 
         if not os.access(resolved_out, os.W_OK):
@@ -37,13 +41,9 @@ class FinetuneManager(BinaryResolverMixin):
 
         return resolved_out
 
-    def finetune_mace(
-        self, structures: list[Atoms], model_path: str, output_path: Path
-    ) -> Path:
+    def finetune_mace(self, structures: list[Atoms], model_path: str, output_path: Path) -> Path:
         """Fine-tunes the MACE foundation model using the provided structures."""
-        mace_train_bin = self._resolve_binary_path(
-            self.config.mace_train_binary, "mace_run_train"
-        )
+        mace_train_bin = self._resolve_binary_path(self.config.mace_train_binary, "mace_run_train")
 
         resolved_out = self._validate_output_path(output_path)
 
@@ -61,7 +61,11 @@ class FinetuneManager(BinaryResolverMixin):
             train_xyz = temp_dir / "train.extxyz"
 
             # Secure atomic file creation with lock
-            fd = os.open(train_xyz, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, 'O_NOFOLLOW', 0), 0o600)
+            fd = os.open(
+                train_xyz,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+                0o600,
+            )
             try:
                 fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 with os.fdopen(fd, "w"):
@@ -85,12 +89,14 @@ class FinetuneManager(BinaryResolverMixin):
             if self.config.mace_freeze_body:
                 cmd.append("--freeze_body")
 
-            cmd.extend([
-                "--max_num_epochs",
-                str(self.config.mace_finetuning_epochs),
-                "--lr",
-                str(self.config.mace_learning_rate),
-            ])
+            cmd.extend(
+                [
+                    "--max_num_epochs",
+                    str(self.config.mace_finetuning_epochs),
+                    "--lr",
+                    str(self.config.mace_learning_rate),
+                ]
+            )
 
             try:
                 _res: subprocess.CompletedProcess[str] = subprocess.run(  # noqa: S603

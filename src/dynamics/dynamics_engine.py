@@ -103,6 +103,7 @@ write_data ${work_dir_str}/data.lammps
             raise ValueError(msg)
 
         import os
+
         pot_real = os.path.realpath(str(potential))
         if ".." in pot_real:
             msg = f"Path traversal characters detected in potential path: {potential}"

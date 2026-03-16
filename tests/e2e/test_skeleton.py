@@ -13,6 +13,8 @@ from src.domain_models.config import (
     SystemConfig,
     TrainerConfig,
     ValidatorConfig,
+    DistillationConfig,
+    LoopStrategyConfig,
 )
 from src.generators.adaptive_policy import AdaptiveExplorationPolicyEngine, FeatureExtractor
 from src.generators.structure_generator import StructureGenerator
@@ -40,6 +42,8 @@ def test_full_pipeline_skeleton(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
         trainer=TrainerConfig(max_epochs=2, active_set_size=10, trusted_directories=[]),
         validator=ValidatorConfig(energy_rmse_threshold=0.05),
         project_root=tmp_path,
+        distillation_config=DistillationConfig(temp_dir="/tmp", output_dir="/tmp", model_storage_path="/tmp"),
+        loop_strategy=LoopStrategyConfig(replay_buffer_size=10, checkpoint_interval=5, timeout_seconds=3600),
     )
 
     orchestrator = Orchestrator(config)
