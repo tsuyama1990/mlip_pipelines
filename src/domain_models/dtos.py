@@ -1,8 +1,31 @@
 from pathlib import Path
-from typing import Self
+from typing import Any, Self
 
 from ase import Atoms
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from src.dynamics.security_utils import _validate_string_security
+
+
+class GUIStateConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    react_flow_state: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Arbitrary JSON-like dictionary for React Flow data. Limited by overall payload size constraints.",
+    )
+
+
+class WorkflowIntentConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    target_material: str = Field(..., description="Target material string (e.g. Pt-Ni)")
+    accuracy_speed_tradeoff: int = Field(
+        ..., ge=1, le=10, description="1 for maximum speed, 10 for maximum accuracy"
+    )
+
+    @model_validator(mode="after")
+    def validate_security(self) -> "WorkflowIntentConfig":
+        _validate_string_security(self.target_material)
+        return self
 
 
 class MaterialFeatures(BaseModel):

@@ -154,9 +154,8 @@ def test_project_config_env_file_security(tmp_path: Path) -> None:
     env.symlink_to(target)
 
     # We must ensure target has secure permissions for it to pass
-    import os
     import stat
-    os.chmod(target, stat.S_IRUSR | stat.S_IWUSR)
+    target.chmod(stat.S_IRUSR | stat.S_IWUSR)
 
     # This should pass without raising
     _validate_env_file_security(env, base)
@@ -337,3 +336,63 @@ def test_loop_strategy_consistency() -> None:
         ValidationError, match="incremental_update cannot be True when use_tiered_oracle is False"
     ):
         LoopStrategyConfig(use_tiered_oracle=False, incremental_update=True, replay_buffer_size=500, checkpoint_interval=5, timeout_seconds=86400)
+
+
+def test_intent_translation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import tempfile
+
+    from src.domain_models.config import (
+        DistillationConfig,
+        DynamicsConfig,
+        LoopStrategyConfig,
+        OracleConfig,
+        ProjectConfig,
+        SystemConfig,
+        TrainerConfig,
+        ValidatorConfig,
+    )
+    from src.domain_models.dtos import WorkflowIntentConfig
+
+    monkeypatch.setattr(
+        "shutil.which", lambda x: "/usr/bin/lmp" if x == "lmp" else "/usr/bin/eonclient"
+    )
+    monkeypatch.setattr("os.access", lambda x, y: True)
+
+    tmp_dir = Path(tempfile.gettempdir()).resolve(strict=True)
+    proj_dir = tmp_dir / "myproj_intent"
+    proj_dir.mkdir(parents=True, exist_ok=True)
+    (proj_dir / "README.md").touch()
+
+    # Test Speed (tradeoff = 1)
+    config_speed = ProjectConfig(
+        intent=WorkflowIntentConfig(target_material="Pt-Ni", accuracy_speed_tradeoff=1),
+        distillation_config=DistillationConfig(temp_dir="/tmp", output_dir="/tmp", model_storage_path="/tmp"),
+        loop_strategy=LoopStrategyConfig(replay_buffer_size=500, checkpoint_interval=5, timeout_seconds=86400),
+        project_root=proj_dir,
+        system=SystemConfig(elements=["Pt", "Ni"]),
+        dynamics=DynamicsConfig(project_root=str(proj_dir), trusted_directories=[]),
+        oracle=OracleConfig(),
+        trainer=TrainerConfig(trusted_directories=[]),
+        validator=ValidatorConfig(),
+    )
+
+    # 0.15 - (1 * 0.013) = 0.137
+    assert config_speed.distillation_config.uncertainty_threshold == pytest.approx(0.137)
+    assert config_speed.loop_strategy.replay_buffer_size == 100
+
+    # Test Accuracy (tradeoff = 10)
+    config_acc = ProjectConfig(
+        intent=WorkflowIntentConfig(target_material="Pt-Ni", accuracy_speed_tradeoff=10),
+        distillation_config=DistillationConfig(temp_dir="/tmp", output_dir="/tmp", model_storage_path="/tmp"),
+        loop_strategy=LoopStrategyConfig(replay_buffer_size=500, checkpoint_interval=5, timeout_seconds=86400),
+        project_root=proj_dir,
+        system=SystemConfig(elements=["Pt", "Ni"]),
+        dynamics=DynamicsConfig(project_root=str(proj_dir), trusted_directories=[]),
+        oracle=OracleConfig(),
+        trainer=TrainerConfig(trusted_directories=[]),
+        validator=ValidatorConfig(),
+    )
+
+    # 0.15 - (10 * 0.013) = 0.02
+    assert config_acc.distillation_config.uncertainty_threshold == pytest.approx(0.02)
+    assert config_acc.loop_strategy.replay_buffer_size == 1000

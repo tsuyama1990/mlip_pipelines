@@ -68,6 +68,34 @@ def test_validate_env_value():
         sec._validate_env_value("val;ue")
 
 
+def test_validate_string_security_safe():
+    sec._validate_string_security("Pt-Ni")
+    sec._validate_string_security("ValidString123")
+
+
+def test_validate_string_security_type():
+    with pytest.raises(TypeError, match="Value must be a string."):
+        sec._validate_string_security(123)  # type: ignore
+
+
+def test_validate_string_security_length():
+    with pytest.raises(ValueError, match="String exceeds maximum allowed length"):
+        sec._validate_string_security("A" * 257)
+
+
+def test_validate_string_security_path_traversal():
+    with pytest.raises(ValueError, match="Path traversal sequences"):
+        sec._validate_string_security("../../etc/passwd")
+
+
+def test_validate_string_security_shell_injection():
+    with pytest.raises(ValueError, match="Forbidden shell character"):
+        sec._validate_string_security("Pt-Ni; rm -rf /")
+
+    with pytest.raises(ValueError, match="Forbidden shell character"):
+        sec._validate_string_security("Pt-Ni && echo hacked")
+
+
 def test_validate_env_file_security(tmp_path: Path):
     env_file = tmp_path / ".env"
     env_file.write_text("MLIP_K=V")

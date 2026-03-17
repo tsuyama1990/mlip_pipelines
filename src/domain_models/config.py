@@ -7,6 +7,8 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from src.domain_models.dtos import WorkflowIntentConfig
+
 
 class InterfaceTarget(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -779,6 +781,30 @@ class ProjectConfig(BaseSettings):
     distillation_config: DistillationConfig
     cutout_config: CutoutConfig = Field(default_factory=CutoutConfig)
     loop_strategy: LoopStrategyConfig
+    intent: WorkflowIntentConfig | None = Field(
+        default=None, description="GUI intent override configuration"
+    )
+
+    @model_validator(mode="after")
+    def translate_intent(self) -> "ProjectConfig":
+        if self.intent is not None:
+            # Mathematics for intent translation
+            tradeoff = self.intent.accuracy_speed_tradeoff
+
+            # 1. Uncertainty Threshold (1 -> 0.137, 10 -> 0.02)
+            # using calculated_threshold = 0.15 - (tradeoff * 0.013)
+            calculated_threshold = 0.15 - (tradeoff * 0.013)
+            # Mutate nested fields correctly: bypass frozen if they are
+            # but they aren't frozen here, they are just Pydantic models.
+            self.distillation_config.uncertainty_threshold = calculated_threshold
+
+            # 2. Proportional Scaling
+            # buffer: Tradeoff 1 -> 100, Tradeoff 10 -> 1000  => tradeoff * 100
+            # max_retries could scale too if it represents max_iterations. Let's not mutate fields not specifically asked if not there.
+            # Instead, just scale replay_buffer_size as explicitly mentioned.
+            self.loop_strategy.replay_buffer_size = tradeoff * 100
+
+        return self
 
     @field_validator("project_root")
     @classmethod

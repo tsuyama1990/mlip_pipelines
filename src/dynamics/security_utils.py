@@ -114,6 +114,28 @@ def _validate_env_value(val: str) -> None:
         raise ValueError(msg)
 
 
+def _validate_string_security(val: str) -> None:
+    """Validates arbitrary strings to prevent path traversal and shell injection."""
+    if not isinstance(val, str):
+        msg = "Value must be a string."
+        raise TypeError(msg)
+    if len(val) > 256:
+        msg = "String exceeds maximum allowed length (256 characters)."
+        raise ValueError(msg)
+
+    # Check for path traversals
+    if ".." in val:
+        msg = "Path traversal sequences (..) are not allowed."
+        raise ValueError(msg)
+
+    # Check for shell injection characters
+    forbidden_chars = [";", "&", "|", "$", "`", "{", "}", "<", ">"]
+    for char in forbidden_chars:
+        if char in val:
+            msg = f"Forbidden shell character '{char}' detected."
+            raise ValueError(msg)
+
+
 def validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
     import stat
 
