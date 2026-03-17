@@ -14,7 +14,7 @@ With the introduction of the GUI, researchers can now seamlessly run multi-milli
 
 ## 2. Key Features
 
-1. **Intent-Driven UI & Smart Trade-offs:** Eliminate complex text configurations. Users simply set an "Accuracy vs. Speed" slider, and the backend automatically mathematically provisions the optimal hyperparameter thresholds, buffer radii, and sampling intervals.
+1. **Intent-Driven UI & Smart Trade-offs:** Eliminate complex text configurations. Users simply set an "Accuracy vs. Speed" slider via the `WorkflowIntentConfig` payload, and the backend automatically mathematically provisions the optimal hyperparameter thresholds, like `uncertainty_threshold` and `replay_buffer_size`. This intent translation effectively shields users from catastrophic parameter mismatch.
 2. **Visual & Semantic State Management:** Define complex simulation boundaries (e.g., freezing a slab layer) directly in a 3D viewer. The system seamlessly translates these visual tags into error-free LAMMPS `region` and `group` commands.
 3. **Zero-Shot Foundation Model Distillation:** Drastically reduce expensive DFT calculations by using MACE-MP-0 as a high-fidelity surrogate oracle. Confident predictions are distilled into the fast ACE potential, reserving DFT strictly for profound physical unknowns.
 4. **Master-Slave MD Resume (Time-Continuity):** Completely stateful and continuous Molecular Dynamics pipeline. Simulations that pause upon encountering high-uncertainty cleanly checkpoint their exact phase-space geometry.

@@ -100,48 +100,86 @@ def _validate_env_key(key: str) -> None:
     if len(key) > 64:
         msg = "Environment variable key exceeds maximum length"
         raise ValueError(msg)
-    if not re.match(VALID_ENV_KEY_REGEX, key):
+    if not re.match(r"^[A-Z0-9_]+$", key):
         msg = f"Invalid characters in .env variable key: {key}"
         raise ValueError(msg)
 
 
 def _validate_env_value(val: str) -> None:
-    if len(val) > 1024:
-        msg = "Environment variable value exceeds maximum length"
-        raise ValueError(msg)
-    if ".." in val or ";" in val or "&" in val or "|" in val:
-        msg = f"Invalid characters or traversal sequences in .env variable value: {val}."
+    # Remove length limit to allow long API keys/URLs/configurations
+    # Expand whitelist to prevent shell injections while allowing ?, &, #, @, %
+    if not re.match(r"^[-a-zA-Z0-9_.:/=,+?&#@%]*$", val):
+        msg = "Invalid characters detected in .env variable value."
         raise ValueError(msg)
 
 
 def validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
     import stat
+    expected_base_resolved = expected_base.resolve(strict=True)
 
-    if env_file.is_symlink():
-        msg = ".env file must not be a symlink."
-        raise ValueError(msg)
-
+    # Allow symlinks, but they must securely resolve within expected_base
     resolved_env = env_file.resolve(strict=True)
 
-    if resolved_env.parent != expected_base:
-        msg = f".env file must reside directly in the allowed base directory: {expected_base}"
+    if not resolved_env.is_relative_to(expected_base_resolved):
+        msg = f".env file must reside securely within the allowed base directory: {expected_base}"
         raise ValueError(msg)
 
     st = os.lstat(resolved_env)
 
-    if st.st_size > 10 * 1024:
-        msg = ".env file exceeds maximum allowed size (10KB)."
-        raise ValueError(msg)
-
-    if st.st_uid != os.getuid():
-        msg = ".env file is not owned by the current user."
+    # Remove the 1KB size limit
+    # Relax ownership check to allow root execution (UID 0) in containerized environments
+    current_uid = os.getuid()
+    if st.st_uid not in (current_uid, 0):
+        msg = ".env file is not owned by the current user or root."
         raise ValueError(msg)
 
     if bool(st.st_mode & stat.S_IRWXO) or bool(st.st_mode & stat.S_IRWXG):
         msg = ".env file has insecure permissions. It must not be group or world readable/writable."
         raise ValueError(msg)
 
+    # Content validation for malicious patterns before parsing
+    with Path.open(resolved_env, "r", encoding="utf-8") as f:
+        for line in f:
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+
+            # Simple check to see if the key starts with MLIP_ and lacks injection symbols
+            if "=" in stripped:
+                key, val = stripped.split("=", 1)
+                key = key.strip()
+                if not key.startswith("MLIP_"):
+                    msg = f"All .env file keys must start with 'MLIP_'. Found invalid key: {key}"
+                    raise ValueError(msg)
+
+                val = val.strip()
+                if (
+                    ".." in val
+                    or ";" in val
+                    or "&" in val
+                    or "|" in val
+                    or "$" in val
+                    or "`" in val
+                    or "{" in val
+                    or "}" in val
+                ):
+                    msg = f"Invalid characters or traversal sequences in .env file content: {val}"
+                    raise ValueError(msg)
+
     return resolved_env
+
+
+def _validate_string_security(val: str) -> str:
+    if ".." in val:
+        msg = "Path traversal characters (..) are not allowed."
+        raise ValueError(msg)
+    if "/" in val or "\\" in val:
+        msg = "Path separators are not allowed."
+        raise ValueError(msg)
+    if len(val) > 1024:
+        msg = "String exceeds maximum length of 1024 characters."
+        raise ValueError(msg)
+    return val
 
 
 def validate_and_copy_potential(

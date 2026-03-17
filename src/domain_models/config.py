@@ -1,11 +1,12 @@
 import os
-import re
 import stat
 from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from src.domain_models.dtos import WorkflowIntentConfig
 
 
 class InterfaceTarget(BaseModel):
@@ -517,79 +518,11 @@ class PolicyConfig(BaseModel):
     )
 
 
-def _validate_env_key(key: str) -> None:
-    if not key.startswith("MLIP_"):
-        msg = f"Unauthorized environment variable injected via .env: {key}. Only MLIP_ prefixes are allowed."
-        raise ValueError(msg)
-    if len(key) > 64:
-        msg = "Environment variable key exceeds maximum length"
-        raise ValueError(msg)
-    if not re.match(r"^[A-Z0-9_]+$", key):
-        msg = f"Invalid characters in .env variable key: {key}"
-        raise ValueError(msg)
-
-
-def _validate_env_value(val: str) -> None:
-    # Remove length limit to allow long API keys/URLs/configurations
-    # Expand whitelist to prevent shell injections while allowing ?, &, #, @, %
-    if not re.match(r"^[-a-zA-Z0-9_.:/=,+?&#@%]*$", val):
-        msg = "Invalid characters detected in .env variable value."
-        raise ValueError(msg)
-
-
-def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
-    expected_base_resolved = expected_base.resolve(strict=True)
-
-    # Allow symlinks, but they must securely resolve within expected_base
-    resolved_env = env_file.resolve(strict=True)
-
-    if not resolved_env.is_relative_to(expected_base_resolved):
-        msg = f".env file must reside securely within the allowed base directory: {expected_base}"
-        raise ValueError(msg)
-
-    st = os.lstat(resolved_env)
-
-    # Remove the 1KB size limit
-    # Relax ownership check to allow root execution (UID 0) in containerized environments
-    current_uid = os.getuid()
-    if st.st_uid not in (current_uid, 0):
-        msg = ".env file is not owned by the current user or root."
-        raise ValueError(msg)
-
-    if bool(st.st_mode & stat.S_IRWXO) or bool(st.st_mode & stat.S_IRWXG):
-        msg = ".env file has insecure permissions. It must not be group or world readable/writable."
-        raise ValueError(msg)
-
-    # Content validation for malicious patterns before parsing
-    with Path.open(resolved_env, "r", encoding="utf-8") as f:
-        for line in f:
-            stripped = line.strip()
-            if not stripped or stripped.startswith("#"):
-                continue
-
-            # Simple check to see if the key starts with MLIP_ and lacks injection symbols
-            if "=" in stripped:
-                key, val = stripped.split("=", 1)
-                key = key.strip()
-                if not key.startswith("MLIP_"):
-                    msg = f"All .env file keys must start with 'MLIP_'. Found invalid key: {key}"
-                    raise ValueError(msg)
-
-                val = val.strip()
-                if (
-                    ".." in val
-                    or ";" in val
-                    or "&" in val
-                    or "|" in val
-                    or "$" in val
-                    or "`" in val
-                    or "{" in val
-                    or "}" in val
-                ):
-                    msg = f"Invalid characters or traversal sequences in .env file content: {val}"
-                    raise ValueError(msg)
-
-    return resolved_env
+from src.dynamics.security_utils import (
+    _validate_env_key,
+    _validate_env_value,
+    validate_env_file_security,
+)
 
 
 class DistillationConfig(BaseModel):
@@ -727,7 +660,7 @@ class ProjectConfig(BaseSettings):
         env_file = expected_base / ".env"
 
         if env_file.exists():
-            resolved_env = _validate_env_file_security(env_file, expected_base)
+            resolved_env = validate_env_file_security(env_file, expected_base)
 
             from dotenv import dotenv_values
 
@@ -779,6 +712,15 @@ class ProjectConfig(BaseSettings):
     distillation_config: DistillationConfig
     cutout_config: CutoutConfig = Field(default_factory=CutoutConfig)
     loop_strategy: LoopStrategyConfig
+    intent: WorkflowIntentConfig | None = Field(default=None)
+
+    @model_validator(mode="after")
+    def translate_intent(self) -> "ProjectConfig":
+        if self.intent is not None:
+            calculated_threshold = 0.15 - (self.intent.accuracy_speed_tradeoff * 0.013)
+            self.distillation_config.uncertainty_threshold = calculated_threshold
+            self.loop_strategy.replay_buffer_size = self.intent.accuracy_speed_tradeoff * 100
+        return self
 
     @field_validator("project_root")
     @classmethod
