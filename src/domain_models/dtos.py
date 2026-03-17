@@ -1,11 +1,8 @@
-import json
 from pathlib import Path
-from typing import Any, Self
+from typing import Self
 
 from ase import Atoms
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-
-from src.dynamics.security_utils import _validate_string_security
 
 
 class MaterialFeatures(BaseModel):
@@ -75,56 +72,3 @@ class CutoutResult(BaseModel):
     passivation_atoms_added: int = Field(
         default=0, ge=0, description="Number of passivation atoms added"
     )
-
-
-class GUIStateConfig(BaseModel):
-    """Purely presentational schema for React Flow UI state."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    nodes: list[dict[str, Any]] = Field(default_factory=list, description="React Flow nodes")
-    edges: list[dict[str, Any]] = Field(default_factory=list, description="React Flow edges")
-    zoom: float = Field(default=1.0, description="React Flow zoom level")
-    viewport: dict[str, float] = Field(default_factory=dict, description="React Flow viewport")
-
-    @model_validator(mode="after")
-    def validate_size_limit(self) -> "GUIStateConfig":
-        # Enforce memory bloat prevention
-        if len(self.nodes) > 1000:
-            msg = "Too many nodes in GUIStateConfig (max 1000)"
-            raise ValueError(msg)
-        if len(self.edges) > 5000:
-            msg = "Too many edges in GUIStateConfig (max 5000)"
-            raise ValueError(msg)
-
-        # Serialize to JSON to check total payload size
-        try:
-            serialized_size = len(json.dumps({"nodes": self.nodes, "edges": self.edges}))
-        except Exception as e:
-            msg = f"Failed to serialize GUIStateConfig: {e}"
-            raise ValueError(msg) from e
-
-        if serialized_size > 5 * 1024 * 1024:  # 5MB limit
-            msg = "GUIStateConfig payload exceeds maximum size limit (5MB)"
-            raise ValueError(msg)
-
-        return self
-
-
-class WorkflowIntentConfig(BaseModel):
-    """Scientific objective of the user."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    target_material: str = Field(..., description="Target material string")
-    accuracy_speed_tradeoff: int = Field(
-        ..., ge=1, le=10, description="1 (Speed) to 10 (Accuracy) tradeoff"
-    )
-    enable_auto_hpo: bool = Field(
-        default=False, description="Enable auto hyperparameter optimization"
-    )
-
-    @model_validator(mode="after")
-    def validate_strings(self) -> "WorkflowIntentConfig":
-        _validate_string_security(self.target_material)
-        return self

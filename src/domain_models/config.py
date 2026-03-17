@@ -7,8 +7,6 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from src.domain_models.dtos import WorkflowIntentConfig
-
 
 class InterfaceTarget(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -611,9 +609,15 @@ class DistillationConfig(BaseModel):
         default="float32", description="Default dtype for MACE (e.g., float32, float64)"
     )
     dispersion: bool = Field(default=False, description="Enable dispersion correction in MACE")
-    temp_dir: str = Field(..., description="Path to temporary directory for distillation")
-    output_dir: str = Field(..., description="Path to save distillation outputs")
-    model_storage_path: str = Field(..., description="Path to cache MACE foundation models")
+    temp_dir: str = Field(
+        ..., description="Path to temporary directory for distillation"
+    )
+    output_dir: str = Field(
+        ..., description="Path to save distillation outputs"
+    )
+    model_storage_path: str = Field(
+        ..., description="Path to cache MACE foundation models"
+    )
 
     @model_validator(mode="after")
     def validate_thresholds_and_samples(self) -> "DistillationConfig":
@@ -696,7 +700,6 @@ class LoopStrategyConfig(BaseModel):
     timeout_seconds: int = Field(
         ..., description="Maximum wall-clock timeout in seconds for a complete loop iteration"
     )
-    max_iterations: int = Field(default=10, description="Max iterations")
 
     @model_validator(mode="after")
     def validate_strategy_consistency(self) -> "LoopStrategyConfig":
@@ -776,9 +779,6 @@ class ProjectConfig(BaseSettings):
     distillation_config: DistillationConfig
     cutout_config: CutoutConfig = Field(default_factory=CutoutConfig)
     loop_strategy: LoopStrategyConfig
-    intent: WorkflowIntentConfig | None = Field(
-        default=None, description="Workflow intent from GUI"
-    )
 
     @field_validator("project_root")
     @classmethod
@@ -824,21 +824,3 @@ class ProjectConfig(BaseSettings):
             raise ValueError(msg)
 
         return resolved_path
-
-    @model_validator(mode="after")
-    def apply_intent_mapping(self) -> "ProjectConfig":
-        if self.intent is not None:
-            # Mathematical translation of the 1-10 tradeoff slider
-            tradeoff = self.intent.accuracy_speed_tradeoff
-
-            # Uncertainty Threshold: 1 (Speed) -> 0.137, 10 (Accuracy) -> 0.02
-            calculated_threshold = 0.15 - (tradeoff * 0.013)
-            self.distillation_config.uncertainty_threshold = calculated_threshold
-
-            # Scale replay buffer size proportionately (e.g. Speed -> small buffer, Accuracy -> large buffer)
-            self.loop_strategy.replay_buffer_size = 100 * tradeoff
-
-            # Scale max iterations proportionately
-            self.loop_strategy.max_iterations = 10 * tradeoff
-
-        return self

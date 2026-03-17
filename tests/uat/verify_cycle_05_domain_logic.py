@@ -7,7 +7,6 @@ app = marimo.App(width="medium")
 @app.cell
 def _():
     import marimo as mo
-
     return (mo,)
 
 
@@ -71,9 +70,7 @@ def _(Path, TrainerConfig, PacemakerWrapper, Atoms, write, read, mo):
         _config = TrainerConfig(trusted_directories=[], max_epochs=50)
         _trainer = PacemakerWrapper(_config)
 
-        _combined_set = _trainer._manage_replay_buffer(
-            _new_atoms, _history_file, buffer_size=_buffer_size
-        )
+        _combined_set = _trainer._manage_replay_buffer(_new_atoms, _history_file, buffer_size=_buffer_size)
 
         # THEN the current training dataset compiled for Pacemaker must contain exactly 550 structures
         assert len(_combined_set) == 550, f"Expected 550 structures, got {len(_combined_set)}"
@@ -113,7 +110,6 @@ def _(Path, TrainerConfig, PacemakerWrapper, mo):
         # WHEN the massive fit.yaml configuration file is generated (or in this case, command line args built)
         # Note: pace_train uses command line arguments instead of fit.yaml in this implementation, but the requirement is the same
         _executed_cmd = []
-
         def _mock_subprocess_run(cmd, *args, **kwargs):
             _executed_cmd.extend(cmd)
             return _subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
@@ -180,9 +176,7 @@ def _(Path, TrainerConfig, FinetuneManager, Atoms, subprocess, mo):
             return _MockProcess(args=cmd, returncode=0, stdout="Success", stderr="")
 
         with _patch("subprocess.run", side_effect=_mock_subprocess_run):
-            with _patch.object(
-                _finetune_mgr, "_resolve_binary_path", return_value="mace_run_train"
-            ):
+            with _patch.object(_finetune_mgr, "_resolve_binary_path", return_value="mace_run_train"):
                 # WHEN the finetune_mace subprocess command list is constructed
                 _finetune_mgr.finetune_mace(_structures, "base.model", _out_dir)
 
@@ -217,9 +211,7 @@ def _(Path, TrainerConfig, PacemakerWrapper, Atoms, read, mo):
         _config4 = TrainerConfig(trusted_directories=[])
         _trainer4 = PacemakerWrapper(_config4)
 
-        _combined_set = _trainer4._manage_replay_buffer(
-            _new_atoms, _history_file_empty, buffer_size=_buffer_size
-        )
+        _combined_set = _trainer4._manage_replay_buffer(_new_atoms, _history_file_empty, buffer_size=_buffer_size)
 
         # THEN the system must gracefully return all available structures without raising a ValueError
         # (It should return exactly the 10 new structures since history was empty)
@@ -266,13 +258,10 @@ def _(Path, TrainerConfig, FinetuneManager, Atoms, subprocess, shutil, logging, 
         # WHEN the FinetuneManager attempts to clean up its temporary HDF5 PyTorch datasets
         # AND shutil.rmtree raises a PermissionError
         with _patch("subprocess.run", side_effect=_mock_subprocess_run_clean):
-            with _patch.object(
-                _finetune_mgr, "_resolve_binary_path", return_value="mace_run_train"
-            ):
+            with _patch.object(_finetune_mgr, "_resolve_binary_path", return_value="mace_run_train"):
                 with _patch("shutil.rmtree", side_effect=PermissionError("Mock Permission Denied")):
                     with _patch("logging.warning"):
                         import contextlib
-
                         with contextlib.suppress(PermissionError):
                             _finetune_mgr.finetune_mace(_structures, "base.model", _out_dir)
 
@@ -282,16 +271,14 @@ def _(Path, TrainerConfig, FinetuneManager, Atoms, subprocess, shutil, logging, 
 
 @app.cell
 def _(uat_1_result, uat_2_result, uat_3_result, uat_4_result, uat_5_result, mo):
-    mo.vstack(
-        [
-            mo.md("# Cycle 05 UAT Results"),
-            uat_1_result,
-            uat_2_result,
-            uat_3_result,
-            uat_4_result,
-            uat_5_result,
-        ]
-    )
+    mo.vstack([
+        mo.md("# Cycle 05 UAT Results"),
+        uat_1_result,
+        uat_2_result,
+        uat_3_result,
+        uat_4_result,
+        uat_5_result
+    ])
     return ()
 
 

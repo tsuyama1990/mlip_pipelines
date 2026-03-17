@@ -29,7 +29,6 @@ def test_full_pipeline_skeleton(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     (tmp_path / "README.md").touch()
 
     from src.domain_models.config import CutoutConfig, DistillationConfig, LoopStrategyConfig
-
     config = ProjectConfig(
         system=SystemConfig(elements=["Fe", "Pt"], baseline_potential="zbl"),
         dynamics=DynamicsConfig(
@@ -42,12 +41,8 @@ def test_full_pipeline_skeleton(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
         trainer=TrainerConfig(max_epochs=2, active_set_size=10, trusted_directories=[]),
         validator=ValidatorConfig(energy_rmse_threshold=0.05),
         project_root=tmp_path,
-        distillation_config=DistillationConfig(
-            temp_dir=str(tmp_path), output_dir=str(tmp_path), model_storage_path=str(tmp_path)
-        ),
-        loop_strategy=LoopStrategyConfig(
-            replay_buffer_size=1000, checkpoint_interval=5, timeout_seconds=3600
-        ),
+        distillation_config=DistillationConfig(temp_dir=str(tmp_path), output_dir=str(tmp_path), model_storage_path=str(tmp_path)),
+        loop_strategy=LoopStrategyConfig(replay_buffer_size=1000, checkpoint_interval=5, timeout_seconds=3600),
         cutout_config=CutoutConfig(),
     )
 
@@ -138,69 +133,3 @@ def test_exploration_generation_flow():
         for cand in candidates:
             # The candidates should have the same number of atoms as the initial structure
             assert len(cand) == len(initial_structure)
-
-
-def test_e2e_gui_payload_parsing_and_security():
-    import tempfile
-    import unittest.mock
-    from pathlib import Path
-
-    import pytest
-    from pydantic import ValidationError
-
-    from src.domain_models.config import ProjectConfig
-
-    # Simulate an incoming JSON payload from GUI
-    base_dir = Path(tempfile.mkdtemp())
-    (base_dir / "pyproject.toml").touch()
-
-    # We must patch env_file_security because tests run without real env files
-    with unittest.mock.patch(
-        "src.domain_models.config._validate_env_file_security", return_value=base_dir / ".env"
-    ):
-        with unittest.mock.patch("dotenv.dotenv_values", return_value={}):
-            gui_payload = {
-                "project_root": str(base_dir),
-                "system": {"elements": ["Fe"]},
-                "dynamics": {"project_root": str(base_dir), "trusted_directories": []},
-                "oracle": {},
-                "trainer": {"trusted_directories": []},
-                "validator": {},
-                "distillation_config": {
-                    "mace_model_path": "mace-mp-0-medium",
-                    "temp_dir": str(base_dir),
-                    "output_dir": str(base_dir),
-                    "model_storage_path": str(base_dir),
-                    "uncertainty_threshold": 0.05,
-                },
-                "loop_strategy": {
-                    "replay_buffer_size": 1000,
-                    "checkpoint_interval": 10,
-                    "timeout_seconds": 3600,
-                    "max_iterations": 20,
-                },
-                "intent": {
-                    "target_material": "Fe",
-                    "accuracy_speed_tradeoff": 1,
-                    "enable_auto_hpo": True,
-                },
-            }
-
-            with unittest.mock.patch("shutil.which", return_value="/usr/bin/mock_bin"):
-                with unittest.mock.patch("os.access", return_value=True):
-                    # Valid case
-                    config = ProjectConfig.model_validate(gui_payload)
-                    assert config.distillation_config.uncertainty_threshold == 0.15 - (1 * 0.013)
-                    assert config.loop_strategy.max_iterations == 10
-
-                    # Malicious payload simulation (UAT-01-02)
-                    malicious_payload = gui_payload.copy()
-                    malicious_payload["intent"] = {
-                        "target_material": "../../etc/passwd",
-                        "accuracy_speed_tradeoff": 5,
-                    }
-
-                    with pytest.raises(
-                        ValidationError, match="Path traversal characters are not allowed"
-                    ):
-                        ProjectConfig.model_validate(malicious_payload)

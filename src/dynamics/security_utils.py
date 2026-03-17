@@ -19,7 +19,7 @@ def _check_trusted_location(resolved_bin: Path, all_trusted: list[str]) -> None:
 
     if not is_trusted:
         msg = f"Resolved binary must reside in a trusted directory: {resolved_bin}"
-        raise TypeError(msg)
+        raise ValueError(msg)
 
 
 def _verify_executable_hash(resolved_bin: Path, expected_hash: str) -> None:
@@ -59,7 +59,7 @@ def validate_executable_path(
     resolved_bin: Path = Path(os.path.realpath(resolved_which)).resolve(strict=True)
 
     # Do not allow resolving via symlinks that point outside trusted domains; explicitly fail if the base was a symlink.
-    if Path(resolved_which).is_symlink():
+    if Path(executable_name).is_symlink() or Path(resolved_which).is_symlink():
         msg = "Binary cannot be a symlink."
         raise ValueError(msg)
 
@@ -80,9 +80,9 @@ def validate_executable_path(
     return resolved_bin.absolute()
 
 
-def validate_filename(filename: str, extra_allowed_chars: str = "") -> None:
+def validate_filename(filename: str) -> None:
     """Validates that a filename is alphanumeric with standard safe characters."""
-    pattern = f"^[a-zA-Z0-9_.-{extra_allowed_chars}]+$"
+    pattern = r"^[a-zA-Z0-9_.-]+$"
     if not re.match(pattern, filename):
         msg = f"Invalid characters in filename: {filename}"
         raise ValueError(msg)
@@ -106,11 +106,11 @@ def _validate_env_key(key: str) -> None:
 
 
 def _validate_env_value(val: str) -> None:
-    if ".." in val:
-        msg = f"Invalid traversal sequences in .env variable value: {val}."
+    if len(val) > 1024:
+        msg = "Environment variable value exceeds maximum length"
         raise ValueError(msg)
-    if not re.match(r"^[-a-zA-Z0-9_.:/=,+?&#@%]*$", val):
-        msg = f"Invalid characters in .env variable value: {val}."
+    if ".." in val or ";" in val or "&" in val or "|" in val:
+        msg = f"Invalid characters or traversal sequences in .env variable value: {val}."
         raise ValueError(msg)
 
 
@@ -166,24 +166,3 @@ def validate_and_copy_potential(
     # For now, we perform the atomic copy/move.
     shutil.copy2(src_resolved, final_resolved)
     return final_resolved
-
-
-def _validate_string_security(val: str) -> str:
-    """Validates that a string does not contain potential injection sequences."""
-    if not isinstance(val, str):
-        msg = f"Expected a string, got {type(val).__name__}"
-        raise TypeError(msg)
-
-    if ".." in val or "/" in val or "\\" in val:
-        msg = f"Path traversal characters are not allowed: {val}"
-        raise ValueError(msg)
-
-    if ";" in val or "&" in val or "|" in val or "$" in val or "`" in val:
-        msg = f"Shell injection characters are not allowed: {val}"
-        raise ValueError(msg)
-
-    if len(val) > 256:
-        msg = "String exceeds maximum allowed length (256)"
-        raise ValueError(msg)
-
-    return val

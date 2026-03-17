@@ -110,43 +110,15 @@ Start the FastAPI backend server to allow GUI connections:
 uv run uvicorn src.api.main:app --host 0.0.0.0 --port 8000
 ```
 
-Alternatively, you can run the core orchestrator programmatically by directly feeding it high-level intent, like the mathematical speed-vs-accuracy trade-off, and the backend handles all hyperparameter translation logic automatically:
+Alternatively, you can run the core orchestrator programmatically:
 
 ```python
 from pathlib import Path
 from src.core.orchestrator import Orchestrator
 from src.domain_models.config import ProjectConfig
-import json
 
-# Load your configuration directly containing a UI Intent Payload
-payload = {
-    "project_root": "/tmp/my_simulation",
-    "system": {"elements": ["Fe"]},
-    "dynamics": {"project_root": "/tmp/my_simulation", "trusted_directories": []},
-    "oracle": {},
-    "trainer": {"trusted_directories": []},
-    "validator": {},
-    "distillation_config": {
-        "mace_model_path": "mace-mp-0-medium",
-        "temp_dir": "/tmp/dist",
-        "output_dir": "/tmp/dist",
-        "model_storage_path": "/tmp/models",
-        "uncertainty_threshold": 0.05
-    },
-    "loop_strategy": {
-        "replay_buffer_size": 1000,
-        "checkpoint_interval": 10,
-        "timeout_seconds": 3600,
-        "max_iterations": 20
-    },
-    "intent": {
-        "target_material": "Fe",
-        "accuracy_speed_tradeoff": 5,
-        "enable_auto_hpo": True
-    }
-}
-
-config = ProjectConfig.model_validate(payload)
+# Load your configuration
+config = ProjectConfig.model_validate_json(Path("config.json").read_text())
 
 # Initialize and run the NextGen Orchestrator
 orchestrator = Orchestrator(config)

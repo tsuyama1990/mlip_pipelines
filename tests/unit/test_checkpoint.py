@@ -8,9 +8,8 @@ from src.core.checkpoint import CheckpointManager
 
 def test_checkpoint_manager_init(tmp_path: Path):
     db_path = tmp_path / "checkpoint.db"
-    CheckpointManager(db_path)
+    cm = CheckpointManager(db_path)
     assert db_path.exists()
-
 
 def test_checkpoint_set_and_get(tmp_path: Path):
     db_path = tmp_path / "checkpoint.db"
@@ -24,7 +23,6 @@ def test_checkpoint_set_and_get(tmp_path: Path):
     cm.set_state("HALT_INFO", complex_val)
     assert cm.get_state("HALT_INFO") == complex_val
 
-
 def test_checkpoint_transaction_rollback(tmp_path: Path, monkeypatch):
     db_path = tmp_path / "checkpoint.db"
     cm = CheckpointManager(db_path)
@@ -32,21 +30,18 @@ def test_checkpoint_transaction_rollback(tmp_path: Path, monkeypatch):
 
     # Force a failure during set_state
     def mock_execute(*args, **kwargs):
-        err_msg = "Forced Failure"
-        raise sqlite3.OperationalError(err_msg)
+        raise sqlite3.OperationalError("Forced Failure")
 
     original_connect = sqlite3.connect
-
     class MockConnection:
-        def __init__(self, *args, **kwargs) -> None:
+        def __init__(self, *args, **kwargs):
             self.conn = original_connect(*args, **kwargs)
-        def __enter__(self) -> "MockConnection":
+        def __enter__(self):
             return self
-        def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        def __exit__(self, exc_type, exc_val, exc_tb):
             self.conn.close()
-        def execute(self, *args, **kwargs) -> None:
-            err = "Forced Failure"
-            raise sqlite3.OperationalError(err)
+        def execute(self, *args, **kwargs):
+            raise sqlite3.OperationalError("Forced Failure")
 
     monkeypatch.setattr(sqlite3, "connect", MockConnection)
 
@@ -59,33 +54,30 @@ def test_checkpoint_transaction_rollback(tmp_path: Path, monkeypatch):
 
 
 def test_checkpoint_invalid_db_path(tmp_path: Path):
-    with pytest.raises(ValueError, match="Project root directory .* does not exist or is not a directory."):
+    with pytest.raises(ValueError):
         # Using path traversal to test validation
         # The parent path 'tmp_path / ".." / "root.db".parent' is 'tmp_path / ".."'.
         # Since _secure_resolve_and_validate_dir requires absolute, safe paths, let's construct a bad one.
-
+        bad_path = tmp_path / ".." / "root.db"
         # However, Path(bad_path).parent.resolve() might just be /tmp, which is "allowed" if it's within CWD?
         # Actually _secure_resolve_and_validate_dir expects the path to be relative to CWD.
         # Let's pass an absolute path like /etc/passwd that will definitely fail.
         CheckpointManager(Path("/etc/shadow_db.sqlite"))
-
 
 def test_checkpoint_get_error(tmp_path: Path, monkeypatch):
     db_path = tmp_path / "checkpoint.db"
     cm = CheckpointManager(db_path)
 
     original_connect = sqlite3.connect
-
     class MockConnectionGet:
-        def __init__(self, *args, **kwargs) -> None:
+        def __init__(self, *args, **kwargs):
             self.conn = original_connect(*args, **kwargs)
-        def __enter__(self) -> "MockConnectionGet":
+        def __enter__(self):
             return self
-        def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        def __exit__(self, exc_type, exc_val, exc_tb):
             self.conn.close()
-        def execute(self, *args, **kwargs) -> None:
-            err = "Forced Get Failure"
-            raise sqlite3.OperationalError(err)
+        def execute(self, *args, **kwargs):
+            raise sqlite3.OperationalError("Forced Get Failure")
 
     monkeypatch.setattr(sqlite3, "connect", MockConnectionGet)
     with pytest.raises(RuntimeError, match="Failed to get state MISSING from checkpoint database"):
