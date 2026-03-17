@@ -1,176 +1,56 @@
-# PYACEMAKER: NextGen Hierarchical Distillation Architecture
+# Adaptive-MLIP GUI Platform
 
-![Python Version](https://img.shields.io/badge/python-3.12%2B-blue.svg)
-![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)
-![License](https://img.shields.io/badge/license-MIT-green.svg)
+## Overview
+The Adaptive-MLIP GUI Platform is an advanced, fully automated Machine Learning Interatomic Potential (MLIP) construction and operational pipeline. It seamlessly integrates first-principles calculations (DFT) with Machine Learning Potentials (MLIPs like MACE and ACE) into a cohesive intent-driven system.
 
-## 1. Project Title & Description
+By bridging the gap between materials science objectives and the intricate syntax of high-performance computing tools, this platform ensures that experimentalists and computational researchers can focus on the physics of their problem domain rather than complex configurations. It translates high-level intents—such as a simple "Accuracy vs. Speed" slider—into mathematically precise, robust hyperparameter configurations required to orchestrate complex molecular simulations without error.
 
-PYACEMAKER (Adaptive-MLIP) is an advanced, fully automated Machine Learning Interatomic Potential (MLIP) construction and operational pipeline, now powered by a next-generation **Intent-Driven GUI Platform**.
+## Features
+- **Intent-Driven Configuration**: Configure complex Active Learning environments by simply defining a target material and an Accuracy vs. Speed tradeoff via a unified FastAPI gateway.
+- **Strict Boundary Security Validation**: Prevents path traversal sequences, shell injections, and malformed configurations by employing highly secure Pydantic model validators.
+- **RESTful API Endpoint**: Easily integrate your intent-driven UI payloads using our `/config/submit` endpoint which guarantees mathematical and structural validity before computation.
+- **Automated Mathematical Tradeoffs**: Dynamically determines uncertainty thresholds, replay buffer sizes, and training epochs to safely manage model knowledge retention vs. exploration speed.
 
-Designed for high-performance computational materials science, PYACEMAKER solves the "Time-Continuity Break" and "Data Inefficiency" problems inherent in traditional Active Learning loops. By tightly integrating the robust Pacemaker ACE formalism with the immense generalisation power of Foundation Models (MACE), this system provides a zero-configuration, self-healing workflow.
+## Installation
 
-With the introduction of the GUI, researchers can now seamlessly run multi-million atom molecular dynamics (MD) or kinetic Monte Carlo (kMC) simulations by simply specifying their high-level intent (e.g., target material, accuracy vs. speed trade-off). The system's intelligent compiler automatically handles high-uncertainty events, extracts local defect clusters, refines models on-the-fly with Density Functional Theory (DFT), translates visual selections into complex LAMMPS scripts, and resumes simulations without ever dropping physical state.
-
-## 2. Key Features
-
-1. **Intent-Driven UI & Smart Trade-offs:** Eliminate complex text configurations. Users simply set an "Accuracy vs. Speed" slider, and the backend automatically mathematically provisions the optimal hyperparameter thresholds, buffer radii, and sampling intervals.
-2. **Visual & Semantic State Management:** Define complex simulation boundaries (e.g., freezing a slab layer) directly in a 3D viewer. The system seamlessly translates these visual tags into error-free LAMMPS `region` and `group` commands.
-3. **Zero-Shot Foundation Model Distillation:** Drastically reduce expensive DFT calculations by using MACE-MP-0 as a high-fidelity surrogate oracle. Confident predictions are distilled into the fast ACE potential, reserving DFT strictly for profound physical unknowns.
-4. **Master-Slave MD Resume (Time-Continuity):** Completely stateful and continuous Molecular Dynamics pipeline. Simulations that pause upon encountering high-uncertainty cleanly checkpoint their exact phase-space geometry.
-5. **Real-time Telemetry & Run 0 Diagnostics:** Catch physical crashes (e.g., atomic collisions) instantly with pre-flight "Run 0" validations before submitting HPC jobs. Monitor live training loss curves and MD energy maps via high-speed WebSockets.
-6. **Intelligent Cluster Extraction & Auto-Passivation:** When MD encounters unknown territory, the system intelligently extracts the exact spherical region of failure, passivating dangling surface bonds to ensure electrical neutrality before DFT evaluation.
-7. **Auto-HPO & Hierarchical Finetuning:** Automatically optimize foundation model hyperparameters (learning rate, energy weights) in the background based on user policy (Generalize vs. Specialize) to prevent catastrophic forgetting.
-
-## 3. Architecture Overview
-
-PYACEMAKER is built upon a highly modular, Pydantic-validated architecture enforcing strict separation of concerns. The GUI acts as an intelligent compiler, communicating via FastAPI to a central Orchestrator that manages a 4-phase loop: Zero-Shot Distillation, Validation, Exploration & Cutout, and Finetuning.
-
-```mermaid
-graph TD
-    subgraph Client / Web Browser
-        UI[React.js GUI]
-        V3D[3D Viewer & Workflow Editor]
-        UI --> V3D
-    end
-
-    subgraph API Gateway Layer
-        FAPI[FastAPI Server]
-        WS[WebSocket Streamer]
-    end
-
-    subgraph Translation & Validation Layer
-        PM[Pydantic Config Models]
-        ASE[ASE Structure Hub]
-        LGEN[LAMMPS Generator]
-    end
-
-    subgraph Core MLIP Orchestration
-        O[Orchestrator]
-        DYN[Dynamics Engine]
-        TO[Tiered Oracle]
-        TR[Trainers]
-        DB[(Local State DB)]
-    end
-
-    UI <-->|REST / JSON| FAPI
-    UI <-->|Telemetry| WS
-
-    FAPI --> PM
-    FAPI --> ASE
-    ASE --> LGEN
-    LGEN --> PM
-
-    PM --> O
-    O <--> DB
-    O --> DYN
-    O --> TO
-    O --> TR
-
-    DYN -.->|Run0 / Status| WS
-    TR -.->|Loss Curves| WS
-```
-
-## 4. Prerequisites
-
-To run PYACEMAKER, ensure your system meets the following requirements:
-- Python 3.12+
-- `uv` package manager (recommended for fast, deterministic dependency resolution)
-- Valid installations of underlying scientific binaries:
-  - LAMMPS (compiled with USER-PACE)
-  - Quantum Espresso (or VASP, if configured)
-  - Pacemaker
-- Appropriate hardware (GPUs strongly recommended for MACE PyTorch inference and DFT execution).
-
-## 5. Installation & Setup
-
-We recommend using `uv` to manage the project's virtual environment and dependencies.
+Ensure you have Python >= 3.12 and [uv](https://github.com/astral-sh/uv) installed, then run:
 
 ```bash
-# Clone the repository
-git clone https://github.com/your-org/mlip-pipelines.git
-cd mlip-pipelines
-
-# Sync dependencies using uv
 uv sync
-
-# Set up environment variables
-cp .env.example .env
 ```
 
-## 6. Usage
+## Usage
 
-PYACEMAKER is designed to be driven either by its robust configuration schema or the new FastAPI backend.
-
-### Quick Start Example
-
-Start the FastAPI backend server to allow GUI connections:
+To start the local FastAPI web server which processes GUI configurations:
 
 ```bash
-uv run uvicorn src.api.main:app --host 0.0.0.0 --port 8000
+uv run uvicorn src.api.main:app --reload
 ```
 
-Alternatively, you can run the core orchestrator programmatically:
+You can then test the API endpoint using a simple `curl` command:
 
-```python
-from pathlib import Path
-from src.core.orchestrator import Orchestrator
-from src.domain_models.config import ProjectConfig
-
-# Load your configuration
-config = ProjectConfig.model_validate_json(Path("config.json").read_text())
-
-# Initialize and run the NextGen Orchestrator
-orchestrator = Orchestrator(config)
-orchestrator.run_cycle()
-```
-
-For a comprehensive interactive walkthrough of the GUI API workflows, please run our official Marimo tutorial:
 ```bash
-uv run python tutorials/adaptive_mlip_gui_workflow.py
+curl -X POST "http://127.0.0.1:8000/config/submit" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "project_root": "/tmp/my_mlip_project",
+       "system": {"elements": ["Fe"]},
+       "dynamics": {"trusted_directories": [], "project_root": "/tmp/my_mlip_project"},
+       "oracle": {},
+       "trainer": {"trusted_directories": []},
+       "validator": {},
+       "distillation_config": {"temp_dir": "/tmp", "output_dir": "/tmp", "model_storage_path": "/tmp"},
+       "loop_strategy": {"replay_buffer_size": 500, "checkpoint_interval": 5, "timeout_seconds": 86400},
+       "intent": {
+         "target_material": "Fe",
+         "accuracy_speed_tradeoff": 8,
+         "enable_auto_hpo": false
+       }
+     }'
 ```
 
-## 7. Development Workflow
-
-This project enforces strict code quality standards to ensure the complex physical logic remains maintainable and safe.
-
-- **Type Checking:** We use `mypy` in strict mode. Run it via:
-  ```bash
-  uv run mypy .
-  ```
-- **Linting & Formatting:** We use `ruff` to enforce PEP 8 and modern Python idioms. Run it via:
-  ```bash
-  uv run ruff check .
-  uv run ruff format .
-  ```
-- **Testing:** We use `pytest` with extensive mocking to verify API translation and orchestrator logic without requiring multi-hour HPC jobs. Run the suite via:
-  ```bash
-  uv run pytest
-  ```
-
-## 8. Project Structure
-
-```text
-mlip-pipelines/
-├── src/
-│   ├── api/               # FastAPI endpoints, WebSocket telemetry, Async Tasks
-│   ├── core/              # Orchestrator and SQLite State Checkpointing
-│   ├── domain_models/     # Pydantic Schemas (ProjectConfig, GUI State DTOs)
-│   ├── dynamics/          # LAMMPS/EON Engines & Semantic Region Translators
-│   ├── generators/        # Structure Generation & Intelligent Cutout/Passivation
-│   ├── oracles/           # Tiered Oracle, MACE Manager, DFT Manager
-│   ├── trainers/          # Pacemaker ACE Trainer & Auto-HPO Manager
-│   └── validators/        # Physical Stability Testing (Phonons, EOS)
-├── tests/                 # Comprehensive Unit and Integration Tests
-├── tutorials/             # Executable Marimo Notebooks (UAT)
-├── dev_documents/         # System Architecture & Development Specs
-├── pyproject.toml         # Dependency & Linter Definitions
-└── README.md              # Project Landing Page
-```
-
-## 9. License
-
-This project is licensed under the MIT License.
-
-## High-Performance State Resumption
-The Orchestrator features a highly robust, database-backed state machine. If a multi-day job is abruptly killed by a Slurm scheduler's wall-time limit, the system can instantly and safely resume from the exact micro-operation via the `/orchestrator/resume` endpoint. Furthermore, it features an aggressive, asynchronous cleanup daemon to prevent HPC quota limits.
+## Structure
+- `src/api/`: Contains the FastAPI web application, API routes, and CORS middleware logic.
+- `src/domain_models/`: Contains the strict Pydantic schemas validating both core backend parameters and GUI specific translation payloads (`gui_schemas.py`).
+- `src/dynamics/`: Houses the dynamics execution logic and robust string sanitization security mechanisms.
+- `src/core/`: Contains the main Active Learning orchestration algorithms.

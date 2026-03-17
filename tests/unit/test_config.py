@@ -337,3 +337,87 @@ def test_loop_strategy_consistency() -> None:
         ValidationError, match="incremental_update cannot be True when use_tiered_oracle is False"
     ):
         LoopStrategyConfig(use_tiered_oracle=False, incremental_update=True, replay_buffer_size=500, checkpoint_interval=5, timeout_seconds=86400)
+
+def test_project_config_intent_translation_min(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import tempfile
+
+    from src.domain_models.config import (
+        DistillationConfig,
+        DynamicsConfig,
+        LoopStrategyConfig,
+        OracleConfig,
+        ProjectConfig,
+        SystemConfig,
+        TrainerConfig,
+        ValidatorConfig,
+    )
+    from src.domain_models.gui_schemas import WorkflowIntentConfig
+
+    monkeypatch.setattr("shutil.which", lambda x: "/usr/bin/lmp" if x == "lmp" else "/usr/bin/eonclient")
+    monkeypatch.setattr("os.access", lambda x, y: True)
+    tmp_dir = Path(tempfile.gettempdir()).resolve(strict=True)
+    proj_dir = tmp_dir / "myproj_min"
+    proj_dir.mkdir(parents=True, exist_ok=True)
+    (proj_dir / "README.md").touch()
+
+    intent = WorkflowIntentConfig(target_material="Fe", accuracy_speed_tradeoff=1, enable_auto_hpo=False)
+
+    config = ProjectConfig(
+        project_root=proj_dir,
+        system=SystemConfig(elements=["Fe"]),
+        dynamics=DynamicsConfig(project_root=str(proj_dir), trusted_directories=[]),
+        oracle=OracleConfig(),
+        trainer=TrainerConfig(trusted_directories=[]),
+        validator=ValidatorConfig(),
+        distillation_config=DistillationConfig(temp_dir="/tmp", output_dir="/tmp", model_storage_path="/tmp"),
+        loop_strategy=LoopStrategyConfig(replay_buffer_size=500, checkpoint_interval=5, timeout_seconds=86400),
+        intent=intent
+    )
+
+    expected_threshold = 0.15 - (1 * 0.013)  # 0.137
+    assert abs(config.distillation_config.uncertainty_threshold - expected_threshold) < 1e-6
+    assert abs(config.dynamics.thresholds.threshold_call_dft - expected_threshold) < 1e-6
+    assert config.loop_strategy.replay_buffer_size == 100
+    assert config.trainer.max_epochs == 10
+
+def test_project_config_intent_translation_max(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import tempfile
+
+    from src.domain_models.config import (
+        DistillationConfig,
+        DynamicsConfig,
+        LoopStrategyConfig,
+        OracleConfig,
+        ProjectConfig,
+        SystemConfig,
+        TrainerConfig,
+        ValidatorConfig,
+    )
+    from src.domain_models.gui_schemas import WorkflowIntentConfig
+
+    monkeypatch.setattr("shutil.which", lambda x: "/usr/bin/lmp" if x == "lmp" else "/usr/bin/eonclient")
+    monkeypatch.setattr("os.access", lambda x, y: True)
+    tmp_dir = Path(tempfile.gettempdir()).resolve(strict=True)
+    proj_dir = tmp_dir / "myproj_max"
+    proj_dir.mkdir(parents=True, exist_ok=True)
+    (proj_dir / "README.md").touch()
+
+    intent = WorkflowIntentConfig(target_material="Fe", accuracy_speed_tradeoff=10, enable_auto_hpo=False)
+
+    config = ProjectConfig(
+        project_root=proj_dir,
+        system=SystemConfig(elements=["Fe"]),
+        dynamics=DynamicsConfig(project_root=str(proj_dir), trusted_directories=[]),
+        oracle=OracleConfig(),
+        trainer=TrainerConfig(trusted_directories=[]),
+        validator=ValidatorConfig(),
+        distillation_config=DistillationConfig(temp_dir="/tmp", output_dir="/tmp", model_storage_path="/tmp"),
+        loop_strategy=LoopStrategyConfig(replay_buffer_size=500, checkpoint_interval=5, timeout_seconds=86400),
+        intent=intent
+    )
+
+    expected_threshold = 0.15 - (10 * 0.013)  # 0.02
+    assert abs(config.distillation_config.uncertainty_threshold - expected_threshold) < 1e-6
+    assert abs(config.dynamics.thresholds.threshold_call_dft - expected_threshold) < 1e-6
+    assert config.loop_strategy.replay_buffer_size == 1000
+    assert config.trainer.max_epochs == 100

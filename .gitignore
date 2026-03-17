@@ -217,3 +217,28 @@ active_learning/
 potentials/
 data/
 .ac_cdd/.env
+
+# Python Cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Environments
+.env
+.env.local
+.venv/
+venv/
+env/
+
+# Tools & Caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# System Metadata (CRITICAL)
+.ac_cdd/
+
+# macOS
+.DS_Store

@@ -9,6 +9,8 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "ase>=3.27.0",
+    "fastapi>=0.135.1",
+    "httpx>=0.28.1",
     "lammps>=2025.7.22.2.0",
     "loguru>=0.7.3",
     "mace-torch>=0.3.15",
@@ -17,7 +19,9 @@ dependencies = [
     "phonopy>=3.1.0",
     "pydantic>=2.12.5",
     "pydantic-settings>=2.13.1",
+    "python-dotenv>=1.2.2",
     "pyyaml>=6.0.3",
+    "uvicorn>=0.41.0",
 ]
 
 [dependency-groups]

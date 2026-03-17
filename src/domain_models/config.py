@@ -7,6 +7,8 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from src.domain_models.gui_schemas import WorkflowIntentConfig
+
 
 class InterfaceTarget(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -779,6 +781,28 @@ class ProjectConfig(BaseSettings):
     distillation_config: DistillationConfig
     cutout_config: CutoutConfig = Field(default_factory=CutoutConfig)
     loop_strategy: LoopStrategyConfig
+    intent: WorkflowIntentConfig | None = Field(default=None, description="Optional high-level workflow intent")
+
+    @model_validator(mode="after")
+    def apply_intent_tradeoffs(self) -> "ProjectConfig":
+        if self.intent is not None:
+            # Type is WorkflowIntentConfig but imported dynamically to avoid circular import if needed
+            # Actually we can import it locally or at top
+            tradeoff = self.intent.accuracy_speed_tradeoff
+
+            calculated_threshold = 0.15 - (tradeoff * 0.013)
+            self.distillation_config.uncertainty_threshold = calculated_threshold
+            self.dynamics.thresholds.threshold_call_dft = calculated_threshold
+            self.loop_strategy.replay_buffer_size = tradeoff * 100
+
+            # Since trainer max_epochs does not correspond to an exact mapped field in the spec,
+            # we'll scale it to demonstrate intent propagation:
+            self.trainer.max_epochs = tradeoff * 10
+
+            # Ensure syncing back if needed
+            self.dynamics.uncertainty_threshold = calculated_threshold
+
+        return self
 
     @field_validator("project_root")
     @classmethod

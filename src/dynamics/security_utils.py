@@ -166,3 +166,13 @@ def validate_and_copy_potential(
     # For now, we perform the atomic copy/move.
     shutil.copy2(src_resolved, final_resolved)
     return final_resolved
+
+def _validate_string_security(val: str) -> None:
+    """Centralized security validation for user-provided strings to prevent injections."""
+    if len(val) > 256:
+        raise ValueError("String exceeds maximum allowed length of 256 characters.")
+    if ".." in val or ";" in val or "&" in val or "|" in val or "$" in val or "`" in val or "{" in val or "}" in val:
+        raise ValueError(f"Invalid characters or traversal sequences in string: {val}")
+    # Prevent common shell injection sequences and directory traversals
+    if val.startswith("/") or val.startswith("\\"):
+        raise ValueError(f"String cannot start with a path separator: {val}")
