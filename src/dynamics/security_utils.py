@@ -166,3 +166,24 @@ def validate_and_copy_potential(
     # For now, we perform the atomic copy/move.
     shutil.copy2(src_resolved, final_resolved)
     return final_resolved
+
+
+def _validate_string_security(val: str) -> str:
+    """Validates that a string does not contain potential injection sequences."""
+    if not isinstance(val, str):
+        msg = f"Expected a string, got {type(val).__name__}"
+        raise ValueError(msg)
+
+    if ".." in val or "/" in val or "\\" in val:
+        msg = f"Path traversal characters are not allowed: {val}"
+        raise ValueError(msg)
+
+    if ";" in val or "&" in val or "|" in val or "$" in val or "`" in val:
+        msg = f"Shell injection characters are not allowed: {val}"
+        raise ValueError(msg)
+
+    if len(val) > 256:
+        msg = "String exceeds maximum allowed length (256)"
+        raise ValueError(msg)
+
+    return val

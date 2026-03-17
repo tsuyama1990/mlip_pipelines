@@ -1,81 +1,140 @@
-import tempfile
-from pathlib import Path
+import marimo
 
-import pytest
-from pydantic import ValidationError
-
-
-def test_uat_c01_01_threshold_logic():
-    from src.domain_models.config import ActiveLearningThresholds
-
-    with pytest.raises(ValidationError) as exc_info:
-        ActiveLearningThresholds(threshold_call_dft=0.01, threshold_add_train=0.05)
-    assert "must be strictly greater than or equal to local training addition threshold" in str(
-        exc_info.value
-    )
+__generated_with = "0.2.13"
+app = marimo.App()
 
 
-def test_uat_c01_02_cutout_constraints():
-    from src.domain_models.config import CutoutConfig
-
-    with pytest.raises(ValidationError) as exc_info:
-        CutoutConfig(core_radius=6.0, buffer_radius=4.0)
-    assert "must be strictly greater than core radius" in str(exc_info.value)
-
-
-def test_uat_c01_03_legacy_config():
+@app.cell
+def __() -> tuple:
+    import os
+    import sys
+    import tempfile
     import unittest.mock
+    from pathlib import Path
 
-    from src.domain_models.config import (
-        DynamicsConfig,
-        OracleConfig,
-        ProjectConfig,
-        SystemConfig,
-        TrainerConfig,
-        ValidatorConfig,
-    )
+    import pytest
+    from pydantic import ValidationError
 
-    tmp_dir = Path(tempfile.gettempdir()).resolve(strict=True) / "myproj_legacy_uat"
-    tmp_dir.mkdir(parents=True, exist_ok=True)
-    (tmp_dir / "README.md").touch()
+    # Inject project root BEFORE imports
+    sys.path.insert(0, str(Path.cwd()))
+
+    from src.domain_models.config import ProjectConfig
+
+    return sys, os, tempfile, unittest, Path, pytest, ValidationError, ProjectConfig
+
+
+@app.cell
+def __(tempfile, Path, ProjectConfig, unittest) -> tuple:
+    print("Executing UAT-01-01: Intent-Driven Translation Validation...")
+
+    base_dir = Path(tempfile.mkdtemp())
+    (base_dir / "pyproject.toml").touch()
+
+    gui_payload = {
+        "project_root": str(base_dir),
+        "system": {"elements": ["Fe"]},
+        "dynamics": {"project_root": str(base_dir), "trusted_directories": []},
+        "oracle": {},
+        "trainer": {"trusted_directories": []},
+        "validator": {},
+        "distillation_config": {
+            "mace_model_path": "mace-mp-0-medium",
+            "temp_dir": str(base_dir),
+            "output_dir": str(base_dir),
+            "model_storage_path": str(base_dir),
+            "uncertainty_threshold": 0.05,
+        },
+        "loop_strategy": {
+            "replay_buffer_size": 1000,
+            "checkpoint_interval": 10,
+            "timeout_seconds": 3600,
+            "max_iterations": 20,
+        },
+        "intent": {"target_material": "Fe", "accuracy_speed_tradeoff": 1, "enable_auto_hpo": True},
+    }
 
     with unittest.mock.patch(
-        "shutil.which", lambda x: "/usr/bin/lmp" if x == "lmp" else "/usr/bin/eonclient"
+        "src.domain_models.config._validate_env_file_security", return_value=Path("/tmp/.env")
     ):
-        with unittest.mock.patch("os.access", return_value=True):
-            config = ProjectConfig(
-                project_root=tmp_dir,
-                system=SystemConfig(elements=["Fe", "O"]),
-                dynamics=DynamicsConfig(project_root=str(tmp_dir), trusted_directories=[]),
-                oracle=OracleConfig(),
-                trainer=TrainerConfig(trusted_directories=[]),
-                validator=ValidatorConfig(),
-            )
+        with unittest.mock.patch("dotenv.dotenv_values", return_value={}):
+            with unittest.mock.patch("shutil.which", return_value="/usr/bin/mock_bin"):
+                with unittest.mock.patch.object(
+                    ProjectConfig, "validate_env_content", side_effect=lambda x: x
+                ):
+                    with unittest.mock.patch("os.access", return_value=True):
+                        with unittest.mock.patch("pathlib.Path.exists", return_value=True):
+                            with unittest.mock.patch("pathlib.Path.is_dir", return_value=True):
+                                _config = ProjectConfig.model_validate(gui_payload)
 
-    assert config.cutout_config.core_radius == 3.0
-    assert config.cutout_config.buffer_radius == 4.0
-    assert config.cutout_config.enable_passivation is True
-    assert config.distillation_config.enable is True
+    import math
 
-
-def test_uat_c01_04_distillation_overrides():
-    from src.domain_models.config import DistillationConfig
-
-    config = DistillationConfig(
-        mace_model_path="mace-mp-0-large", sampling_structures_per_system=5000
+    assert math.isclose(_config.distillation_config.uncertainty_threshold, 0.137, rel_tol=1e-5), (
+        f"Threshold translation failed, got {_config.distillation_config.uncertainty_threshold}"
     )
-
-    assert config.mace_model_path == "mace-mp-0-large"
-    assert config.sampling_structures_per_system == 5000
-
-    with pytest.raises(ValidationError) as exc_info:
-        DistillationConfig(sampling_structures_per_system=-100)
-    assert "must be an integer strictly greater than zero" in str(exc_info.value)
+    assert _config.loop_strategy.max_iterations == 10, "Max iterations translation failed"
+    print("✓ UAT-01-01 Passed: Intent properly translated to thresholds and scaling parameters")
+    return base_dir, gui_payload
 
 
-def test_uat_c01_05_unexpected_fields():
-    from src.domain_models.config import ActiveLearningThresholds
+@app.cell
+def __(base_dir, gui_payload, Path, ProjectConfig, pytest, ValidationError, unittest) -> tuple:
+    print("Executing UAT-01-02: Strict Security Validation of GUI Payloads...")
 
-    with pytest.raises(ValidationError) as exc_info:
-        ActiveLearningThresholds(invalid_threshold_parameter=0.05)  # type: ignore[call-arg]
-    assert "Extra inputs are not permitted" in str(exc_info.value)
+    malicious_payload = gui_payload.copy()
+    malicious_payload["intent"] = {
+        "target_material": "../../etc/passwd",
+        "accuracy_speed_tradeoff": 5,
+    }
+
+    with unittest.mock.patch(
+        "src.domain_models.config._validate_env_file_security", return_value=Path("/tmp/.env")
+    ):
+        with unittest.mock.patch("dotenv.dotenv_values", return_value={}):
+            with unittest.mock.patch("shutil.which", return_value="/usr/bin/mock_bin"):
+                with unittest.mock.patch.object(
+                    ProjectConfig, "validate_env_content", side_effect=lambda x: x
+                ):
+                    with unittest.mock.patch("os.access", return_value=True):
+                        with unittest.mock.patch("pathlib.Path.exists", return_value=True):
+                            with unittest.mock.patch("pathlib.Path.is_dir", return_value=True):
+                                with pytest.raises(ValidationError) as excinfo:
+                                    ProjectConfig.model_validate(malicious_payload)
+                    assert "Path traversal characters are not allowed" in str(excinfo.value), (
+                        "Security validation failed to catch injection"
+                    )
+
+    print("✓ UAT-01-02 Passed: System properly rejected malicious path traversal payload")
+    return (malicious_payload,)
+
+
+@app.cell
+def __(base_dir, gui_payload, Path, ProjectConfig, unittest) -> tuple:
+    print("Executing UAT-01-03: Backward Compatibility with CLI Workflows...")
+
+    legacy_payload = gui_payload.copy()
+    del legacy_payload["intent"]
+
+    with unittest.mock.patch(
+        "src.domain_models.config._validate_env_file_security", return_value=Path("/tmp/.env")
+    ):
+        with unittest.mock.patch("dotenv.dotenv_values", return_value={}):
+            with unittest.mock.patch("shutil.which", return_value="/usr/bin/mock_bin"):
+                with unittest.mock.patch.object(
+                    ProjectConfig, "validate_env_content", side_effect=lambda x: x
+                ):
+                    with unittest.mock.patch("os.access", return_value=True):
+                        with unittest.mock.patch("pathlib.Path.exists", return_value=True):
+                            with unittest.mock.patch("pathlib.Path.is_dir", return_value=True):
+                                _config2 = ProjectConfig.model_validate(legacy_payload)
+
+    assert _config2.distillation_config.uncertainty_threshold == 0.05, (
+        "Legacy parameter altered incorrectly"
+    )
+    assert _config2.loop_strategy.max_iterations == 20, "Legacy parameter altered incorrectly"
+
+    print("✓ UAT-01-03 Passed: CLI config parsed natively without intent translation")
+    return (legacy_payload,)
+
+
+if __name__ == "__main__":
+    app.run()

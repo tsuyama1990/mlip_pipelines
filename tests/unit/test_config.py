@@ -66,7 +66,13 @@ def test_project_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None
     proj_dir.mkdir(parents=True, exist_ok=True)
     (proj_dir / "README.md").touch()
 
-    config = ProjectConfig(distillation_config=DistillationConfig(temp_dir="/tmp", output_dir="/tmp", model_storage_path="/tmp"), loop_strategy=LoopStrategyConfig(replay_buffer_size=500, checkpoint_interval=5, timeout_seconds=86400),
+    config = ProjectConfig(
+        distillation_config=DistillationConfig(
+            temp_dir="/tmp", output_dir="/tmp", model_storage_path="/tmp"
+        ),
+        loop_strategy=LoopStrategyConfig(
+            replay_buffer_size=500, checkpoint_interval=5, timeout_seconds=86400
+        ),
         project_root=proj_dir,
         system=SystemConfig(elements=["Fe", "O"]),
         dynamics=DynamicsConfig(project_root=str(proj_dir), trusted_directories=[]),
@@ -156,6 +162,7 @@ def test_project_config_env_file_security(tmp_path: Path) -> None:
     # We must ensure target has secure permissions for it to pass
     import os
     import stat
+
     os.chmod(target, stat.S_IRUSR | stat.S_IWUSR)
 
     # This should pass without raising
@@ -197,7 +204,13 @@ def test_project_config_validate_project_root() -> None:
 def test_distillation_config_valid() -> None:
     from src.domain_models.config import DistillationConfig
 
-    config = DistillationConfig(uncertainty_threshold=0.1, sampling_structures_per_system=500, temp_dir="/tmp", output_dir="/tmp", model_storage_path="/tmp")
+    config = DistillationConfig(
+        uncertainty_threshold=0.1,
+        sampling_structures_per_system=500,
+        temp_dir="/tmp",
+        output_dir="/tmp",
+        model_storage_path="/tmp",
+    )
     assert config.uncertainty_threshold == 0.1
     assert config.sampling_structures_per_system == 500
 
@@ -208,13 +221,20 @@ def test_distillation_config_invalid() -> None:
     from src.domain_models.config import DistillationConfig
 
     with pytest.raises(ValidationError, match="uncertainty_threshold must be strictly positive"):
-        DistillationConfig(uncertainty_threshold=0.0, temp_dir="/tmp", output_dir="/tmp", model_storage_path="/tmp")
+        DistillationConfig(
+            uncertainty_threshold=0.0, temp_dir="/tmp", output_dir="/tmp", model_storage_path="/tmp"
+        )
 
     with pytest.raises(
         ValidationError,
         match="sampling_structures_per_system must be an integer strictly greater than zero",
     ):
-        DistillationConfig(sampling_structures_per_system=-10, temp_dir="/tmp", output_dir="/tmp", model_storage_path="/tmp")
+        DistillationConfig(
+            sampling_structures_per_system=-10,
+            temp_dir="/tmp",
+            output_dir="/tmp",
+            model_storage_path="/tmp",
+        )
 
 
 def test_active_learning_thresholds_valid() -> None:
@@ -279,7 +299,13 @@ def test_project_config_legacy_compat(tmp_path: Path, monkeypatch: pytest.Monkey
     (proj_dir / "README.md").touch()
 
     # Missing new fields (legacy config equivalent)
-    config = ProjectConfig(distillation_config=DistillationConfig(temp_dir="/tmp", output_dir="/tmp", model_storage_path="/tmp"), loop_strategy=LoopStrategyConfig(replay_buffer_size=500, checkpoint_interval=5, timeout_seconds=86400),
+    config = ProjectConfig(
+        distillation_config=DistillationConfig(
+            temp_dir="/tmp", output_dir="/tmp", model_storage_path="/tmp"
+        ),
+        loop_strategy=LoopStrategyConfig(
+            replay_buffer_size=500, checkpoint_interval=5, timeout_seconds=86400
+        ),
         project_root=proj_dir,
         system=SystemConfig(elements=["Fe"]),
         dynamics=DynamicsConfig(project_root=str(proj_dir), trusted_directories=[]),
@@ -309,20 +335,40 @@ def test_distillation_config_path_validation() -> None:
     from src.domain_models.config import DistillationConfig
 
     # Valid string name
-    config = DistillationConfig(mace_model_path="mace-mp-0-large", temp_dir="/tmp", output_dir="/tmp", model_storage_path="/tmp")
+    config = DistillationConfig(
+        mace_model_path="mace-mp-0-large",
+        temp_dir="/tmp",
+        output_dir="/tmp",
+        model_storage_path="/tmp",
+    )
     assert config.mace_model_path == "mace-mp-0-large"
 
     # Valid path
-    config = DistillationConfig(mace_model_path="/absolute/path/to/my_model.pt", temp_dir="/tmp", output_dir="/tmp", model_storage_path="/tmp")
+    config = DistillationConfig(
+        mace_model_path="/absolute/path/to/my_model.pt",
+        temp_dir="/tmp",
+        output_dir="/tmp",
+        model_storage_path="/tmp",
+    )
     assert config.mace_model_path == "/absolute/path/to/my_model.pt"
 
     # Invalid string name
     with pytest.raises(ValidationError, match="Unknown model name or unsupported extension"):
-        DistillationConfig(mace_model_path="unknown-model", temp_dir="/tmp", output_dir="/tmp", model_storage_path="/tmp")
+        DistillationConfig(
+            mace_model_path="unknown-model",
+            temp_dir="/tmp",
+            output_dir="/tmp",
+            model_storage_path="/tmp",
+        )
 
     # Invalid path traversal
     with pytest.raises(ValidationError, match="Path traversal sequences"):
-        DistillationConfig(mace_model_path="../hidden_model.pt", temp_dir="/tmp", output_dir="/tmp", model_storage_path="/tmp")
+        DistillationConfig(
+            mace_model_path="../hidden_model.pt",
+            temp_dir="/tmp",
+            output_dir="/tmp",
+            model_storage_path="/tmp",
+        )
 
 
 def test_loop_strategy_consistency() -> None:
@@ -330,10 +376,100 @@ def test_loop_strategy_consistency() -> None:
 
     from src.domain_models.config import LoopStrategyConfig
 
-    config = LoopStrategyConfig(use_tiered_oracle=True, incremental_update=True, replay_buffer_size=500, checkpoint_interval=5, timeout_seconds=86400)
+    config = LoopStrategyConfig(
+        use_tiered_oracle=True,
+        incremental_update=True,
+        replay_buffer_size=500,
+        checkpoint_interval=5,
+        timeout_seconds=86400,
+    )
     assert config.incremental_update is True
 
     with pytest.raises(
         ValidationError, match="incremental_update cannot be True when use_tiered_oracle is False"
     ):
-        LoopStrategyConfig(use_tiered_oracle=False, incremental_update=True, replay_buffer_size=500, checkpoint_interval=5, timeout_seconds=86400)
+        LoopStrategyConfig(
+            use_tiered_oracle=False,
+            incremental_update=True,
+            replay_buffer_size=500,
+            checkpoint_interval=5,
+            timeout_seconds=86400,
+        )
+
+
+def test_project_config_intent_mapping():
+
+    # Base setup
+    import tempfile
+    from pathlib import Path
+
+    from src.domain_models.config import (
+        ProjectConfig,
+    )
+
+    tmp = tempfile.mkdtemp()
+    base_dir = Path(tmp)
+    # create pyproject.toml
+    (base_dir / "pyproject.toml").touch()
+
+    config_dict = {
+        "project_root": str(base_dir),
+        "system": {"elements": ["Fe"]},
+        "dynamics": {"project_root": str(base_dir), "trusted_directories": []},
+        "oracle": {},
+        "trainer": {"trusted_directories": []},
+        "validator": {},
+        "distillation_config": {
+            "mace_model_path": "mace-mp-0-medium",
+            "temp_dir": "/tmp",
+            "output_dir": "/tmp",
+            "model_storage_path": "/tmp",
+            "uncertainty_threshold": 0.05,
+        },
+        "loop_strategy": {
+            "replay_buffer_size": 1000,
+            "checkpoint_interval": 10,
+            "timeout_seconds": 3600,
+            "max_iterations": 20,
+        },
+        "intent": {
+            "target_material": "Fe",
+            "accuracy_speed_tradeoff": 1,  # Maximum speed
+        },
+    }
+
+    import unittest.mock
+
+    with unittest.mock.patch("shutil.which", return_value="/usr/bin/mock_bin"):
+        with unittest.mock.patch("os.access", return_value=True):
+            # Bypass env parsing
+
+            # Max Speed (1)
+            config = ProjectConfig.model_validate(config_dict)
+            assert config.distillation_config.uncertainty_threshold == 0.15 - (1 * 0.013)  # 0.137
+            assert config.loop_strategy.replay_buffer_size == 100 * 1
+            assert config.loop_strategy.max_iterations == 10 * 1
+
+            # Median (5)
+            config_dict["intent"]["accuracy_speed_tradeoff"] = 5
+            config = ProjectConfig.model_validate(config_dict)
+            assert config.distillation_config.uncertainty_threshold == 0.15 - (5 * 0.013)  # 0.085
+            assert config.loop_strategy.replay_buffer_size == 100 * 5
+            assert config.loop_strategy.max_iterations == 10 * 5
+
+            # Max Accuracy (10)
+            config_dict["intent"]["accuracy_speed_tradeoff"] = 10
+            config = ProjectConfig.model_validate(config_dict)
+            assert config.distillation_config.uncertainty_threshold == 0.15 - (10 * 0.013)  # 0.02
+            assert config.loop_strategy.replay_buffer_size == 100 * 10
+            assert config.loop_strategy.max_iterations == 10 * 10
+
+            # Without Intent (backward compatibility)
+            del config_dict["intent"]
+            config_dict["distillation_config"]["uncertainty_threshold"] = 0.05
+            config_dict["loop_strategy"]["replay_buffer_size"] = 1000
+            config_dict["loop_strategy"]["max_iterations"] = 20
+            config = ProjectConfig.model_validate(config_dict)
+            assert config.distillation_config.uncertainty_threshold == 0.05
+            assert config.loop_strategy.replay_buffer_size == 1000
+            assert config.loop_strategy.max_iterations == 20
