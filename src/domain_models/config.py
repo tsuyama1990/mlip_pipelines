@@ -7,6 +7,8 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from src.domain_models.gui_schemas import WorkflowIntentConfig
+
 
 class InterfaceTarget(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -779,6 +781,29 @@ class ProjectConfig(BaseSettings):
     distillation_config: DistillationConfig
     cutout_config: CutoutConfig = Field(default_factory=CutoutConfig)
     loop_strategy: LoopStrategyConfig
+    intent: "WorkflowIntentConfig | None" = Field(
+        default=None, description="Optional intent-driven GUI payload."
+    )
+
+    @model_validator(mode="after")
+    def translate_workflow_intent(self) -> "ProjectConfig":
+        if self.intent is not None:
+            # Scale 1-10 mapping. 1=Max Speed, 10=Max Accuracy
+            tradeoff = self.intent.accuracy_speed_tradeoff
+
+
+            calculated_threshold = 0.16444 - (tradeoff * 0.01444)
+            self.distillation_config.uncertainty_threshold = round(calculated_threshold, 4)
+
+            # Replay buffer size scaling: speed wants low (e.g. 100), accuracy wants high (e.g. 5000)
+            # tradeoff=1 -> 100, tradeoff=10 -> 5000
+            # Buffer size = 100 + (tradeoff - 1) * 544
+            self.loop_strategy.replay_buffer_size = 100 + (tradeoff - 1) * 544
+
+            # Max iterations scaling: speed wants low (e.g. 10), accuracy wants high (e.g. 100)
+            self.loop_strategy.max_retries = 3 + (tradeoff // 2)
+
+        return self
 
     @field_validator("project_root")
     @classmethod

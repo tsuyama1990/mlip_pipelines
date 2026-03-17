@@ -80,6 +80,23 @@ def validate_executable_path(
     return resolved_bin.absolute()
 
 
+def validate_string_security(val: str, max_length: int = 255) -> None:
+    """Validates string inputs to prevent shell injection, path traversal, and DoS."""
+    if len(val) > max_length:
+        msg = f"String length exceeds maximum allowed length of {max_length} characters."
+        raise ValueError(msg)
+
+    # Shell injection check
+    if ";" in val or "&" in val or "|" in val or "$" in val or "`" in val or "{" in val or "}" in val or " " in val:
+        msg = f"Shell injection characters are not allowed: {val}"
+        raise ValueError(msg)
+
+    # Path traversal check
+    if ".." in val or "/" in val or "\\" in val:
+        msg = f"Path traversal characters are not allowed: {val}"
+        raise ValueError(msg)
+
+
 def validate_filename(filename: str, extra_allowed_chars: str = "") -> None:
     """Validates that a filename is alphanumeric with standard safe characters."""
     pattern = f"^[a-zA-Z0-9_.-{extra_allowed_chars}]+$"
