@@ -166,3 +166,13 @@ def validate_and_copy_potential(
     # For now, we perform the atomic copy/move.
     shutil.copy2(src_resolved, final_resolved)
     return final_resolved
+
+
+def _validate_string_security(val: str) -> None:
+    """Validates strings for common injection and path traversal patterns."""
+    if len(val) > 1024:
+        msg = "String exceeds maximum length of 1024 characters."
+        raise ValueError(msg)
+    if ".." in val or ";" in val or "&" in val or "|" in val or ">" in val or "<" in val:
+        msg = f"Invalid characters or traversal sequences in string: {val}"
+        raise ValueError(msg)

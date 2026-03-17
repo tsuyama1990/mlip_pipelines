@@ -8,6 +8,8 @@ app = marimo.App()
 
 @app.cell
 def __() -> tuple[Any, ...]:
+    # ruff: noqa: C901
+
     import logging
     import os
     import sys
@@ -23,8 +25,10 @@ def __() -> tuple[Any, ...]:
     from src.core import BaseOracle as AbstractOracle
     from src.core.orchestrator import Orchestrator
     from src.domain_models.config import (
+        DistillationConfig,
         DynamicsConfig,
         InterfaceTarget,
+        LoopStrategyConfig,
         OracleConfig,
         PolicyConfig,
         ProjectConfig,
@@ -60,7 +64,7 @@ def __() -> tuple[Any, ...]:
             dynamics=dyn_config,
             oracle=oracle_config,
             trainer=trainer_config,
-            validator=val_config,
+            validator=val_config, distillation_config=DistillationConfig(temp_dir=str(Path.cwd()), output_dir=str(Path.cwd()), model_storage_path=str(Path.cwd())), loop_strategy=LoopStrategyConfig(replay_buffer_size=100, checkpoint_interval=5, timeout_seconds=3600),
         )
 
         orchestrator = Orchestrator(project_config)
@@ -138,7 +142,7 @@ def __() -> tuple[Any, ...]:
         Atoms,
         bulk,
         ProjectConfig,
-        SystemConfig,
+        SystemConfig, DistillationConfig, LoopStrategyConfig,
         DynamicsConfig,
         InterfaceTarget,
         OracleConfig,
@@ -180,25 +184,25 @@ def __phase1(setup_orchestrator: Any, plt: Any, np: Any) -> tuple[Any, dict[str,
     # Spike around step 600
     gamma[60:65] = [2.5, 4.2, 5.8, 4.0, 2.1]
 
-    ax.plot(steps, gamma, label="Extrapolation Grade (γ)", color="blue")
+    ax.plot(steps, gamma, label="Extrapolation Grade (y)", color="blue")
     ax.axhline(5.0, color="red", linestyle="--", label="Uncertainty Threshold")
     ax.scatter(620, 5.8, color="red", s=100, zorder=5, label="Halt & Heal Trigger")
 
     ax.set_title("On-The-Fly (OTF) Uncertainty Halt Simulation")
     ax.set_xlabel("MD Steps")
-    ax.set_ylabel("γ value")
+    ax.set_ylabel("y value")
     ax.legend()
     ax.grid(True)
     plt.close(fig)
 
     phase1_results = {"final_potential": final_pot_path, "halt_visualized": fig}
 
-    return orchestrator, phase1_results, fig
+    return orchestrator, phase1_results, None
 
 
 @app.cell
 def __fig(fig: Any) -> None:
-    fig
+    _ = fig
 
 
 @app.cell

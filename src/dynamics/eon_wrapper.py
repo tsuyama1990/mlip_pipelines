@@ -33,6 +33,7 @@ class EONWrapper(AbstractDynamics):
 
     def _write_pace_driver(self, work_dir: Path, potential: Path | None) -> None:
         from src.domain_models.config import _secure_resolve_and_validate_dir
+
         _secure_resolve_and_validate_dir(str(work_dir), check_exists=False)
         import os
 
@@ -129,6 +130,7 @@ sys.exit(res.returncode)
 
     def _validate_work_dir(self, work_dir: Path) -> Path:
         from src.domain_models.config import _secure_resolve_and_validate_dir
+
         _secure_resolve_and_validate_dir(str(work_dir), check_exists=False)
         """Validates and resolves the working directory."""
         work_dir.mkdir(parents=True, exist_ok=True)
@@ -220,6 +222,7 @@ sys.exit(res.returncode)
 
     def _validate_env_path(self, raw_p: str) -> str | None:
         import logging
+
         clean_p: str = raw_p.strip()
         if not clean_p:
             return None
@@ -227,6 +230,7 @@ sys.exit(res.returncode)
         try:
             # Enforce realpath before resolution to protect against TOCTOU path resolution exploits
             import os
+
             real_p = os.path.realpath(clean_p)
             p_obj: Path = Path(real_p).resolve(strict=True)
 

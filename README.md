@@ -12,10 +12,13 @@ Designed for high-performance computational materials science, PYACEMAKER solves
 
 With the introduction of the GUI, researchers can now seamlessly run multi-million atom molecular dynamics (MD) or kinetic Monte Carlo (kMC) simulations by simply specifying their high-level intent (e.g., target material, accuracy vs. speed trade-off). The system's intelligent compiler automatically handles high-uncertainty events, extracts local defect clusters, refines models on-the-fly with Density Functional Theory (DFT), translates visual selections into complex LAMMPS scripts, and resumes simulations without ever dropping physical state.
 
+The system now additionally features a robust REST API gateway designed to securely bridge the high-performance Python backend with intent-driven frontend Graphical User Interfaces.
+
 ## 2. Key Features
 
 1. **Intent-Driven UI & Smart Trade-offs:** Eliminate complex text configurations. Users simply set an "Accuracy vs. Speed" slider, and the backend automatically mathematically provisions the optimal hyperparameter thresholds, buffer radii, and sampling intervals.
-2. **Visual & Semantic State Management:** Define complex simulation boundaries (e.g., freezing a slab layer) directly in a 3D viewer. The system seamlessly translates these visual tags into error-free LAMMPS `region` and `group` commands.
+2. **Intent-Driven GUI Translation**: End users no longer need to wrestle with complex hyperparameter arrays. The built-in REST API intercepts a single, simplified 1-to-10 "Speed vs Accuracy" tradeoff slider and seamlessly translates it into perfectly optimized mathematical boundaries, shielding the backend engines from misconfigurations.
+3. **Visual & Semantic State Management:** Define complex simulation boundaries (e.g., freezing a slab layer) directly in a 3D viewer. The system seamlessly translates these visual tags into error-free LAMMPS `region` and `group` commands.
 3. **Zero-Shot Foundation Model Distillation:** Drastically reduce expensive DFT calculations by using MACE-MP-0 as a high-fidelity surrogate oracle. Confident predictions are distilled into the fast ACE potential, reserving DFT strictly for profound physical unknowns.
 4. **Master-Slave MD Resume (Time-Continuity):** Completely stateful and continuous Molecular Dynamics pipeline. Simulations that pause upon encountering high-uncertainty cleanly checkpoint their exact phase-space geometry.
 5. **Real-time Telemetry & Run 0 Diagnostics:** Catch physical crashes (e.g., atomic collisions) instantly with pre-flight "Run 0" validations before submitting HPC jobs. Monitor live training loss curves and MD energy maps via high-speed WebSockets.

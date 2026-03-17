@@ -20,6 +20,7 @@ class FinetuneManager(BinaryResolverMixin):
 
     def _validate_output_path(self, output_path: Path) -> Path:
         from src.domain_models.config import _secure_resolve_and_validate_dir
+
         _secure_resolve_and_validate_dir(str(output_path), check_exists=False)
         if not output_path.exists():
             output_path.mkdir(parents=True, exist_ok=True)
@@ -29,8 +30,12 @@ class FinetuneManager(BinaryResolverMixin):
         if hasattr(self.config, "project_root"):
             proj_root = Path(self.config.project_root).resolve(strict=True)
             tmp_root = Path(tempfile.gettempdir()).resolve(strict=True)
-            if not str(resolved_out).startswith(str(proj_root)) and not str(resolved_out).startswith(str(tmp_root)):
-                msg = f"output_path is outside the trusted base directory or temp dir: {resolved_out}"
+            if not str(resolved_out).startswith(str(proj_root)) and not str(
+                resolved_out
+            ).startswith(str(tmp_root)):
+                msg = (
+                    f"output_path is outside the trusted base directory or temp dir: {resolved_out}"
+                )
                 raise ValueError(msg)
 
         if not os.access(resolved_out, os.W_OK):
@@ -39,16 +44,11 @@ class FinetuneManager(BinaryResolverMixin):
 
         return resolved_out
 
-    def finetune_mace(
-        self, structures: list[Atoms], model_path: str, output_path: Path
-    ) -> Path:
+    def finetune_mace(self, structures: list[Atoms], model_path: str, output_path: Path) -> Path:
         """Fine-tunes the MACE foundation model using the provided structures."""
-        mace_train_bin = self._resolve_binary_path(
-            self.config.mace_train_binary, "mace_run_train"
-        )
+        mace_train_bin = self._resolve_binary_path(self.config.mace_train_binary, "mace_run_train")
 
         resolved_out = self._validate_output_path(output_path)
-
 
         # Refactored to reduce complexity
         with tempfile.TemporaryDirectory(prefix="pyacemaker_mace_") as tmp:
@@ -67,38 +67,58 @@ class FinetuneManager(BinaryResolverMixin):
 
     def _secure_write_xyz(self, train_xyz: Path, structures: list[Atoms]) -> None:
         import fcntl
-        fd = os.open(train_xyz, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, 'O_NOFOLLOW', 0), 0o600)
+
+        fd = os.open(
+            train_xyz, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600
+        )
         try:
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
             with os.fdopen(fd, "w") as f_out:
                 write(f_out, structures, format="extxyz")
         except Exception as e:
             import contextlib
+
             with contextlib.suppress(OSError):
                 os.close(fd)
             msg = f"Failed to securely create or write to {train_xyz}"
             raise RuntimeError(msg) from e
 
-    def _run_mace_subprocess(self, mace_train_bin: str, train_xyz: Path, model_path: str, temp_dir: Path) -> None:
+    def _run_mace_subprocess(
+        self, mace_train_bin: str, train_xyz: Path, model_path: str, temp_dir: Path
+    ) -> None:
         cmd = [
             mace_train_bin,
-            "--train_file", str(train_xyz),
-            "--model", model_path,
-            "--output_dir", str(temp_dir),
+            "--train_file",
+            str(train_xyz),
+            "--model",
+            model_path,
+            "--output_dir",
+            str(temp_dir),
         ]
         if self.config.mace_freeze_body:
             cmd.append("--freeze_body")
-        cmd.extend([
-            "--max_num_epochs", str(self.config.mace_finetuning_epochs),
-            "--lr", str(self.config.mace_learning_rate),
-        ])
+        cmd.extend(
+            [
+                "--max_num_epochs",
+                str(self.config.mace_finetuning_epochs),
+                "--lr",
+                str(self.config.mace_learning_rate),
+            ]
+        )
 
         try:
             subprocess.run(  # noqa: S603
-                cmd, check=True, capture_output=True, text=True, shell=False, timeout=self.config.timeout,
+                cmd,
+                check=True,
+                capture_output=True,
+                text=True,
+                shell=False,
+                timeout=self.config.timeout,
             )
         except subprocess.TimeoutExpired as e:
-            logging.exception(f"mace_run_train execution timed out after {self.config.timeout} seconds.")
+            logging.exception(
+                f"mace_run_train execution timed out after {self.config.timeout} seconds."
+            )
             msg = "mace_run_train execution timed out."
             raise RuntimeError(msg) from e
         except subprocess.CalledProcessError as e:
