@@ -166,3 +166,12 @@ def validate_and_copy_potential(
     # For now, we perform the atomic copy/move.
     shutil.copy2(src_resolved, final_resolved)
     return final_resolved
+
+
+def _validate_string_security(val: str) -> None:
+    if ".." in val:
+        msg = f"Path traversal sequences (..) are not allowed in string: {val}"
+        raise ValueError(msg)
+    if ";" in val or "&" in val or "|" in val or "$" in val or "`" in val or "{" in val or "}" in val:
+        msg = f"Invalid characters or traversal sequences in string: {val}"
+        raise ValueError(msg)

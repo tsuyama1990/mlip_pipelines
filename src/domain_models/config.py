@@ -7,6 +7,8 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from src.domain_models.dtos import WorkflowIntentConfig
+
 
 class InterfaceTarget(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -779,6 +781,21 @@ class ProjectConfig(BaseSettings):
     distillation_config: DistillationConfig
     cutout_config: CutoutConfig = Field(default_factory=CutoutConfig)
     loop_strategy: LoopStrategyConfig
+    intent: WorkflowIntentConfig | None = Field(default=None, description="GUI intent mapping")
+
+    @model_validator(mode="after")
+    def translate_intent(self) -> "ProjectConfig":
+        if self.intent is not None:
+            tradeoff = self.intent.accuracy_speed_tradeoff
+
+            calculated_threshold = 0.15 - (tradeoff * 0.013)
+            # Use object.__setattr__ to bypass frozen fields or config forbid if necessary,
+            # but DistillationConfig is mutable by default, so direct assignment is fine
+            self.distillation_config.uncertainty_threshold = calculated_threshold
+
+            calculated_buffer = tradeoff * 100
+            self.loop_strategy.replay_buffer_size = calculated_buffer
+        return self
 
     @field_validator("project_root")
     @classmethod
