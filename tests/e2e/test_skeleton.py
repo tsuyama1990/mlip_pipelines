@@ -18,6 +18,112 @@ from src.generators.adaptive_policy import AdaptiveExplorationPolicyEngine, Feat
 from src.generators.structure_generator import StructureGenerator
 
 
+def test_fastapi_submit_config_success(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from fastapi.testclient import TestClient
+
+    from src import app
+
+    monkeypatch.setattr(
+        "shutil.which", lambda x: "/usr/bin/lmp" if x == "lmp" else "/usr/bin/eonclient"
+    )
+    monkeypatch.setattr("os.access", lambda x, y: True)
+
+    tmp_dir = tmp_path.resolve(strict=True)
+    (tmp_dir / "README.md").touch()
+
+    client = TestClient(app)
+
+    payload = {
+        "project_root": str(tmp_dir),
+        "system": {
+            "elements": ["Fe", "Pt"]
+        },
+        "dynamics": {
+            "project_root": str(tmp_dir),
+            "trusted_directories": []
+        },
+        "oracle": {},
+        "trainer": {
+            "trusted_directories": []
+        },
+        "validator": {},
+        "distillation_config": {
+            "temp_dir": str(tmp_dir),
+            "output_dir": str(tmp_dir),
+            "model_storage_path": str(tmp_dir)
+        },
+        "loop_strategy": {
+            "replay_buffer_size": 500,
+            "checkpoint_interval": 5,
+            "timeout_seconds": 3600
+        },
+        "intent": {
+            "target_material": "FePt",
+            "accuracy_speed_tradeoff": 1,
+            "enable_auto_hpo": False
+        }
+    }
+
+    response = client.post("/config/submit", json=payload)
+    assert response.status_code == 200
+
+    data = response.json()
+    assert data["intent"]["accuracy_speed_tradeoff"] == 1
+    # Tradeoff = 1 maps to uncertainty_threshold = 0.137, buffer = 100
+    assert abs(data["distillation_config"]["uncertainty_threshold"] - 0.137) < 1e-5
+    assert data["loop_strategy"]["replay_buffer_size"] == 100
+
+def test_fastapi_submit_config_security_rejection(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from fastapi.testclient import TestClient
+
+    from src import app
+
+    monkeypatch.setattr(
+        "shutil.which", lambda x: "/usr/bin/lmp" if x == "lmp" else "/usr/bin/eonclient"
+    )
+    monkeypatch.setattr("os.access", lambda x, y: True)
+
+    tmp_dir = tmp_path.resolve(strict=True)
+    (tmp_dir / "README.md").touch()
+
+    client = TestClient(app)
+
+    payload = {
+        "project_root": str(tmp_dir),
+        "system": {
+            "elements": ["Fe", "Pt"]
+        },
+        "dynamics": {
+            "project_root": str(tmp_dir),
+            "trusted_directories": []
+        },
+        "oracle": {},
+        "trainer": {
+            "trusted_directories": []
+        },
+        "validator": {},
+        "distillation_config": {
+            "temp_dir": str(tmp_dir),
+            "output_dir": str(tmp_dir),
+            "model_storage_path": str(tmp_dir)
+        },
+        "loop_strategy": {
+            "replay_buffer_size": 500,
+            "checkpoint_interval": 5,
+            "timeout_seconds": 3600
+        },
+        "intent": {
+            "target_material": "../../etc/passwd",
+            "accuracy_speed_tradeoff": 1,
+            "enable_auto_hpo": False
+        }
+    }
+
+    response = client.post("/config/submit", json=payload)
+    assert response.status_code == 422
+    assert "Path traversal sequences" in response.text
+
+
 def test_full_pipeline_skeleton(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import sys
 

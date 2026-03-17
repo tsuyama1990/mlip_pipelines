@@ -12,6 +12,7 @@ from src.domain_models.config import (
     TrainerConfig,
     ValidatorConfig,
 )
+from src.domain_models.dtos import WorkflowIntentConfig
 
 
 def test_system_config_valid() -> None:
@@ -337,3 +338,72 @@ def test_loop_strategy_consistency() -> None:
         ValidationError, match="incremental_update cannot be True when use_tiered_oracle is False"
     ):
         LoopStrategyConfig(use_tiered_oracle=False, incremental_update=True, replay_buffer_size=500, checkpoint_interval=5, timeout_seconds=86400)
+
+
+def test_workflow_intent_config_valid() -> None:
+    intent1 = WorkflowIntentConfig(target_material="FePt", accuracy_speed_tradeoff=1)
+    assert intent1.accuracy_speed_tradeoff == 1
+
+    intent10 = WorkflowIntentConfig(target_material="MgO", accuracy_speed_tradeoff=10)
+    assert intent10.accuracy_speed_tradeoff == 10
+
+
+def test_workflow_intent_config_invalid() -> None:
+    with pytest.raises(ValidationError, match="Input should be greater than or equal to 1"):
+        WorkflowIntentConfig(target_material="FePt", accuracy_speed_tradeoff=0)
+
+    with pytest.raises(ValidationError, match="Input should be less than or equal to 10"):
+        WorkflowIntentConfig(target_material="FePt", accuracy_speed_tradeoff=11)
+
+    with pytest.raises(ValidationError, match="Path traversal sequences"):
+        WorkflowIntentConfig(target_material="../../etc/passwd", accuracy_speed_tradeoff=5)
+
+
+def test_project_config_intent_translation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import tempfile
+
+    from src.domain_models.config import DistillationConfig, LoopStrategyConfig
+
+    monkeypatch.setattr(
+        "shutil.which", lambda x: "/usr/bin/lmp" if x == "lmp" else "/usr/bin/eonclient"
+    )
+    monkeypatch.setattr("os.access", lambda x, y: True)
+
+    tmp_dir = Path(tempfile.gettempdir()).resolve(strict=True)
+    proj_dir = tmp_dir / "myproj_intent"
+    proj_dir.mkdir(parents=True, exist_ok=True)
+    (proj_dir / "README.md").touch()
+
+    # Max Speed (Tradeoff = 1)
+    config1 = ProjectConfig(
+        distillation_config=DistillationConfig(temp_dir="/tmp", output_dir="/tmp", model_storage_path="/tmp"),
+        loop_strategy=LoopStrategyConfig(replay_buffer_size=500, checkpoint_interval=5, timeout_seconds=86400),
+        project_root=proj_dir,
+        system=SystemConfig(elements=["Fe"]),
+        dynamics=DynamicsConfig(project_root=str(proj_dir), trusted_directories=[]),
+        oracle=OracleConfig(),
+        trainer=TrainerConfig(trusted_directories=[]),
+        validator=ValidatorConfig(),
+        intent=WorkflowIntentConfig(target_material="Fe", accuracy_speed_tradeoff=1)
+    )
+    # Threshold = 0.15 - (1 * 0.013) = 0.137
+    assert config1.distillation_config.uncertainty_threshold == pytest.approx(0.137)
+    # Buffer = 1 * 100 = 100
+    assert config1.loop_strategy.replay_buffer_size == 100
+
+    # Max Accuracy (Tradeoff = 10)
+    config10 = ProjectConfig(
+        distillation_config=DistillationConfig(temp_dir="/tmp", output_dir="/tmp", model_storage_path="/tmp"),
+        loop_strategy=LoopStrategyConfig(replay_buffer_size=500, checkpoint_interval=5, timeout_seconds=86400),
+        project_root=proj_dir,
+        system=SystemConfig(elements=["Fe"]),
+        dynamics=DynamicsConfig(project_root=str(proj_dir), trusted_directories=[]),
+        oracle=OracleConfig(),
+        trainer=TrainerConfig(trusted_directories=[]),
+        validator=ValidatorConfig(),
+        intent=WorkflowIntentConfig(target_material="Fe", accuracy_speed_tradeoff=10)
+    )
+    # Threshold = 0.15 - (10 * 0.013) = 0.02
+    assert config10.distillation_config.uncertainty_threshold == pytest.approx(0.02)
+    # Buffer = 10 * 100 = 1000
+    assert config10.loop_strategy.replay_buffer_size == 1000

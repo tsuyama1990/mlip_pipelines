@@ -1,8 +1,41 @@
+import json
 from pathlib import Path
-from typing import Self
+from typing import Any, Self
 
 from ase import Atoms
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from src.dynamics.security_utils import _validate_string_security
+
+
+class GUIStateConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    react_flow_state: dict[str, Any] = Field(
+        default_factory=dict, description="Arbitrary JSON for React Flow state"
+    )
+
+    @field_validator("react_flow_state")
+    @classmethod
+    def validate_size(cls, v: dict[str, Any]) -> dict[str, Any]:
+        if len(json.dumps(v)) > 1048576:
+            msg = "react_flow_state size exceeds 1MB limit"
+            raise ValueError(msg)
+        return v
+
+
+class WorkflowIntentConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    target_material: str = Field(..., description="Target material string")
+    accuracy_speed_tradeoff: int = Field(
+        ..., ge=1, le=10, description="Accuracy vs Speed tradeoff slider value"
+    )
+    enable_auto_hpo: bool = Field(default=False, description="Enable Auto HPO")
+
+    @field_validator("target_material")
+    @classmethod
+    def validate_target_material(cls, v: str) -> str:
+        _validate_string_security(v)
+        return v
 
 
 class MaterialFeatures(BaseModel):
