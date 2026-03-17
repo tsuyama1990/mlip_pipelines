@@ -6,11 +6,11 @@ from ase import Atoms
 from ase.calculators.espresso import Espresso
 from ase.data import atomic_numbers
 
-from src.core import AbstractOracle
 from src.domain_models.config import OracleConfig
+from src.oracles.base import BaseOracle
 
 
-class DFTManager(AbstractOracle):
+class DFTManager(BaseOracle):
     """Orchestrates Quantum ESPRESSO via ASE for labeling."""
 
     def __init__(self, config: OracleConfig) -> None:

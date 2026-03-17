@@ -106,11 +106,54 @@ class SystemConfig(BaseModel):
     )
 
 
+class ActiveLearningThresholds(BaseModel):
+    """Two-tier thresholds inspired by FLARE."""
+
+    model_config = ConfigDict(extra="forbid")
+    threshold_call_dft: float = Field(
+        default=0.05, description="Global threshold to halt MD and call DFT"
+    )
+    threshold_add_train: float = Field(
+        default=0.02, description="Local threshold to select atoms for training"
+    )
+    smooth_steps: int = Field(
+        default=3, description="Number of consecutive steps exceeding threshold required to halt"
+    )
+
+    @model_validator(mode="after")
+    def validate_thresholds(self) -> "ActiveLearningThresholds":
+        if self.threshold_call_dft < self.threshold_add_train:
+            msg = (
+                f"Global halt threshold ({self.threshold_call_dft}) must be strictly greater than "
+                f"or equal to local training addition threshold ({self.threshold_add_train}) "
+                "to prevent infinite loops."
+            )
+            raise ValueError(msg)
+        if self.smooth_steps <= 0:
+            msg = "smooth_steps must be strictly greater than zero"
+            raise ValueError(msg)
+        return self
+
+
 class DynamicsConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     uncertainty_threshold: float = Field(
-        default=5.0, ge=0.0, description="Gamma threshold to trigger halt"
+        default=5.0,
+        ge=0.0,
+        description="Deprecated: use thresholds.threshold_call_dft instead. Retained for backward compatibility.",
     )
+    thresholds: ActiveLearningThresholds = Field(default_factory=ActiveLearningThresholds)
+
+    @model_validator(mode="after")
+    def sync_thresholds(self) -> "DynamicsConfig":
+        if self.uncertainty_threshold != 5.0 and self.thresholds.threshold_call_dft == 0.05:
+            # If the user explicitly set the deprecated uncertainty_threshold but not the new thresholds
+            self.thresholds.threshold_call_dft = self.uncertainty_threshold
+        elif self.thresholds.threshold_call_dft != 0.05:
+            # Sync back just in case old code reads uncertainty_threshold directly
+            self.uncertainty_threshold = self.thresholds.threshold_call_dft
+        return self
+
     md_steps: int = Field(
         default=100000, ge=1, description="Number of MD steps per exploration run"
     )
@@ -324,8 +367,25 @@ class TrainerConfig(BaseModel):
         description="Binary name or path for pace_activeset",
         pattern=r"^[a-zA-Z0-9_-]+$",
     )
+    mace_train_binary: str = Field(
+        default="mace_run_train",
+        description="Binary name or path for mace_run_train",
+        pattern=r"^[a-zA-Z0-9_-]+$",
+    )
+    mace_finetuning_epochs: int = Field(
+        default=5, ge=1, le=1000, description="Number of epochs for MACE finetuning"
+    )
+    mace_learning_rate: float = Field(
+        default=0.001, gt=0.0, description="Learning rate for MACE finetuning"
+    )
+    mace_freeze_body: bool = Field(
+        default=True, description="Freeze the MACE model body during finetuning"
+    )
+    delta_learning_epoch_scaling: int = Field(
+        default=10, ge=1, description="Factor to scale down max epochs during delta learning"
+    )
 
-    @field_validator("pace_train_binary", "pace_activeset_binary")
+    @field_validator("pace_train_binary", "pace_activeset_binary", "mace_train_binary")
     @classmethod
     def validate_binary_names(cls, v: str) -> str:
         if "/" in v or "\\" in v or ".." in v:
@@ -470,38 +530,30 @@ def _validate_env_key(key: str) -> None:
 
 
 def _validate_env_value(val: str) -> None:
-    if len(val) > 1024:
-        msg = "Environment variable value exceeds maximum length"
-        raise ValueError(msg)
-
-    # Strictly whitelist allowed characters to prevent shell/JSON injection
-    # Allows alphanumerics, underscores, dots, hyphens, colons, slashes, equals, plus, commas, asterisks
-    if not re.match(r"^[-a-zA-Z0-9_.:/=,+]*$", val):
+    # Remove length limit to allow long API keys/URLs/configurations
+    # Expand whitelist to prevent shell injections while allowing ?, &, #, @, %
+    if not re.match(r"^[-a-zA-Z0-9_.:/=,+?&#@%]*$", val):
         msg = "Invalid characters detected in .env variable value."
         raise ValueError(msg)
 
 
 def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
-    st = os.lstat(env_file)
-    if stat.S_ISLNK(st.st_mode):
-        msg = ".env file must not be a symlink."
-        raise ValueError(msg)
+    expected_base_resolved = expected_base.resolve(strict=True)
 
+    # Allow symlinks, but they must securely resolve within expected_base
     resolved_env = env_file.resolve(strict=True)
 
-    # Verify the canonicalized path sits within the trusted base directory
-    if not str(resolved_env).startswith(str(expected_base.resolve(strict=True))):
-        msg = f".env file must reside within the allowed base directory: {expected_base}"
+    if not resolved_env.is_relative_to(expected_base_resolved):
+        msg = f".env file must reside securely within the allowed base directory: {expected_base}"
         raise ValueError(msg)
 
     st = os.lstat(resolved_env)
 
-    if st.st_size > 1024:
-        msg = ".env file exceeds maximum allowed size (1KB)."
-        raise ValueError(msg)
-
-    if st.st_uid != os.getuid():
-        msg = ".env file is not owned by the current user."
+    # Remove the 1KB size limit
+    # Relax ownership check to allow root execution (UID 0) in containerized environments
+    current_uid = os.getuid()
+    if st.st_uid not in (current_uid, 0):
+        msg = ".env file is not owned by the current user or root."
         raise ValueError(msg)
 
     if bool(st.st_mode & stat.S_IRWXO) or bool(st.st_mode & stat.S_IRWXG):
@@ -538,6 +590,123 @@ def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
                     raise ValueError(msg)
 
     return resolved_env
+
+
+class DistillationConfig(BaseModel):
+    """Phase 1: Zero-Shot Distillation configuration."""
+
+    model_config = ConfigDict(extra="forbid")
+    enable: bool = Field(default=True, description="Enable distillation phase")
+    mace_model_path: str = Field(
+        default="mace-mp-0-medium", description="Path or name of the MACE foundation model"
+    )
+    uncertainty_threshold: float = Field(default=0.05, description="MACE confidence threshold")
+    sampling_structures_per_system: int = Field(
+        default=1000, description="Number of structures to sample per system"
+    )
+    device: str = Field(default="cpu", description="Device to run MACE on (e.g., cpu, cuda)")
+    default_dtype: str = Field(
+        default="float32", description="Default dtype for MACE (e.g., float32, float64)"
+    )
+    dispersion: bool = Field(default=False, description="Enable dispersion correction in MACE")
+    temp_dir: str = Field(
+        ..., description="Path to temporary directory for distillation"
+    )
+    output_dir: str = Field(
+        ..., description="Path to save distillation outputs"
+    )
+    model_storage_path: str = Field(
+        ..., description="Path to cache MACE foundation models"
+    )
+
+    @model_validator(mode="after")
+    def validate_thresholds_and_samples(self) -> "DistillationConfig":
+        valid_foundational_names = ["mace-mp-0-medium", "mace-mp-0-large", "mace-mp-0-small"]
+
+        # Check if it's a known model name
+        if self.mace_model_path not in valid_foundational_names:
+            # If it's a path, validate it
+            if ".." in self.mace_model_path:
+                msg = f"Path traversal sequences (..) are not allowed in mace_model_path: {self.mace_model_path}"
+                raise ValueError(msg)
+            # Extension check
+            if not self.mace_model_path.endswith(".model") and not self.mace_model_path.endswith(
+                ".pt"
+            ):
+                msg = f"Unknown model name or unsupported extension in mace_model_path: {self.mace_model_path}. Must be one of {valid_foundational_names} or end in .pt/.model"
+                raise ValueError(msg)
+
+        if self.uncertainty_threshold <= 0.0:
+            msg = "uncertainty_threshold must be strictly positive"
+            raise ValueError(msg)
+        if self.sampling_structures_per_system <= 0:
+            msg = "sampling_structures_per_system must be an integer strictly greater than zero"
+            raise ValueError(msg)
+        return self
+
+
+class CutoutConfig(BaseModel):
+    """Phase 3: Intelligent cutout and passivation configuration."""
+
+    model_config = ConfigDict(extra="forbid")
+    core_radius: float = Field(default=3.0, description="Radius for core atoms (force weight 1.0)")
+    buffer_radius: float = Field(
+        default=4.0, description="Radius for buffer layer (force weight 0.0)"
+    )
+    enable_pre_relaxation: bool = Field(
+        default=True, description="Enable MACE pre-relaxation of buffer"
+    )
+    enable_passivation: bool = Field(
+        default=True, description="Enable automatic surface passivation"
+    )
+    passivation_element: str = Field(default="H", description="Element used for passivation")
+
+    @model_validator(mode="after")
+    def validate_radii(self) -> "CutoutConfig":
+        if self.core_radius <= 0.0:
+            msg = "core_radius must be strictly positive"
+            raise ValueError(msg)
+        if self.buffer_radius <= 0.0:
+            msg = "buffer_radius must be strictly positive"
+            raise ValueError(msg)
+        if self.buffer_radius <= self.core_radius:
+            msg = (
+                f"Buffer radius ({self.buffer_radius}) must be strictly greater than "
+                f"core radius ({self.core_radius}) to ensure a valid physical buffer zone exists."
+            )
+            raise ValueError(msg)
+        return self
+
+
+class LoopStrategyConfig(BaseModel):
+    """High-level Active Learning loop strategy configuration."""
+
+    model_config = ConfigDict(extra="forbid")
+    use_tiered_oracle: bool = Field(default=True, description="Enable tiered oracle logic")
+    incremental_update: bool = Field(default=True, description="Enable incremental delta learning")
+    replay_buffer_size: int = Field(
+        ..., description="Size of history replay buffer to prevent catastrophic forgetting"
+    )
+    baseline_potential_type: str = Field(
+        default="LJ", description="Baseline physical potential type (e.g., LJ)"
+    )
+    thresholds: ActiveLearningThresholds = Field(default_factory=ActiveLearningThresholds)
+    checkpoint_interval: int = Field(
+        ..., description="Frequency (in iterations) to execute full hard-checkpoints"
+    )
+    max_retries: int = Field(
+        default=3, description="Maximum number of orchestration loop retries on transient failures"
+    )
+    timeout_seconds: int = Field(
+        ..., description="Maximum wall-clock timeout in seconds for a complete loop iteration"
+    )
+
+    @model_validator(mode="after")
+    def validate_strategy_consistency(self) -> "LoopStrategyConfig":
+        if self.incremental_update and not self.use_tiered_oracle:
+            msg = "incremental_update cannot be True when use_tiered_oracle is False"
+            raise ValueError(msg)
+        return self
 
 
 class ProjectConfig(BaseSettings):
@@ -607,6 +776,9 @@ class ProjectConfig(BaseSettings):
     validator: ValidatorConfig
     structure_generator: StructureGeneratorConfig = Field(default_factory=StructureGeneratorConfig)
     policy: PolicyConfig = Field(default_factory=PolicyConfig)
+    distillation_config: DistillationConfig
+    cutout_config: CutoutConfig = Field(default_factory=CutoutConfig)
+    loop_strategy: LoopStrategyConfig
 
     @field_validator("project_root")
     @classmethod

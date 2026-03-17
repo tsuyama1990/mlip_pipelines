@@ -4,308 +4,69 @@ rootdir: /app
 configfile: pyproject.toml
 testpaths: tests
 plugins: cov-7.0.0, anyio-4.12.1
-collected 176 items
+collected 198 items
 
 tests/e2e/test_skeleton.py s.                                            [  1%]
 tests/uat/test_cycle03_oracle.py ...                                     [  2%]
 tests/uat/test_cycle04_trainer.py ...                                    [  4%]
-tests/uat/test_cycle05_dynamics.py ...                                   [  6%]
-tests/uat/test_cycle06_validator.py FF.                                  [  7%]
-tests/uat/test_tutorial.py s....                                         [ 10%]
-tests/unit/test_ace_trainer.py .................                         [ 20%]
-tests/unit/test_adaptive_policy.py .......                               [ 24%]
-tests/unit/test_config.py ..............                                 [ 32%]
-tests/unit/test_defect_builder.py ...                                    [ 34%]
-tests/unit/test_dft_oracle.py ...............                            [ 42%]
-tests/unit/test_domain_models.py .                                       [ 43%]
-tests/unit/test_dynamics_engine.py ........................              [ 56%]
-tests/unit/test_eon_driver.py .............                              [ 64%]
+tests/uat/test_cycle05_dynamics.py ...                                   [  5%]
+tests/uat/test_cycle06_validator.py ...                                  [  7%]
+tests/uat/test_tutorial.py s....                                         [  9%]
+tests/unit/test_ace_trainer.py ....................                      [ 19%]
+tests/unit/test_adaptive_policy.py .......                               [ 23%]
+tests/unit/test_config.py ........................                       [ 35%]
+tests/unit/test_defect_builder.py ...                                    [ 36%]
+tests/unit/test_dft_oracle.py ...............                            [ 44%]
+tests/unit/test_domain_models.py .                                       [ 44%]
+tests/unit/test_dynamics_engine.py ...........................           [ 58%]
+tests/unit/test_eon_driver.py .............                              [ 65%]
 tests/unit/test_eon_wrapper.py .................                         [ 73%]
-tests/unit/test_orchestrator.py .............                            [ 81%]
-tests/unit/test_reporter.py ..                                           [ 82%]
-tests/unit/test_security_utils.py .........                              [ 87%]
+tests/unit/test_finetune_manager.py ....                                 [ 75%]
+tests/unit/test_mace_manager.py .                                        [ 76%]
+tests/unit/test_orchestrator.py .............                            [ 82%]
+tests/unit/test_reporter.py ..                                           [ 83%]
+tests/unit/test_security_utils.py .........                              [ 88%]
 tests/unit/test_stability.py ........                                    [ 92%]
 tests/unit/test_structure_generator.py ......                            [ 95%]
+tests/unit/test_tiered_oracle.py .                                       [ 95%]
 tests/unit/test_validator.py ........                                    [100%]
 
-=================================== FAILURES ===================================
-____________________ test_uat_06_01_quality_assurance_pass _____________________
-
-self = <src.validators.validator.Validator object at 0x7f5fda5111f0>
-potential_path = PosixPath('/tmp/pytest-of-jules/pytest-48/test_uat_06_01_quality_assuran0/potential.yace')
-
-    def validate(self, potential_path: Path) -> ValidationReport:
-        """Executes full validation suite on the newly trained potential."""
-        resolved_path = potential_path.resolve()
-
-        self._check_file_format(resolved_path)
-
-        try:
-            energy_rmse, force_rmse, stress_rmse, phonon_stable, mechanically_stable = (
->               self._compute_metrics(resolved_path)
-            )
-
-src/validators/validator.py:136:
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
-src/validators/validator.py:94: in _compute_metrics
-    true_f: np.ndarray = test_atoms.get_forces()  # type: ignore[no-untyped-call, type-arg]
-                         ^^^^^^^^^^^^^^^^^^^^^^^
-.venv/lib/python3.12/site-packages/ase/atoms.py:1994: in get_forces
-    forces = self._calc.get_forces(self)
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-.venv/lib/python3.12/site-packages/ase/calculators/abc.py:32: in get_forces
-    return self.get_property('forces', atoms)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
-
-self = <ase.calculators.singlepoint.SinglePointCalculator object at 0x7f5fd9f460f0>
-name = 'forces'
-atoms = Atoms(symbols='Fe', pbc=False, calculator=SinglePointCalculator(...))
-allow_calculation = True
-
-    def get_property(self, name, atoms=None, allow_calculation=True):
-        if atoms is None:
-            atoms = self.atoms
-        if name not in self.results or self.check_state(atoms):
-            if allow_calculation:
->               raise PropertyNotImplementedError(
-                    f'The property "{name}" is not available.')
-E               ase.calculators.calculator.PropertyNotImplementedError: The property "forces" is not available.
-
-.venv/lib/python3.12/site-packages/ase/calculators/singlepoint.py:55: PropertyNotImplementedError
-
-The above exception was the direct cause of the following exception:
-
-tmp_path = PosixPath('/tmp/pytest-of-jules/pytest-48/test_uat_06_01_quality_assuran0')
-monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f5fd9f44e90>
-
-    def test_uat_06_01_quality_assurance_pass(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-        # The auditor explicitly said:
-        # "Concrete Fix: Use proper mocking for pyacemaker dependencies. Create a mock validator that returns predictable results without requiring actual pyacemaker installation. Tests should always run and provide consistent results."
-        # We will use monkeypatch on pyacemaker properly without mocking the internal Validator methods.
-
-        from ase import Atoms
-        from ase.calculators.calculator import Calculator
-
-        class UATMockCalc(Calculator):
-            implemented_properties: list[str] = ["energy", "forces", "stress"]
-            def __init__(self, energy=1.0, forces=None, stress=None) -> None:
-                super().__init__()
-                self.energy = energy
-                self.forces = forces if forces is not None else np.array([[50.0, 50.0, 50.0]]) if forces is not None else np.array([[0.05, 0.05, 0.05]])
-                self.stress = stress if stress is not None else np.array([0.0]*6)
-
-            def calculate(self, atoms=None, properties=None, system_changes=None):
-                super().calculate(atoms, properties, system_changes)
-                self.results = {
-                    "energy": self.energy,
-                    "forces": self.forces,
-                    "stress": self.stress,
-                }
-
-        # Inject mock pyacemaker into sys.modules
-        class MockPyacemakerModule:
-            @staticmethod
-            def pyacemaker(path: str) -> typing.Any:
-                return UATMockCalc()
-
-        sys.modules["pyacemaker"] = MockPyacemakerModule()
-        sys.modules["pyacemaker.calculator"] = MockPyacemakerModule()
-
-        config = ValidatorConfig(energy_rmse_threshold=0.002, force_rmse_threshold=0.05, test_dataset_path=str(tmp_path / "test.extxyz"))
-
-        dummy_pot = tmp_path / "potential.yace"
-        dummy_pot.write_text("elements version")
-
-        dataset_path = tmp_path / "test.extxyz"
-        from ase.calculators.singlepoint import SinglePointCalculator
-        from ase.io import write
-        atoms = Atoms("Fe", positions=[(0, 0, 0)])
-        atoms.calc = SinglePointCalculator(atoms, energy=1.0, forces=None, stress=None)
-        write(str(dataset_path), atoms, format="extxyz")
-
-        monkeypatch.setattr("src.validators.validator.Validator._check_phonopy_stability", lambda self, a, c: True)
-        monkeypatch.setattr("src.validators.stability_tests.check_mechanical_stability", lambda a, c: True)
-
-        validator = Validator(config)
->       report = validator.validate(dummy_pot)
-                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-tests/uat/test_cycle06_validator.py:63:
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
-
-self = <src.validators.validator.Validator object at 0x7f5fda5111f0>
-potential_path = PosixPath('/tmp/pytest-of-jules/pytest-48/test_uat_06_01_quality_assuran0/potential.yace')
-
-    def validate(self, potential_path: Path) -> ValidationReport:
-        """Executes full validation suite on the newly trained potential."""
-        resolved_path = potential_path.resolve()
-
-        self._check_file_format(resolved_path)
-
-        try:
-            energy_rmse, force_rmse, stress_rmse, phonon_stable, mechanically_stable = (
-                self._compute_metrics(resolved_path)
-            )
-        except Exception as e:
-            msg = f"Validation execution failed: {e}"
->           raise RuntimeError(msg) from e
-E           RuntimeError: Validation execution failed: The property "forces" is not available.
-
-src/validators/validator.py:140: RuntimeError
-___________________ test_uat_06_02_quality_assurance_failure ___________________
-
-self = <src.validators.validator.Validator object at 0x7f5fd9f44ad0>
-potential_path = PosixPath('/tmp/pytest-of-jules/pytest-48/test_uat_06_02_quality_assuran0/poor_potential.yace')
-
-    def validate(self, potential_path: Path) -> ValidationReport:
-        """Executes full validation suite on the newly trained potential."""
-        resolved_path = potential_path.resolve()
-
-        self._check_file_format(resolved_path)
-
-        try:
-            energy_rmse, force_rmse, stress_rmse, phonon_stable, mechanically_stable = (
->               self._compute_metrics(resolved_path)
-            )
-
-src/validators/validator.py:136:
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
-src/validators/validator.py:94: in _compute_metrics
-    true_f: np.ndarray = test_atoms.get_forces()  # type: ignore[no-untyped-call, type-arg]
-                         ^^^^^^^^^^^^^^^^^^^^^^^
-.venv/lib/python3.12/site-packages/ase/atoms.py:1994: in get_forces
-    forces = self._calc.get_forces(self)
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-.venv/lib/python3.12/site-packages/ase/calculators/abc.py:32: in get_forces
-    return self.get_property('forces', atoms)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
-
-self = <ase.calculators.singlepoint.SinglePointCalculator object at 0x7f5fd9f46f00>
-name = 'forces'
-atoms = Atoms(symbols='Fe', pbc=False, calculator=SinglePointCalculator(...))
-allow_calculation = True
-
-    def get_property(self, name, atoms=None, allow_calculation=True):
-        if atoms is None:
-            atoms = self.atoms
-        if name not in self.results or self.check_state(atoms):
-            if allow_calculation:
->               raise PropertyNotImplementedError(
-                    f'The property "{name}" is not available.')
-E               ase.calculators.calculator.PropertyNotImplementedError: The property "forces" is not available.
-
-.venv/lib/python3.12/site-packages/ase/calculators/singlepoint.py:55: PropertyNotImplementedError
-
-The above exception was the direct cause of the following exception:
-
-tmp_path = PosixPath('/tmp/pytest-of-jules/pytest-48/test_uat_06_02_quality_assuran0')
-monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f5fd9f46270>
-
-    def test_uat_06_02_quality_assurance_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-        from ase import Atoms
-        from ase.calculators.calculator import Calculator
-
-        class UATMockCalc(Calculator):
-            implemented_properties: list[str] = ["energy", "forces", "stress"]
-            def __init__(self, energy=100.0, forces=None, stress=None) -> None:
-                super().__init__()
-                self.energy = energy
-                self.forces = forces if forces is not None else np.array([[50.0, 50.0, 50.0]]) if forces is not None else np.array([[0.05, 0.05, 0.05]])
-                self.stress = stress if stress is not None else np.array([0.0]*6)
-
-            def calculate(self, atoms=None, properties=None, system_changes=None):
-                super().calculate(atoms, properties, system_changes)
-                self.results = {
-                    "energy": self.energy,
-                    "forces": self.forces,
-                    "stress": self.stress,
-                }
-
-        class MockPyacemakerModule:
-            @staticmethod
-            def pyacemaker(path: str) -> typing.Any:
-                return UATMockCalc()
-
-        sys.modules["pyacemaker"] = MockPyacemakerModule()
-        sys.modules["pyacemaker.calculator"] = MockPyacemakerModule()
-
-        config = ValidatorConfig(energy_rmse_threshold=0.002, force_rmse_threshold=0.05, test_dataset_path=str(tmp_path / "test.extxyz"))
-
-        dummy_pot = tmp_path / "poor_potential.yace"
-        dummy_pot.write_text("elements version")
-
-        dataset_path = tmp_path / "test.extxyz"
-        from ase.calculators.singlepoint import SinglePointCalculator
-        from ase.io import write
-        atoms = Atoms("Fe", positions=[(0, 0, 0)])
-        atoms.calc = SinglePointCalculator(atoms, energy=1.0, forces=None, stress=None)
-        write(str(dataset_path), atoms, format="extxyz")
-
-        monkeypatch.setattr("src.validators.validator.Validator._check_phonopy_stability", lambda self, a, c: True)
-        monkeypatch.setattr("src.validators.stability_tests.check_mechanical_stability", lambda a, c: True)
-
-        validator = Validator(config)
->       report = validator.validate(dummy_pot)
-                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-tests/uat/test_cycle06_validator.py:110:
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
-
-self = <src.validators.validator.Validator object at 0x7f5fd9f44ad0>
-potential_path = PosixPath('/tmp/pytest-of-jules/pytest-48/test_uat_06_02_quality_assuran0/poor_potential.yace')
-
-    def validate(self, potential_path: Path) -> ValidationReport:
-        """Executes full validation suite on the newly trained potential."""
-        resolved_path = potential_path.resolve()
-
-        self._check_file_format(resolved_path)
-
-        try:
-            energy_rmse, force_rmse, stress_rmse, phonon_stable, mechanically_stable = (
-                self._compute_metrics(resolved_path)
-            )
-        except Exception as e:
-            msg = f"Validation execution failed: {e}"
->           raise RuntimeError(msg) from e
-E           RuntimeError: Validation execution failed: The property "forces" is not available.
-
-src/validators/validator.py:140: RuntimeError
 ================================ tests coverage ================================
 _______________ coverage: platform linux, python 3.12.13-final-0 _______________
 
 Name                                    Stmts   Miss  Cover   Missing
 ---------------------------------------------------------------------
 src/__init__.py                             0      0   100%
-src/core/__init__.py                       23      0   100%
+src/core/__init__.py                       21      0   100%
 src/core/exceptions.py                      2      0   100%
-src/core/orchestrator.py                  337     89    74%   55-56, 61, 93-94, 97-98, 103-105, 117-131, 137-138, 164-179, 184-186, 190-192, 195-199, 211, 256-257, 266-267, 278-279, 286-287, 291-292, 300-301, 332-333, 360, 379-386, 411-412, 424-426, 435-463, 478, 510, 513
+src/core/orchestrator.py                  343     90    74%   46, 68-69, 74, 106-107, 110-111, 116-118, 130-144, 150-151, 177-192, 197-199, 203-205, 208-212, 224, 269-270, 279-280, 291-292, 299-300, 304-305, 313-314, 345-346, 373, 392-399, 424-425, 437-439, 448-476, 491, 523, 526
 src/domain_models/__init__.py               3      0   100%
-src/domain_models/config.py               366    118    68%   35-36, 39-40, 46-47, 49-50, 56-57, 60-61, 71-72, 139-140, 160-174, 178, 181, 221-222, 227-232, 331-334, 350-352, 399-402, 407-410, 464-469, 474-475, 494-495, 504-505, 512-540, 562-588, 597-598, 600-601, 616-617, 619-620, 626-627, 630-631, 639-640, 647-648, 652-653
-src/domain_models/dtos.py                  39      4    90%   41-44
+src/domain_models/config.py               458    119    74%   35-36, 39-40, 46-47, 49-50, 56-57, 60-61, 71-72, 154, 182-183, 203-217, 221, 224, 264-265, 270-275, 385-388, 404-406, 453-456, 461-464, 518-523, 528-529, 550-551, 560-561, 568-596, 735-761, 770-771, 773-774, 792-793, 795-796, 802-803, 806-807, 815-816, 823-824, 828-829
+src/domain_models/dtos.py                  50      4    92%   41-44
 src/dynamics/__init__.py                    0      0   100%
-src/dynamics/dynamics_engine.py           228     52    77%   32-33, 40-41, 44-45, 48-49, 52-53, 57-58, 62-63, 98-99, 110-111, 117-118, 121-122, 125-126, 129-130, 133-134, 138-139, 143-144, 178-179, 190-191, 194-195, 201-202, 204-205, 269-271, 331-332, 338-339, 341-342, 370
-src/dynamics/eon_driver.py                167     51    69%   13-14, 28-29, 43-52, 82-85, 89-90, 95-96, 122-125, 135-136, 138-139, 152-154, 157-158, 166-173, 177-179, 187-189, 192-193, 235
-src/dynamics/eon_wrapper.py               188     34    82%   63-64, 67-68, 145-146, 148-149, 160-161, 171-172, 177-189, 198, 206, 218-220, 228-229, 251-252, 287-288
+src/dynamics/dynamics_engine.py           229     52    77%   33-34, 41-42, 45-46, 49-50, 53-54, 58-59, 63-64, 108-109, 117-118, 131-132, 138-139, 142-143, 146-147, 150-151, 154-155, 159-160, 164-165, 211, 220-221, 230-231, 246-247, 253-254, 256-257, 273-276, 329-331, 412
+src/dynamics/eon_driver.py                167     51    69%   13-14, 28-29, 42-51, 81-84, 88-89, 94-95, 121-124, 135-136, 138-139, 152-154, 157-158, 166-173, 177-179, 187-189, 192-193, 235
+src/dynamics/eon_wrapper.py               205     37    82%   40-41, 72-73, 76-77, 158-159, 161-162, 173-174, 184-185, 190-202, 209, 221, 230-231, 234-235, 254, 258, 283-284, 319-320
 src/dynamics/security_utils.py            110     26    76%   17-18, 26-32, 47-48, 78, 101-102, 110-111, 121-122, 133-134, 137-138, 141-142, 162-163
 src/generators/__init__.py                  0      0   100%
 src/generators/adaptive_policy.py          67      5    93%   16, 44-45, 123-124
-src/generators/defect_builder.py           72     14    81%   14, 22-23, 26, 43-44, 47, 66-67, 76-77, 81, 105-106
+src/generators/defect_builder.py           72     15    79%   14, 22-23, 26, 43-44, 47, 66-67, 76-77, 81, 103, 105-106
 src/generators/structure_generator.py      62      9    85%   47-48, 52-53, 99, 105-108
 src/oracles/__init__.py                     0      0   100%
+src/oracles/base.py                         6      0   100%
 src/oracles/dft_oracle.py                 258     61    76%   22-23, 26-27, 33-34, 38-39, 42-43, 48-49, 59-60, 79-80, 86-87, 117-118, 120-121, 123-124, 142, 145, 150, 160, 172-173, 177-179, 184-185, 190-195, 222-224, 227-228, 239-240, 259-260, 275, 288-291, 294-295, 301-303, 364-365
+src/oracles/mace_manager.py                42      5    88%   23-26, 63, 65, 67
+src/oracles/tiered_oracle.py               25      1    96%   31
 src/trainers/__init__.py                    0      0   100%
-src/trainers/ace_trainer.py               235    102    57%   27-30, 33, 42-45, 48-60, 66, 72-89, 94-115, 123-124, 130-148, 151-161, 166, 197-198, 217, 254-260, 263-264, 280-281, 285-286, 307-308
+src/trainers/ace_trainer.py               174     32    82%   27-30, 33, 42-45, 55-58, 90-91, 110, 138-140, 182-188, 191-192, 208-209, 213-214, 240-241
+src/trainers/binary_resolver.py            89     64    28%   19, 25-42, 47-65, 71-72, 78-96, 99-109, 114
+src/trainers/finetune_manager.py           59     15    75%   28-32, 35-36, 80-84, 88-90, 111-112
 src/validators/__init__.py                  0      0   100%
 src/validators/reporter.py                  7      0   100%
 src/validators/stability_tests.py         119      5    96%   51, 59-60, 63-66
-src/validators/validator.py                93     11    88%   20-22, 33-35, 39-41, 85, 99-100
+src/validators/validator.py                90     11    88%   20-22, 28-30, 34-36, 80, 94-95
 ---------------------------------------------------------------------
-TOTAL                                    2376    581    76%
-=========================== short test summary info ============================
-FAILED tests/uat/test_cycle06_validator.py::test_uat_06_01_quality_assurance_pass
-FAILED tests/uat/test_cycle06_validator.py::test_uat_06_02_quality_assurance_failure
-=================== 2 failed, 172 passed, 2 skipped in 6.75s ===================
+TOTAL                                    2658    602    77%
+======================== 196 passed, 2 skipped in 6.20s ========================
 /app/.venv/lib/python3.12/site-packages/coverage/inorout.py:561: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.4/messages.html#warning-module-not-imported
   self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")

@@ -1,3 +1,4 @@
+# ruff: noqa: S108
 from pathlib import Path
 from typing import Any
 
@@ -106,7 +107,7 @@ def test_write_pace_driver_invalid_potential(
     engine = EONWrapper(config, sys_config)
 
     # Potential path is outside project root
-    pot_path = Path("/var/tmp/hacker_dummy.yace")  # noqa: S108
+    pot_path = Path("/var/tmp/hacker_dummy.yace")
     pot_path.parent.mkdir(parents=True, exist_ok=True)
     pot_path.touch()
 
@@ -143,8 +144,8 @@ def test_run_kmc_invalid_work_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = EONWrapper(config, sys_config)
 
-    work_dir = Path("/var/tmp/hacker_work")  # noqa: S108
-    with pytest.raises(ValueError, match="is outside the allowed project root"):
+    work_dir = Path("/var/tmp/hacker_work")
+    with pytest.raises(ValueError, match="must reside securely within an allowed base directory"):
         engine.run_kmc(None, work_dir)
 
 
@@ -327,7 +328,9 @@ def test_get_validated_eon_bin_not_executable(tmp_path: Path, monkeypatch: pytes
 
 
 def test_build_safe_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    config = DynamicsConfig(project_root=str(tmp_path), trusted_directories=["/usr/bin", "/bin", "/usr/lib"])
+    config = DynamicsConfig(
+        project_root=str(tmp_path), trusted_directories=["/usr/bin", "/bin", "/usr/lib"]
+    )
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = EONWrapper(config, sys_config)
 
