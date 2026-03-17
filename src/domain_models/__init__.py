@@ -7,10 +7,12 @@ from .config import (
     ValidatorConfig,
 )
 from .dtos import ExplorationStrategy, HaltInfo, MaterialFeatures, ValidationReport
+from .gui_schemas import GUIStateConfig, WorkflowIntentConfig
 
 __all__ = [
     "DynamicsConfig",
     "ExplorationStrategy",
+    "GUIStateConfig",
     "HaltInfo",
     "MaterialFeatures",
     "OracleConfig",
@@ -19,4 +21,5 @@ __all__ = [
     "TrainerConfig",
     "ValidationReport",
     "ValidatorConfig",
+    "WorkflowIntentConfig",
 ]

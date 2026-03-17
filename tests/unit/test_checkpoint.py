@@ -11,6 +11,7 @@ def test_checkpoint_manager_init(tmp_path: Path):
     cm = CheckpointManager(db_path)
     assert db_path.exists()
 
+
 def test_checkpoint_set_and_get(tmp_path: Path):
     db_path = tmp_path / "checkpoint.db"
     cm = CheckpointManager(db_path)
@@ -23,6 +24,7 @@ def test_checkpoint_set_and_get(tmp_path: Path):
     cm.set_state("HALT_INFO", complex_val)
     assert cm.get_state("HALT_INFO") == complex_val
 
+
 def test_checkpoint_transaction_rollback(tmp_path: Path, monkeypatch):
     db_path = tmp_path / "checkpoint.db"
     cm = CheckpointManager(db_path)
@@ -33,13 +35,17 @@ def test_checkpoint_transaction_rollback(tmp_path: Path, monkeypatch):
         raise sqlite3.OperationalError("Forced Failure")
 
     original_connect = sqlite3.connect
+
     class MockConnection:
         def __init__(self, *args, **kwargs):
             self.conn = original_connect(*args, **kwargs)
+
         def __enter__(self):
             return self
+
         def __exit__(self, exc_type, exc_val, exc_tb):
             self.conn.close()
+
         def execute(self, *args, **kwargs):
             raise sqlite3.OperationalError("Forced Failure")
 
@@ -64,18 +70,23 @@ def test_checkpoint_invalid_db_path(tmp_path: Path):
         # Let's pass an absolute path like /etc/passwd that will definitely fail.
         CheckpointManager(Path("/etc/shadow_db.sqlite"))
 
+
 def test_checkpoint_get_error(tmp_path: Path, monkeypatch):
     db_path = tmp_path / "checkpoint.db"
     cm = CheckpointManager(db_path)
 
     original_connect = sqlite3.connect
+
     class MockConnectionGet:
         def __init__(self, *args, **kwargs):
             self.conn = original_connect(*args, **kwargs)
+
         def __enter__(self):
             return self
+
         def __exit__(self, exc_type, exc_val, exc_tb):
             self.conn.close()
+
         def execute(self, *args, **kwargs):
             raise sqlite3.OperationalError("Forced Get Failure")
 

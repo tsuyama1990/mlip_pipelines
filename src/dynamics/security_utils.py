@@ -6,6 +6,23 @@ import sys
 from pathlib import Path
 
 
+def _validate_string_security(val: str) -> None:
+    """Centralized security validation for strings (e.g., target_material) to prevent shell/path injection."""
+    if len(val) > 256:
+        msg = f"String length exceeds maximum allowed (256): {len(val)}"
+        raise ValueError(msg)
+
+    # Path traversal patterns
+    if ".." in val or "/" in val or "\\" in val:
+        msg = f"Path traversal or directory characters are not allowed: {val}"
+        raise ValueError(msg)
+
+    # Shell injection characters
+    if any(char in val for char in [";", "&", "|", "`", "$", "<", ">"]):
+        msg = f"Shell injection characters are not allowed: {val}"
+        raise ValueError(msg)
+
+
 def _check_trusted_location(resolved_bin: Path, all_trusted: list[str]) -> None:
     is_trusted = False
     for td in all_trusted:

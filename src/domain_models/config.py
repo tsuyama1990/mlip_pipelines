@@ -7,6 +7,8 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from src.domain_models.gui_schemas import WorkflowIntentConfig
+
 
 class InterfaceTarget(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -609,15 +611,9 @@ class DistillationConfig(BaseModel):
         default="float32", description="Default dtype for MACE (e.g., float32, float64)"
     )
     dispersion: bool = Field(default=False, description="Enable dispersion correction in MACE")
-    temp_dir: str = Field(
-        ..., description="Path to temporary directory for distillation"
-    )
-    output_dir: str = Field(
-        ..., description="Path to save distillation outputs"
-    )
-    model_storage_path: str = Field(
-        ..., description="Path to cache MACE foundation models"
-    )
+    temp_dir: str = Field(..., description="Path to temporary directory for distillation")
+    output_dir: str = Field(..., description="Path to save distillation outputs")
+    model_storage_path: str = Field(..., description="Path to cache MACE foundation models")
 
     @model_validator(mode="after")
     def validate_thresholds_and_samples(self) -> "DistillationConfig":
@@ -779,6 +775,33 @@ class ProjectConfig(BaseSettings):
     distillation_config: DistillationConfig
     cutout_config: CutoutConfig = Field(default_factory=CutoutConfig)
     loop_strategy: LoopStrategyConfig
+    intent: WorkflowIntentConfig | None = None
+
+    @model_validator(mode="after")
+    def apply_intent_translation(self) -> "ProjectConfig":
+        """
+        Translates GUI intent strictly into physical simulation parameters.
+        """
+        if self.intent is not None:
+            tradeoff = self.intent.accuracy_speed_tradeoff
+
+            # Linear scaling for threshold:
+            # tradeoff=1 -> 0.15, tradeoff=10 -> 0.02
+            calc_threshold = 0.15 - ((tradeoff - 1) * 0.014444444)
+            # Use object.__setattr__ to bypass frozen/validation if any (though Pydantic V2 allows assignment, we follow memory hints for bypassing immutability)
+            object.__setattr__(
+                self.distillation_config, "uncertainty_threshold", round(calc_threshold, 4)
+            )
+
+            # Replay buffer size scaling:
+            # tradeoff=1 -> 500, tradeoff=10 -> 5000
+            calc_buffer = 500 + (tradeoff - 1) * 500
+            object.__setattr__(self.loop_strategy, "replay_buffer_size", calc_buffer)
+
+            # Note: Max iterations translation mentioned in SPEC could be applied if max_iterations existed.
+            # As max_iterations is not present in LoopStrategyConfig in the codebase, we omit it.
+
+        return self
 
     @field_validator("project_root")
     @classmethod
