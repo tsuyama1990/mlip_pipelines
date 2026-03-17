@@ -1,52 +1,52 @@
 <thought>
-Architectural Stress Test & Dependency Analysis:
-1. Orchestrator State & Resilience: The current `CYCLE01` design relies on a transient, in-memory state loop (`self.iteration`). If the Active Learning pipeline runs on an HPC node that is preempted after 48 hours, the system will lose track of its current iteration unless it implements robust filesystem-based state checkpointing (e.g., scanning `active_learning/iter_XXX` to resume).
-2. The "Cold Start" Problem: `ALL_SPEC.md` explicitly demands an "Initial Exploration via Universal Potentials (Cold Start)" using M3GNet/CHGNet to gather initial features (Material DNA, Predicted Properties) for the Policy Engine. My current `CYCLE02` design assumes `MaterialFeatures` magically exist. I must introduce a feature extraction layer or clarify how the Orchestrator provisions these initial properties.
-3. Trainer Resource Exhaustion: Pacemaker training (`pace_train`) can consume massive amounts of memory. While I added `max_potential_size`, I need to ensure `CYCLE04` specifies strict subprocess memory limits or timeouts to prevent hanging the Orchestrator indefinitely.
-4. EON Integration Edge Cases: `CYCLE05` specifies EON kMC, but EON operates on a client-server model or a continuous background daemon. The specification must explicitly detail how the Orchestrator manages the EON client's lifecycle (startup, graceful shutdown, intercepting exit code 100 for halt) to avoid zombie processes.
-5. Circular Dependency Check:
-   - CYCLE01 (Core/Config): Independent. Uses Abstract classes.
-   - CYCLE02 (Policy/Gen): Independent.
-   - CYCLE03 (Oracle): Independent.
-   - CYCLE04 (Trainer): Independent.
-   - CYCLE05 (Dynamics): Independent.
-   - CYCLE06 (Validator): Independent.
-   The structural decoupling via `src/core/__init__.py` completely prevents circular dependencies. The architecture is highly sound in its dependency graph.
+Architectural Stress Test:
+
+1. Global Consistency (SYSTEM_ARCHITECTURE.md vs ALL_SPEC.md)
+   - The PRD (ALL_SPEC.md) specifically mentions the "Intent-Driven" approach taking three inputs: "Target Material", "Property of Interest", and "Computational Budget (cloud cost/time)". My current architecture handles Material and Accuracy vs Speed, but explicitly lacks "Computational Budget" or "Property of Interest" as formal fields in `WorkflowIntentConfig`.
+   - The PRD also mentions "Hybrid force field automatic compatibility diagnosis" (4.2 ハイブリッド力場の自動相性診断) which checks ASE topology against specified EAM/LJ parameters and suggests completions. I completely missed this in the Cycle planning. It belongs in Cycle 05 (Pre-flight diagnostics) or Cycle 02 (Compile layer). Let's put it in Cycle 05 as part of the pre-flight check.
+
+2. Cycle Precision
+   - Cycle 01: Needs the `computational_budget` and `property_of_interest` added to `WorkflowIntentConfig`. The translation logic must account for how a "Low" budget might forcibly cap `max_iterations` regardless of the Accuracy slider.
+   - Cycle 02: ASE tag injection is solid and decoupled.
+   - Cycle 03: Auto-HPO is solid.
+   - Cycle 04: Orchestrator control is solid.
+   - Cycle 05: Needs the Hybrid Force Field check. The API should accept a list of force fields and the structure, and return missing parameters.
+   - Cycle 06: GCMC is solid.
+
+3. Code Design Foundation (Pydantic)
+   - `WorkflowIntentConfig` needs `computational_budget` (Enum: LOW, MEDIUM, HIGH) and `property_of_interest` (Enum: DIFFUSION, INTERFACE_ENERGY, BULK_MODULUS).
+   - `RunZeroDiagnosticsDTO` in Cycle 05 needs a `missing_forcefield_params` list.
+
+4. Alternative Approaches Considered:
+   - Instead of ASE tags, we could use LAMMPS python library directly to define regions. However, ASE tags are much more robust against structural deformation and easier to mock in tests without requiring LAMMPS binaries. The ASE approach is superior.
+   - For HPO, using a heavy library like Ray Tune was considered, but keeping it lightweight (scipy/optuna) inside a background task is better for a FastAPI web service to prevent massive dependency bloat.
 </thought>
 
-# Architect Critic Review: Self-Evaluation and Refinement Strategy
+# Architect Critic Review
 
 ## 1. Verification of the Optimal Approach
+The overall architectural decision to use a React frontend sending stateful JSON payloads to a FastAPI backend, which then maps to strict Pydantic schemas, is highly optimal. It effectively decouples the presentation layer from the heavy, error-prone C++ physics engines (LAMMPS/QE).
 
-### Global Consistency and Methodology
-The overarching architecture—a Python-based Orchestrator managing modular, isolated sub-components via strictly typed Pydantic configurations—is the absolute optimal approach to fulfilling the requirements in `ALL_SPEC.md`. It directly addresses the "Zero-Config" requirement by centralizing all parameters into a single `.env`/`config.yaml` interface, while the use of Dependency Injection (via Abstract Base Classes) guarantees the system's extensibility (e.g., swapping LAMMPS for another MD engine).
+**Alternative Approaches Considered & Rejected:**
+1.  **Direct Shell Execution:** An alternative approach would involve the FastAPI server directly building string scripts and executing them via `subprocess` without an intermediate validation layer. This was rejected because it introduces massive shell injection vulnerabilities and makes the system entirely untestable without a full HPC environment. The chosen Pydantic schema-first approach is far superior for stability and security.
+2.  **Geometric LAMMPS Regions vs. Topological ASE Tags:** We considered building a 3D coordinate bounding box translator (e.g., UI sends `[xmin, xmax, ymin, ymax, zmin, zmax]`, backend writes `region box block ...`). This was rejected because during active learning MD, the simulation box and atoms drastically deform and move. Static geometric boundaries would apply physical constraints to the wrong atoms over time. The chosen approach—injecting topological integer tags directly into the ASE `Atoms` array—is state-of-the-art, ensuring the physical constraints (like `fix freeze`) follow the exact atoms regardless of their spatial drift.
 
-**Alternative Considered**: A monolithic bash-script or Makefile-based pipeline.
-**Why it was rejected**: A shell-based pipeline cannot natively handle complex, stateful decisions like the Adaptive Policy Engine's dynamic scheduling, nor can it elegantly catch and heal SCF convergence errors (Oracle self-healing) without extremely fragile `grep` parsing. Python, bolstered by Pydantic for validation and `subprocess` for sandboxed execution, is vastly superior.
+**Critical Missing Features Discovered:**
+During the architectural stress test against `ALL_SPEC.md`, two critical user requirements were found to be missing from the initial design:
+1.  **Computational Budget & Property Intent:** Section 1.2 of the PRD explicitly demands that the user inputs their "Computational Budget" (cloud cost/time) and the "Property of Interest". My initial `WorkflowIntentConfig` only captured the Accuracy vs Speed slider. This is a critical omission that fails the "Intent-Driven" requirement.
+2.  **Hybrid Force Field Diagnostics:** Section 4.2 of the PRD requires an "Automatic compatibility diagnosis" when mixing force fields (e.g., EAM and LJ). The system must cross-reference ASE topology with provided parameters and suggest completions for missing pairs. This was entirely missing from the Pre-flight diagnostic cycle (Cycle 05).
 
-### Identified Weaknesses (Stress Test Results)
-1. **Lack of Orchestrator Resilience (State Checkpointing)**: In a true production environment (HPC/Cloud), jobs are preemptable. The `Orchestrator` designed in `CYCLE01` lacks an explicit mechanism to resume from a mid-pipeline crash. It needs to inspect the `active_learning/` directory to deduce the correct `self.iteration` upon startup.
-2. **Missing "Cold Start" Universal Potential Integration**: `ALL_SPEC.md` requires initial exploration via M3GNet/CHGNet to deduce material features (Melting Point, Bulk Modulus) that feed the Policy Engine. This crucial step was glossed over in the initial design.
+## 2. Precision of Cycle Breakdown and Adjustments
+To rectify the discovered omissions and ensure perfect precision, the following architectural adjustments must be made:
 
-## 2. Precision of Cycle Breakdown and Design Details
+**Adjustments to SYSTEM_ARCHITECTURE.md:**
+- Expand the Domain Models section to include `computational_budget` and `property_of_interest` as formal Enums driving the orchestration engine.
+- Add the Hybrid Force Field Validator to the architectural diagram and the API validation layer.
 
-The cycle breakdown (01-06) is logically sound and completely avoids circular dependencies by leaning heavily on the Abstract interfaces defined in `CYCLE01`. However, the precision within specific cycles requires refinement to eliminate ambiguity during the implementation phase.
+**Adjustments to CYCLE01 (Scaffolding):**
+- Update `SPEC.md` to formally define `computational_budget` (e.g., `LOW`, `MEDIUM`, `HIGH`) within `WorkflowIntentConfig`. The `@model_validator` must be updated to show how a `LOW` budget acts as a hard cap on `LoopStrategyConfig.max_iterations` and `timeout_seconds`, overriding the Accuracy slider if necessary to save costs.
+- Update `UAT.md` to test this budget-capping behavior.
 
-### Required Refinements per Cycle:
-
-*   **SYSTEM_ARCHITECTURE.md**: Must be updated to include State Checkpointing and the Cold Start Feature Extraction pipeline in the component overview.
-*   **CYCLE01 (Core/Config)**:
-    *   *Issue*: The Orchestrator's `__init__` assumes a fresh start.
-    *   *Correction*: Update `SPEC.md` and `UAT.md` to explicitly require a `resume_state()` method that scans the filesystem to pick up where it left off, ensuring true "無人で完走させる" (unattended completion) even across node reboots.
-*   **CYCLE02 (Generator/Policy)**:
-    *   *Issue*: `MaterialFeatures` generation is a black box.
-    *   *Correction*: Specify the "Initial Exploration (Cold Start)" mechanism. If M3GNet is too heavy for the primary dependency graph, define a robust fallback or mocked interface that the Orchestrator can use to provision `MaterialFeatures` before invoking the Policy Engine.
-*   **CYCLE04 (Trainer)**:
-    *   *Issue*: `pace_train` might hang or OOM.
-    *   *Correction*: Update `SPEC.md` to enforce `subprocess.run(timeout=X)` and explicit resource limits to prevent infinite hangs.
-*   **CYCLE05 (Dynamics)**:
-    *   *Issue*: EON client lifecycle management is vague.
-    *   *Correction*: Explicitly define how `EONWrapper` handles the background execution of `eonclient`, specifically catching the custom exit code `100` defined in `ALL_SPEC.md` to cleanly trigger the On-The-Fly retraining loop without leaving orphaned processes.
-
-## Conclusion
-The fundamental architecture is exceptionally strong, leveraging modern Python patterns (Pydantic, DI, typed boundaries) to enforce safety and data efficiency. The cycle plans are decoupled and logically sequenced. By injecting the refinements listed above—specifically Orchestrator State Resilience and Cold Start Extraction—the system will be fully robust against real-world execution anomalies and perfectly aligned with every detail of `ALL_SPEC.md`. I will proceed to update the documentation files immediately.
+**Adjustments to CYCLE05 (Pre-flight):**
+- Update `SPEC.md` to include a new diagnostic endpoint or hook that verifies classical force field parameter completeness against the atomic species present in the loaded ASE object.
+- Update `UAT.md` to include a scenario where a user submits a Pt-Ni alloy but only provides an EAM potential for Pt, forcing the API to return a 422 error highlighting the missing Ni parameters.
