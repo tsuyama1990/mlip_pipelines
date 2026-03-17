@@ -43,6 +43,7 @@ def test_uat_c01_03_legacy_config():
         "shutil.which", lambda x: "/usr/bin/lmp" if x == "lmp" else "/usr/bin/eonclient"
     ):
         with unittest.mock.patch("os.access", return_value=True):
+            from src.domain_models.config import DistillationConfig, LoopStrategyConfig
             config = ProjectConfig(
                 project_root=tmp_dir,
                 system=SystemConfig(elements=["Fe", "O"]),
@@ -50,6 +51,8 @@ def test_uat_c01_03_legacy_config():
                 oracle=OracleConfig(),
                 trainer=TrainerConfig(trusted_directories=[]),
                 validator=ValidatorConfig(),
+                distillation_config=DistillationConfig(),
+                loop_strategy=LoopStrategyConfig()
             )
 
     assert config.cutout_config.core_radius == 3.0

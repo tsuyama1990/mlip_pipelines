@@ -7,6 +7,8 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from .gui_schemas import GUIStateConfig, WorkflowIntentConfig
+
 
 class InterfaceTarget(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -609,14 +611,15 @@ class DistillationConfig(BaseModel):
         default="float32", description="Default dtype for MACE (e.g., float32, float64)"
     )
     dispersion: bool = Field(default=False, description="Enable dispersion correction in MACE")
+
     temp_dir: str = Field(
-        ..., description="Path to temporary directory for distillation"
+        default="/tmp/adaptive_mlip/mace_distill", description="Path to temporary directory for distillation"
     )
     output_dir: str = Field(
-        ..., description="Path to save distillation outputs"
+        default="./outputs/distillation", description="Path to save distillation outputs"
     )
     model_storage_path: str = Field(
-        ..., description="Path to cache MACE foundation models"
+        default="~/.cache/mace", description="Path to cache MACE foundation models"
     )
 
     @model_validator(mode="after")
@@ -685,20 +688,20 @@ class LoopStrategyConfig(BaseModel):
     use_tiered_oracle: bool = Field(default=True, description="Enable tiered oracle logic")
     incremental_update: bool = Field(default=True, description="Enable incremental delta learning")
     replay_buffer_size: int = Field(
-        ..., description="Size of history replay buffer to prevent catastrophic forgetting"
+        default=1000, description="Size of history replay buffer to prevent catastrophic forgetting"
     )
     baseline_potential_type: str = Field(
         default="LJ", description="Baseline physical potential type (e.g., LJ)"
     )
     thresholds: ActiveLearningThresholds = Field(default_factory=ActiveLearningThresholds)
     checkpoint_interval: int = Field(
-        ..., description="Frequency (in iterations) to execute full hard-checkpoints"
+        default=10, description="Frequency (in iterations) to execute full hard-checkpoints"
     )
     max_retries: int = Field(
         default=3, description="Maximum number of orchestration loop retries on transient failures"
     )
     timeout_seconds: int = Field(
-        ..., description="Maximum wall-clock timeout in seconds for a complete loop iteration"
+        default=3600, description="Maximum wall-clock timeout in seconds for a complete loop iteration"
     )
 
     @model_validator(mode="after")
@@ -707,6 +710,7 @@ class LoopStrategyConfig(BaseModel):
             msg = "incremental_update cannot be True when use_tiered_oracle is False"
             raise ValueError(msg)
         return self
+
 
 
 class ProjectConfig(BaseSettings):
@@ -779,6 +783,33 @@ class ProjectConfig(BaseSettings):
     distillation_config: DistillationConfig
     cutout_config: CutoutConfig = Field(default_factory=CutoutConfig)
     loop_strategy: LoopStrategyConfig
+    intent: WorkflowIntentConfig | None = Field(default=None, description="Optional intent from GUI")
+    gui_state: GUIStateConfig | None = Field(default=None, description="Optional pure GUI state")
+
+    @model_validator(mode="after")
+    def apply_intent(self) -> "ProjectConfig":
+        if self.intent is not None:
+            tradeoff = self.intent.accuracy_speed_tradeoff
+            # Mapping logic:
+            # 1 (Speed) -> higher threshold, lower buffer
+            # 10 (Accuracy) -> lower threshold, larger buffer
+
+            # Example calculation:
+            # threshold: speed=1 -> 0.15, accuracy=10 -> 0.02
+            # m = (0.02 - 0.15) / (10 - 1) = -0.13 / 9 = -0.01444
+            # c = 0.15 - m*1 = 0.15 + 0.01444 = 0.16444
+
+            calculated_threshold = 0.16444 - (tradeoff * 0.01444)
+            # Ensure boundaries to avoid precision issues
+            calculated_threshold = max(0.02, min(0.15, calculated_threshold))
+
+            self.distillation_config.uncertainty_threshold = round(calculated_threshold, 3)
+
+            # replay_buffer_size mapping
+            # speed=1 -> 100, accuracy=10 -> 1000
+            calculated_buffer = 100 * tradeoff
+            self.loop_strategy.replay_buffer_size = calculated_buffer
+        return self
 
     @field_validator("project_root")
     @classmethod

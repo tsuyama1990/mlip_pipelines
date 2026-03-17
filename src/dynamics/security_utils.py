@@ -166,3 +166,16 @@ def validate_and_copy_potential(
     # For now, we perform the atomic copy/move.
     shutil.copy2(src_resolved, final_resolved)
     return final_resolved
+
+def _validate_string_security(v: str) -> None:
+    if ".." in v or "/" in v or "\\" in v:
+        msg = f"Path traversal characters are not allowed: {v}"
+        raise ValueError(msg)
+    if len(v) > 256:
+        msg = "String is too long"
+        raise ValueError(msg)
+    import re
+
+    if not re.match(r"^[-a-zA-Z0-9_,]+$", v):
+        msg = f"Invalid characters in string: {v}"
+        raise ValueError(msg)

@@ -159,7 +159,6 @@ def test_scenario_3(DummyConfig, Orchestrator, tmp_path):
 def test_scenario_4(DummyConfig, Orchestrator, tmp_path, sqlite3):
     # Scenario ID: UAT-C06-04: Handling Corrupted State Files
     print("\nTesting UAT-C06-04: Handling Corrupted Checkpoint DB")
-    import os as _os
 
     db_path = tmp_path / ".ac_cdd" / "checkpoint.db"
 
