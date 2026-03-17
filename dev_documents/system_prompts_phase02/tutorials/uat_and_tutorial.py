@@ -180,13 +180,13 @@ def __phase1(setup_orchestrator: Any, plt: Any, np: Any) -> tuple[Any, dict[str,
     # Spike around step 600
     gamma[60:65] = [2.5, 4.2, 5.8, 4.0, 2.1]
 
-    ax.plot(steps, gamma, label="Extrapolation Grade (γ)", color="blue")
+    ax.plot(steps, gamma, label="Extrapolation Grade (y)", color="blue")
     ax.axhline(5.0, color="red", linestyle="--", label="Uncertainty Threshold")
     ax.scatter(620, 5.8, color="red", s=100, zorder=5, label="Halt & Heal Trigger")
 
     ax.set_title("On-The-Fly (OTF) Uncertainty Halt Simulation")
     ax.set_xlabel("MD Steps")
-    ax.set_ylabel("γ value")
+    ax.set_ylabel("y value")
     ax.legend()
     ax.grid(True)
     plt.close(fig)
@@ -198,7 +198,7 @@ def __phase1(setup_orchestrator: Any, plt: Any, np: Any) -> tuple[Any, dict[str,
 
 @app.cell
 def __fig(fig: Any) -> None:
-    fig
+    _ = fig
 
 
 @app.cell

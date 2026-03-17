@@ -160,10 +160,9 @@ def test_project_config_env_file_security(tmp_path: Path) -> None:
     env.symlink_to(target)
 
     # We must ensure target has secure permissions for it to pass
-    import os
     import stat
 
-    os.chmod(target, stat.S_IRUSR | stat.S_IWUSR)
+    Path(target).chmod(stat.S_IRUSR | stat.S_IWUSR)
 
     # This should pass without raising
     _validate_env_file_security(env, base)
@@ -450,7 +449,7 @@ def test_project_config_intent_mapping():
             assert config.loop_strategy.replay_buffer_size == 100 * 1
             assert config.loop_strategy.max_iterations == 10 * 1
 
-            # Median (5)
+            # Testing median tradeoff
             config_dict["intent"]["accuracy_speed_tradeoff"] = 5
             config = ProjectConfig.model_validate(config_dict)
             assert config.distillation_config.uncertainty_threshold == 0.15 - (5 * 0.013)  # 0.085

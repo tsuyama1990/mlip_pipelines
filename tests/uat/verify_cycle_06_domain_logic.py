@@ -184,7 +184,8 @@ def test_scenario_4(DummyConfig, Orchestrator, tmp_path, sqlite3):
     db_path = tmp_path / ".ac_cdd" / "checkpoint.db"
 
     # Make DB read only to simulate lock/permission error
-    Path(db_path).chmod(0o400)
+    import pathlib
+    pathlib.Path(db_path).chmod(0o400)
 
     try:
         _orch3 = Orchestrator(DummyConfig())
@@ -193,13 +194,15 @@ def test_scenario_4(DummyConfig, Orchestrator, tmp_path, sqlite3):
     except RuntimeError as e:
         failed = True
         if "Failed to set state" not in str(e):
-            raise AssertionError("Did not raise expected error message") from e
+            err = "Did not raise expected error message"
+            raise AssertionError(err) from e
 
     # restore permission so it can be deleted later
-    Path(db_path).chmod(0o600)
+    pathlib.Path(db_path).chmod(0o600)
 
     if not failed:
-        raise AssertionError("Orchestrator did not fail loudly on corrupted DB")
+        err = "Orchestrator did not fail loudly on corrupted DB"
+        raise AssertionError(err)
     print("✓ Orchestrator successfully failed loudly without overwriting locked DB")
     return db_path
 

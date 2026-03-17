@@ -19,7 +19,7 @@ def _check_trusted_location(resolved_bin: Path, all_trusted: list[str]) -> None:
 
     if not is_trusted:
         msg = f"Resolved binary must reside in a trusted directory: {resolved_bin}"
-        raise ValueError(msg)
+        raise TypeError(msg)
 
 
 def _verify_executable_hash(resolved_bin: Path, expected_hash: str) -> None:
@@ -106,11 +106,11 @@ def _validate_env_key(key: str) -> None:
 
 
 def _validate_env_value(val: str) -> None:
-    if len(val) > 1024:
-        msg = "Environment variable value exceeds maximum length"
+    if ".." in val:
+        msg = f"Invalid traversal sequences in .env variable value: {val}."
         raise ValueError(msg)
-    if ".." in val or ";" in val or "&" in val or "|" in val:
-        msg = f"Invalid characters or traversal sequences in .env variable value: {val}."
+    if not re.match(r"^[-a-zA-Z0-9_.:/=,+?&#@%]*$", val):
+        msg = f"Invalid characters in .env variable value: {val}."
         raise ValueError(msg)
 
 
@@ -172,7 +172,7 @@ def _validate_string_security(val: str) -> str:
     """Validates that a string does not contain potential injection sequences."""
     if not isinstance(val, str):
         msg = f"Expected a string, got {type(val).__name__}"
-        raise ValueError(msg)
+        raise TypeError(msg)
 
     if ".." in val or "/" in val or "\\" in val:
         msg = f"Path traversal characters are not allowed: {val}"

@@ -156,7 +156,7 @@ def test_e2e_gui_payload_parsing_and_security():
 
     # We must patch env_file_security because tests run without real env files
     with unittest.mock.patch(
-        "src.domain_models.config._validate_env_file_security", return_value=Path("/tmp/.env")
+        "src.domain_models.config._validate_env_file_security", return_value=base_dir / ".env"
     ):
         with unittest.mock.patch("dotenv.dotenv_values", return_value={}):
             gui_payload = {

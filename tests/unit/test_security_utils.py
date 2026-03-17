@@ -37,7 +37,7 @@ def test_untrusted_path_rejected(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 
     monkeypatch.setattr(shutil, "which", lambda *args, **kwargs: str(dummy_bin))
 
-    with pytest.raises(ValueError, match="Resolved binary must reside in a trusted directory"):
+    with pytest.raises(TypeError, match="Resolved binary must reside in a trusted directory"):
         # tmp_path is not in the empty trusted directories list
         validate_executable_path("lmp", [])
 
