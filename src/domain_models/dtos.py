@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Self
 
 from ase import Atoms
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class MaterialFeatures(BaseModel):
@@ -72,3 +72,44 @@ class CutoutResult(BaseModel):
     passivation_atoms_added: int = Field(
         default=0, ge=0, description="Number of passivation atoms added"
     )
+
+from typing import Any
+
+from src.dynamics.security_utils import _validate_string_security
+
+
+class GUIStateConfig(BaseModel):
+    """Presentational, stateless schema for React Flow DAG state."""
+
+    model_config = ConfigDict(extra="allow")
+    state_data: dict[str, Any] = Field(
+        default_factory=dict, description="Arbitrary JSON-like dictionary for React Flow data"
+    )
+
+    @field_validator("state_data")
+    @classmethod
+    def validate_state_size(cls, v: dict[str, Any]) -> dict[str, Any]:
+        import json
+
+        if len(json.dumps(v)) > 1048576:  # 1MB limit
+            msg = "GUI state data exceeds maximum allowed size (1MB)."
+            raise ValueError(msg)
+        return v
+
+
+class WorkflowIntentConfig(BaseModel):
+    """High-level user intent capturing core scientific objective."""
+
+    model_config = ConfigDict(extra="forbid")
+    target_material: str = Field(..., description="Target material (e.g., 'Pt-Ni')")
+    accuracy_speed_tradeoff: int = Field(
+        ..., ge=1, le=10, description="1-10 slider for Accuracy vs Speed"
+    )
+    enable_auto_hpo: bool = Field(
+        default=False, description="Flag to route into Bayesian optimization paths"
+    )
+
+    @field_validator("target_material")
+    @classmethod
+    def validate_material_security(cls, v: str) -> str:
+        return _validate_string_security(v)
