@@ -11,7 +11,7 @@ from typing import Any
 from ase import Atoms
 
 from src.core import AbstractDynamics, AbstractGenerator, AbstractTrainer, BaseOracle
-from src.core.exceptions import DynamicsHaltInterrupt, OracleConvergenceError
+from src.core.exceptions import DynamicsHaltInterrupt
 from src.domain_models.config import ProjectConfig
 from src.domain_models.dtos import ExplorationStrategy, MaterialFeatures
 from src.dynamics.dynamics_engine import MDInterface

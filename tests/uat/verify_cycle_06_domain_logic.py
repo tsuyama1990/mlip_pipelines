@@ -105,6 +105,7 @@ def test_scenario_1(DummyConfig, Orchestrator, tmp_path):
     print("Testing UAT-C06-01: HPC Kill Recovery")
 
     with tempfile.TemporaryDirectory() as td:
+        from pathlib import Path
         temp_dir = Path(td).resolve()
         config = DummyConfig(str(temp_dir))
 

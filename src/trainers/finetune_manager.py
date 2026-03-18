@@ -96,9 +96,8 @@ class FinetuneManager(BinaryResolverMixin):
     def _run_mace_subprocess(
         self, mace_train_bin: str, train_xyz: Path, model_path: str, temp_dir: Path
     ) -> None:
-        import re
-        import subprocess
         import logging
+        import re
 
         # Strictly validate all command components
         train_xyz_str = str(train_xyz.resolve(strict=True))
