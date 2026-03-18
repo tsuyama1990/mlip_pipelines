@@ -101,11 +101,13 @@ def _():
 @app.cell
 def test_scenario_1(DummyConfig, Orchestrator, tmp_path):
     import tempfile
+
     # Scenario ID: UAT-C06-01: HPC Wall-Time Job Kill Recovery and State Resumption
     print("Testing UAT-C06-01: HPC Kill Recovery")
 
     with tempfile.TemporaryDirectory() as td:
         from pathlib import Path
+
         temp_dir = Path(td).resolve()
         config = DummyConfig(str(temp_dir))
 

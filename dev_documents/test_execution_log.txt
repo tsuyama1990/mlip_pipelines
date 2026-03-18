@@ -62,13 +62,13 @@ src/oracles/tiered_oracle.py               25      1    96%   31
 src/trainers/__init__.py                    0      0   100%
 src/trainers/ace_trainer.py               176     30    83%   27-30, 33, 42-45, 55-58, 90-91, 110, 138-141, 185-186, 192-198, 201-202, 250-251
 src/trainers/binary_resolver.py            80     55    31%   19, 25-57, 63-71, 77-78, 85-93, 96-106, 111
-src/trainers/finetune_manager.py          113     36    68%   31-39, 42-43, 65-66, 75-76, 90-94, 105-106, 109-110, 114-115, 118-119, 122-123, 155-159, 163-165, 177-180
+src/trainers/finetune_manager.py          113     36    68%   31-39, 42-43, 65-66, 75-76, 90-94, 105-106, 109-110, 114-115, 121-122, 128-129, 161-165, 169-171, 183-186
 src/validators/__init__.py                  0      0   100%
 src/validators/reporter.py                  7      0   100%
 src/validators/stability_tests.py         119      5    96%   51, 59-60, 63-66
 src/validators/validator.py                90     11    88%   20-22, 28-30, 34-36, 80, 94-95
 ---------------------------------------------------------------------
 TOTAL                                    2813    682    76%
-======================== 203 passed, 2 skipped in 6.77s ========================
+======================== 203 passed, 2 skipped in 7.13s ========================
 /app/.venv/lib/python3.12/site-packages/coverage/inorout.py:561: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.4/messages.html#warning-module-not-imported
   self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")

@@ -114,11 +114,17 @@ class FinetuneManager(BinaryResolverMixin):
             msg = f"Invalid characters in temp_dir path: {temp_dir_str}"
             raise ValueError(msg)
 
-        if not isinstance(self.config.mace_finetuning_epochs, int) or self.config.mace_finetuning_epochs <= 0:
+        if (
+            not isinstance(self.config.mace_finetuning_epochs, int)
+            or self.config.mace_finetuning_epochs <= 0
+        ):
             msg = "Invalid mace_finetuning_epochs"
             raise ValueError(msg)
 
-        if not isinstance(self.config.mace_learning_rate, float) or self.config.mace_learning_rate <= 0.0:
+        if (
+            not isinstance(self.config.mace_learning_rate, float)
+            or self.config.mace_learning_rate <= 0.0
+        ):
             msg = "Invalid mace_learning_rate"
             raise ValueError(msg)
 
