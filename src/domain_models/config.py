@@ -798,7 +798,7 @@ class LoopStrategyConfig(BaseModel):
     )
     allowed_cleanup_extensions: set[str] = Field(
         default_factory=lambda: {".dat", ".wfc", ".lammps", ".yace"},
-        description="Allowed file extensions for artifact cleanup daemon"
+        description="Allowed file extensions for artifact cleanup daemon",
     )
     cleanup_size_threshold: int = Field(
         default=10240, description="Minimum file size in bytes to trigger cleanup"

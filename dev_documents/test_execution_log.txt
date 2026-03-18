@@ -31,4 +31,4 @@ tests/unit/test_stability.py ........                                    [ 92%]
 tests/unit/test_structure_generator.py ......                            [ 95%]
 tests/unit/test_tiered_oracle.py .                                       [ 96%]
 tests/unit/test_validator.py ........                                    [100%]
-======================== 204 passed, 2 skipped in 7.05s ========================
+======================== 204 passed, 2 skipped in 7.07s ========================

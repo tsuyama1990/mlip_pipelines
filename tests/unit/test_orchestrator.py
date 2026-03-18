@@ -14,8 +14,7 @@ def test_orchestrator_initialization(
     import sys
 
     monkeypatch.setitem(
-        sys.modules, "pyacemaker.calculator", type(
-            "pyacemaker", (), {"pyacemaker": True})
+        sys.modules, "pyacemaker.calculator", type("pyacemaker", (), {"pyacemaker": True})
     )
     orch = Orchestrator(mock_project_config)
     assert orch.config.system.elements == ["Fe", "Pt"]
@@ -34,8 +33,7 @@ def test_orchestrator_oracle_convergence_error(
     from src.core.exceptions import OracleConvergenceError
 
     monkeypatch.setitem(
-        sys.modules, "pyacemaker.calculator", type(
-            "pyacemaker", (), {"pyacemaker": True})
+        sys.modules, "pyacemaker.calculator", type("pyacemaker", (), {"pyacemaker": True})
     )
     orch = Orchestrator(mock_project_config)
 
@@ -61,8 +59,7 @@ def test_orchestrator_dynamics_halt_interrupt(
     from src.core.exceptions import DynamicsHaltInterrupt
 
     monkeypatch.setitem(
-        sys.modules, "pyacemaker.calculator", type(
-            "pyacemaker", (), {"pyacemaker": True})
+        sys.modules, "pyacemaker.calculator", type("pyacemaker", (), {"pyacemaker": True})
     )
     orch = Orchestrator(mock_project_config)
 
@@ -81,8 +78,7 @@ def test_run_cycle(monkeypatch: pytest.MonkeyPatch, mock_project_config: Project
     import sys
 
     monkeypatch.setitem(
-        sys.modules, "pyacemaker.calculator", type(
-            "pyacemaker", (), {"pyacemaker": True})
+        sys.modules, "pyacemaker.calculator", type("pyacemaker", (), {"pyacemaker": True})
     )
     orch = Orchestrator(mock_project_config)
 
@@ -207,8 +203,7 @@ def test_run_cycle_converged(
     import sys
 
     monkeypatch.setitem(
-        sys.modules, "pyacemaker.calculator", type(
-            "pyacemaker", (), {"pyacemaker": True})
+        sys.modules, "pyacemaker.calculator", type("pyacemaker", (), {"pyacemaker": True})
     )
     orch = Orchestrator(mock_project_config)
 
@@ -248,13 +243,13 @@ def test_get_latest_potential(
     import sys
 
     monkeypatch.setitem(
-        sys.modules, "pyacemaker.calculator", type(
-            "pyacemaker", (), {"pyacemaker": True})
+        sys.modules, "pyacemaker.calculator", type("pyacemaker", (), {"pyacemaker": True})
     )
     orch = Orchestrator(mock_project_config)
     orch.config.project_root = tmp_path_factory.mktemp("test_get_latest_potential_root")
     pot_dir = orch.config.project_root / "potentials"
     import shutil
+
     if pot_dir.exists():
         shutil.rmtree(pot_dir)
     pot_dir.mkdir(parents=True, exist_ok=True)
@@ -289,10 +284,13 @@ def test_resume_state_finds_highest_iteration(
         sys.modules, "pyacemaker.calculator", type("pyacemaker", (), {"pyacemaker": True})
     )
     orch = Orchestrator(mock_project_config)
-    orch.config.project_root = tmp_path_factory.mktemp("test_resume_state_finds_highest_iteration_root")
+    orch.config.project_root = tmp_path_factory.mktemp(
+        "test_resume_state_finds_highest_iteration_root"
+    )
 
     pot_dir = orch.config.project_root / "potentials"
     import shutil
+
     if pot_dir.exists():
         shutil.rmtree(pot_dir)
     pot_dir.mkdir(parents=True, exist_ok=True)
@@ -347,8 +345,13 @@ def test_secure_copy_potential_valid(
     )
     orch = Orchestrator(mock_project_config)
 
-    tmp_work_dir = tmp_path_factory.mktemp("test_secure_copy_potential_valid_workdir") / "active_learning" / "tmp_123"
+    tmp_work_dir = (
+        tmp_path_factory.mktemp("test_secure_copy_potential_valid_workdir")
+        / "active_learning"
+        / "tmp_123"
+    )
     import shutil
+
     if tmp_work_dir.exists():
         shutil.rmtree(tmp_work_dir)
     tmp_work_dir.mkdir(parents=True, exist_ok=True)
@@ -379,6 +382,7 @@ def test_get_latest_potential_no_files(
     orch.config.project_root = tmp_path_factory.mktemp("test_get_latest_potential_no_files_root")
     pot_dir = orch.config.project_root / "potentials"
     import shutil
+
     if pot_dir.exists():
         shutil.rmtree(pot_dir)
     pot_dir.mkdir(parents=True, exist_ok=True)
@@ -396,9 +400,12 @@ def test_get_latest_potential_invalid_file(
         sys.modules, "pyacemaker.calculator", type("pyacemaker", (), {"pyacemaker": True})
     )
     orch = Orchestrator(mock_project_config)
-    orch.config.project_root = tmp_path_factory.mktemp("test_get_latest_potential_invalid_file_root")
+    orch.config.project_root = tmp_path_factory.mktemp(
+        "test_get_latest_potential_invalid_file_root"
+    )
     pot_dir = orch.config.project_root / "potentials"
     import shutil
+
     if pot_dir.exists():
         shutil.rmtree(pot_dir)
     pot_dir.mkdir(parents=True, exist_ok=True)
@@ -445,7 +452,7 @@ def test_cleanup_artifacts_idempotency(tmp_path_factory):
         dynamics = Dynamics()
 
         class Oracle:
-            pass
+            max_atoms: typing.ClassVar[int] = 1000
 
         oracle = Oracle()
 
@@ -456,17 +463,17 @@ def test_cleanup_artifacts_idempotency(tmp_path_factory):
         trainer = Trainer()
 
         class Validator:
-            pass
+            validation_element: typing.ClassVar[str] = "Fe"
 
         validator = Validator()
 
         class StructureGenerator:
-            pass
+            stdev: typing.ClassVar[float] = 0.05
 
         structure_generator = StructureGenerator()
 
         class Policy:
-            pass
+            default_md_mc_ratio: typing.ClassVar[float] = 0.0
 
         policy = Policy()
 
@@ -484,7 +491,7 @@ def test_cleanup_artifacts_idempotency(tmp_path_factory):
 
     # Test valid
     f1 = al_dir / "f1.dat"
-    f1.write_text("0" * 15000) # Ensure size is > 10KB to bypass small file protection
+    f1.write_text("0" * 15000)  # Ensure size is > 10KB to bypass small file protection
     orch._cleanup_artifacts([f1])
     assert not f1.exists()
 
@@ -527,7 +534,7 @@ def test_orchestrator_state_machine_transitions(tmp_path_factory, monkeypatch):
         dynamics = Dynamics()
 
         class Oracle:
-            pass
+            max_atoms: typing.ClassVar[int] = 1000
 
         oracle = Oracle()
 
@@ -538,17 +545,17 @@ def test_orchestrator_state_machine_transitions(tmp_path_factory, monkeypatch):
         trainer = Trainer()
 
         class Validator:
-            pass
+            validation_element: typing.ClassVar[str] = "Fe"
 
         validator = Validator()
 
         class StructureGenerator:
-            pass
+            stdev: typing.ClassVar[float] = 0.05
 
         structure_generator = StructureGenerator()
 
         class Policy:
-            pass
+            default_md_mc_ratio: typing.ClassVar[float] = 0.0
 
         policy = Policy()
 

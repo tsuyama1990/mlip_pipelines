@@ -551,7 +551,7 @@ def test_resume_script_generation(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     import subprocess
 
     def mock_run(*args: Any, **kwargs: Any) -> None:
-        pass
+        return None
 
     monkeypatch.setattr(subprocess, "run", mock_run)
 

@@ -179,7 +179,7 @@ def test_run_kmc_subprocess_fail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
             return b"out", b"err"
 
         def kill(self):
-            pass
+            return None
 
         def poll(self) -> int | None:
             return self.returncode
@@ -188,7 +188,7 @@ def test_run_kmc_subprocess_fail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
             return self
 
         def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-            pass
+            return None
 
     import subprocess
 
@@ -233,7 +233,7 @@ def test_run_kmc_subprocess_halted(tmp_path: Path, monkeypatch: pytest.MonkeyPat
             return b"out", b"err"
 
         def kill(self):
-            pass
+            return None
 
         def poll(self) -> int | None:
             return self.returncode
@@ -242,7 +242,7 @@ def test_run_kmc_subprocess_halted(tmp_path: Path, monkeypatch: pytest.MonkeyPat
             return self
 
         def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-            pass
+            return None
 
     import subprocess
 
@@ -378,7 +378,7 @@ def test_run_exploration_eon(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
             return b"out", b"err"
 
         def kill(self):
-            pass
+            return None
 
         def poll(self) -> int | None:
             return self.returncode
@@ -387,7 +387,7 @@ def test_run_exploration_eon(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
             return self
 
         def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-            pass
+            return None
 
     monkeypatch.setattr(subprocess, "Popen", lambda *args, **kwargs: MockProc())
 
@@ -468,13 +468,13 @@ def test_run_kmc_timeout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
             return b"out", b"err"
 
         def kill(self) -> None:
-            pass
+            return None
 
         def __enter__(self) -> "MockProc":
             return self
 
         def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-            pass
+            return None
 
     monkeypatch.setattr(subprocess, "Popen", lambda *args, **kwargs: MockProc())
 
