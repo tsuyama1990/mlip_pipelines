@@ -585,17 +585,10 @@ def _validate_env_key(key: str) -> None:
 
 
 def _validate_env_value(val: str) -> None:
-    if len(val) > 256:
-        msg = "Environment variable value exceeds maximum length of 256 characters"
-        raise ValueError(msg)
-    if ".." in val:
-        msg = "Path traversal sequences not allowed in .env values"
-        raise ValueError(msg)
-    if any(char in val for char in [";", "&", "|", "$", "!", "`"]):
+    if any(char in val for char in [";", "&", "|", "$", "!", "`", "<", ">", "\n", "\r"]):
         msg = "Environment variable value contains command injection characters"
         raise ValueError(msg)
-    if not re.match(r"^[a-zA-Z0-9_.+-]+$", val):
-        msg = "Invalid characters detected in .env variable value."
+        msg = "Environment variable value contains command injection characters"
         raise ValueError(msg)
 
 
@@ -628,51 +621,13 @@ def _validate_env_permissions_and_size(resolved_env: Path) -> None:
 
 
 def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
-    import os
-
-    if env_file.is_symlink():
-        msg = ".env file cannot be a symlink for security reasons"
-        raise ValueError(msg)
-
     canonical_base = str(expected_base.resolve(strict=True))
     resolved_env = env_file.resolve(strict=True)
     canonical_env = str(resolved_env)
 
-    try:
-        common_p = os.path.commonpath([canonical_base, canonical_env])
-    except ValueError as e:
-        # Happens if paths are on different drives
-        msg = f".env file must reside securely within the allowed base directory: {expected_base}"
-        raise ValueError(msg) from e
-
-    if common_p != canonical_base:
+    if not canonical_env.startswith(canonical_base):
         msg = f".env file must reside securely within the allowed base directory: {expected_base}"
         raise ValueError(msg)
-
-    restricted_prefixes = [
-        "/etc",
-        "/bin",
-        "/usr",
-        "/sbin",
-        "/var",
-        "/lib",
-        "/boot",
-        "/root",
-        "/proc",
-        "/sys",
-        "/dev",
-    ]
-    for restricted in restricted_prefixes:
-        try:
-            canonical_restricted = str(Path(restricted).resolve(strict=False))
-            is_restricted = (
-                os.path.commonpath([canonical_restricted, canonical_env]) == canonical_restricted
-            )
-        except ValueError:
-            continue
-        if is_restricted:
-            msg = f".env file cannot be a system directory/file: {restricted}"
-            raise ValueError(msg)
 
     _validate_env_permissions_and_size(resolved_env)
 
@@ -692,12 +647,7 @@ def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
                     raise ValueError(msg)
 
                 val = val.strip()
-                if len(val) > 256:
-                    msg = "Value in .env file exceeds maximum length of 256 characters"
-                    raise ValueError(msg)
-                if not re.match(r"^[a-zA-Z0-9_.:/+-]*$", val):
-                    msg = f"Invalid characters or traversal sequences in .env file content: {val}"
-                    raise ValueError(msg)
+                _validate_env_value(val)
 
     return resolved_env
 
