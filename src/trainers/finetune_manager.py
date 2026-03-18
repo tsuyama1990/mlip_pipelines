@@ -65,7 +65,7 @@ class FinetuneManager(BinaryResolverMixin):
             msg = f"Temporary directory {temp_dir} is not within trusted temp root {tmp_root}."
             raise ValueError(msg)
 
-    def _secure_write_xyz(self, train_xyz: Path, structures: list) -> None:
+    def _secure_write_xyz(self, train_xyz: Path, structures: list[Atoms]) -> None:
         """Secure atomic write."""
         import fcntl
         import os

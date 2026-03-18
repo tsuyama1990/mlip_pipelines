@@ -58,8 +58,8 @@ def __() -> tuple[Any, ...]:  # noqa: C901
 
         project_config = ProjectConfig(
             distillation_config=DistillationConfig(
-                temp_dir="/tmp",
-                output_dir="/tmp",
+                temp_dir="/tmp",  # noqa: S108
+                output_dir="/tmp",  # noqa: S108
                 model_storage_path="/tmp",  # noqa: S108
             ),
             loop_strategy=LoopStrategyConfig(
