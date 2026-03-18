@@ -4,34 +4,221 @@ rootdir: /app
 configfile: pyproject.toml
 testpaths: tests
 plugins: cov-7.0.0, anyio-4.12.1
-collected 208 items
+collected 225 items
 
 tests/e2e/test_skeleton.py s.                                            [  0%]
 tests/uat/test_cycle03_oracle.py ...                                     [  2%]
 tests/uat/test_cycle04_trainer.py ...                                    [  3%]
-tests/uat/test_cycle05_dynamics.py ...                                   [  5%]
-tests/uat/test_cycle06_validator.py ...                                  [  6%]
-tests/uat/test_tutorial.py s....                                         [  9%]
-tests/unit/test_ace_trainer.py ....................                      [ 18%]
+tests/uat/test_cycle05_dynamics.py ...                                   [  4%]
+tests/uat/test_cycle06_domain_logic.py ....                              [  6%]
+tests/uat/test_cycle06_validator.py ...                                  [  8%]
+tests/uat/test_tutorial.py s....                                         [ 10%]
+tests/unit/test_ace_trainer.py ....................                      [ 19%]
 tests/unit/test_adaptive_policy.py .......                               [ 22%]
 tests/unit/test_checkpoint.py .....                                      [ 24%]
-tests/unit/test_config.py ........................                       [ 36%]
-tests/unit/test_defect_builder.py ...                                    [ 37%]
-tests/unit/test_dft_oracle.py ...............                            [ 44%]
-tests/unit/test_domain_models.py .                                       [ 45%]
-tests/unit/test_dynamics_engine.py ............................          [ 58%]
+tests/unit/test_config.py ........................                       [ 35%]
+tests/unit/test_config2.py .......                                       [ 38%]
+tests/unit/test_defect_builder.py ...                                    [ 39%]
+tests/unit/test_dft_oracle.py ...............                            [ 46%]
+tests/unit/test_domain_models.py .                                       [ 46%]
+tests/unit/test_dynamics_engine.py ............................          [ 59%]
 tests/unit/test_eon_driver.py .............                              [ 64%]
-tests/unit/test_eon_wrapper.py .................                         [ 73%]
-tests/unit/test_finetune_manager.py ....                                 [ 75%]
-tests/unit/test_mace_manager.py .                                        [ 75%]
-tests/unit/test_orchestrator.py ...............                          [ 82%]
-tests/unit/test_reporter.py ..                                           [ 83%]
-tests/unit/test_security_utils.py .........                              [ 87%]
-tests/unit/test_stability.py ........                                    [ 91%]
-tests/unit/test_structure_generator.py ........                          [ 95%]
+tests/unit/test_eon_wrapper.py .................                         [ 72%]
+tests/unit/test_finetune_manager.py ....                                 [ 74%]
+tests/unit/test_mace_manager.py .                                        [ 74%]
+tests/unit/test_orchestrator.py ....F...F......                          [ 81%]
+tests/unit/test_reporter.py ..                                           [ 82%]
+tests/unit/test_retry.py ......                                          [ 84%]
+tests/unit/test_security_utils.py .........                              [ 88%]
+tests/unit/test_stability.py ........                                    [ 92%]
+tests/unit/test_structure_generator.py ........                          [ 96%]
 tests/unit/test_tiered_oracle.py .                                       [ 96%]
 tests/unit/test_validator.py ........                                    [100%]
 
+=================================== FAILURES ===================================
+___________________________ test_run_cycle_converged ___________________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f2a91ff9a30>
+mock_project_config = ProjectConfig(project_root=PosixPath('/tmp/pytest-of-jules/pytest-125/test_run_cycle_converged0'), system=SystemConfig...ed_cleanup_extensions={'.wfc', '.yace', '.dat', '.lammps'}, cleanup_size_threshold=10240, swap_lock_file='.swap.lock'))
+
+    def test_run_cycle_converged(
+        monkeypatch: pytest.MonkeyPatch, mock_project_config: ProjectConfig
+    ) -> None:
+        import sys
+
+        monkeypatch.setitem(
+            sys.modules, "pyacemaker.calculator", type("pyacemaker", (), {"pyacemaker": True})
+        )
+        orch = Orchestrator(mock_project_config)
+
+        from src.core import AbstractDynamics
+
+        class MockMD(AbstractDynamics):
+            def run_exploration(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+                return {"halted": False, "dump_file": "dummy_dump"}
+
+        class MockTrainer:
+            def get_latest_potential(self) -> str:
+                return "dummy_pot.yace"
+
+        class MockPolicyEngine:
+            def decide_policy(self, *args: Any, **kwargs: Any) -> Any:
+                from src.domain_models.dtos import ExplorationStrategy
+
+                return ExplorationStrategy(
+                    md_mc_ratio=0.0,  # Run MD
+                    t_max=300.0,
+                    n_defects=0.0,
+                    strain_range=0.0,
+                    policy_name="Standard",
+                )
+
+        orch.md_engine = MockMD()
+        orch.trainer = MockTrainer()  # type: ignore[assignment]
+        orch.policy_engine = MockPolicyEngine()  # type: ignore[assignment]
+
+>       res = orch.run_cycle()
+              ^^^^^^^^^^^^^^^^
+
+tests/unit/test_orchestrator.py:236:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src/core/orchestrator.py:755: in run_cycle
+    halt_info = self._run_exploration(current_pot, tmp_work_dir)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <src.core.orchestrator.Orchestrator object at 0x7f2a92001610>
+current_pot = None
+tmp_work_dir = PosixPath('/tmp/pytest-of-jules/pytest-125/test_run_cycle_converged0/active_learning/tmpqvwsfu2k')
+
+    def _run_exploration(self, current_pot: Path | None, tmp_work_dir: Path) -> dict[str, Any]:
+        import concurrent.futures
+
+        strategy = self._decide_exploration_strategy()
+        timeout_sec = getattr(self.config.loop_strategy, "timeout_seconds", 3600)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(self._execute_exploration, strategy, current_pot, tmp_work_dir)
+            try:
+                halt_info = future.result(timeout=timeout_sec)
+            except concurrent.futures.TimeoutError as e:
+                executor.shutdown(wait=False, cancel_futures=True)
+                msg = f"Exploration timed out after {timeout_sec} seconds"
+                raise RuntimeError(msg) from e
+
+        result = self._detect_halt(halt_info)
+        if isinstance(result, str):
+            if result == "HALT_DETECTED":
+                return halt_info
+            msg = f"Exploration failed with status: {result}"
+>           raise RuntimeError(msg)
+E           RuntimeError: Exploration failed with status: CONVERGED
+
+src/core/orchestrator.py:222: RuntimeError
+------------------------------ Captured log call -------------------------------
+ERROR    root:orchestrator.py:857 Fatal exception during Active Learning Loop
+Traceback (most recent call last):
+  File "/app/src/core/orchestrator.py", line 755, in run_cycle
+    halt_info = self._run_exploration(current_pot, tmp_work_dir)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/src/core/orchestrator.py", line 222, in _run_exploration
+    raise RuntimeError(msg)
+RuntimeError: Exploration failed with status: CONVERGED
+____________________ test_secure_copy_potential_size_limit _____________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f2a91fea120>
+mock_project_config = ProjectConfig(project_root=PosixPath('/tmp/pytest-of-jules/pytest-125/test_secure_copy_potential_siz0'), system=System...ed_cleanup_extensions={'.wfc', '.yace', '.dat', '.lammps'}, cleanup_size_threshold=10240, swap_lock_file='.swap.lock'))
+tmp_path_factory = TempPathFactory(_given_basetemp=None, _trace=<pluggy._tracing.TagTracerSub object at 0x7f2aae7d2c30>, _basetemp=PosixPath('/tmp/pytest-of-jules/pytest-125'), _retention_count=3, _retention_policy='all')
+
+    def test_secure_copy_potential_size_limit(
+        monkeypatch: pytest.MonkeyPatch, mock_project_config: ProjectConfig, tmp_path_factory
+    ) -> None:
+        import sys
+
+        monkeypatch.setitem(
+            sys.modules, "pyacemaker.calculator", type("pyacemaker", (), {"pyacemaker": True})
+        )
+        orch = Orchestrator(mock_project_config)
+
+        tmp_path = tmp_path_factory.mktemp("test_secure_copy_potential_size_limit_tmp")
+        src_pot = tmp_path / "output.yace"
+        # Create file slightly larger than max_size (default 100MB is large, let's patch config)
+        orch.config.trainer.max_potential_size = 1024
+        with Path.open(src_pot, "wb") as f:
+            f.write(b"0" * 2048)
+
+        with pytest.raises(ValueError, match="exceeds maximum allowed size"):
+>           orch._secure_copy_potential(src_pot, tmp_path / "potentials", 1, tmp_path)
+
+tests/unit/test_orchestrator.py:329:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <src.core.orchestrator.Orchestrator object at 0x7f2a91ff9c40>
+src_pot = PosixPath('/tmp/pytest-of-jules/pytest-125/test_secure_copy_potential_size_limit_tmp0/output.yace')
+pot_dir = PosixPath('/tmp/pytest-of-jules/pytest-125/test_secure_copy_potential_size_limit_tmp0/potentials')
+iteration = 1
+tmp_work_dir = PosixPath('/tmp/pytest-of-jules/pytest-125/test_secure_copy_potential_size_limit_tmp0')
+
+    def _secure_copy_potential(
+        self, src_pot: Path, pot_dir: Path, iteration: int, tmp_work_dir: Path
+    ) -> Path:
+        import os
+        import shutil
+
+        try:
+            resolved_src = os.path.realpath(str(src_pot.resolve(strict=True)))
+            allowed_src_dir = os.path.realpath(str(tmp_work_dir.resolve(strict=True)))
+        except Exception as e:
+            msg = "Source potential file or temp dir missing or invalid"
+            raise FileNotFoundError(msg) from e
+
+        if not resolved_src.startswith(allowed_src_dir):
+            msg = f"Security Violation: Resolved source potential {resolved_src} lies outside the trusted directory {allowed_src_dir}"
+            raise ValueError(msg)
+
+        pot_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            resolved_pot_dir = os.path.realpath(str(pot_dir.resolve(strict=True)))
+            allowed_dest_dir = os.path.realpath(
+                str(Path(self.config.project_root).resolve(strict=True))
+            )
+            if not resolved_pot_dir.startswith(allowed_dest_dir):
+                msg = f"Security Violation: Resolved destination {resolved_pot_dir} lies outside project root."
+>               raise ValueError(msg)
+E               ValueError: Security Violation: Resolved destination /tmp/pytest-of-jules/pytest-125/test_secure_copy_potential_size_limit_tmp0/potentials lies outside project root.
+
+src/core/orchestrator.py:444: ValueError
+
+During handling of the above exception, another exception occurred:
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f2a91fea120>
+mock_project_config = ProjectConfig(project_root=PosixPath('/tmp/pytest-of-jules/pytest-125/test_secure_copy_potential_siz0'), system=System...ed_cleanup_extensions={'.wfc', '.yace', '.dat', '.lammps'}, cleanup_size_threshold=10240, swap_lock_file='.swap.lock'))
+tmp_path_factory = TempPathFactory(_given_basetemp=None, _trace=<pluggy._tracing.TagTracerSub object at 0x7f2aae7d2c30>, _basetemp=PosixPath('/tmp/pytest-of-jules/pytest-125'), _retention_count=3, _retention_policy='all')
+
+    def test_secure_copy_potential_size_limit(
+        monkeypatch: pytest.MonkeyPatch, mock_project_config: ProjectConfig, tmp_path_factory
+    ) -> None:
+        import sys
+
+        monkeypatch.setitem(
+            sys.modules, "pyacemaker.calculator", type("pyacemaker", (), {"pyacemaker": True})
+        )
+        orch = Orchestrator(mock_project_config)
+
+        tmp_path = tmp_path_factory.mktemp("test_secure_copy_potential_size_limit_tmp")
+        src_pot = tmp_path / "output.yace"
+        # Create file slightly larger than max_size (default 100MB is large, let's patch config)
+        orch.config.trainer.max_potential_size = 1024
+        with Path.open(src_pot, "wb") as f:
+            f.write(b"0" * 2048)
+
+>       with pytest.raises(ValueError, match="exceeds maximum allowed size"):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: Regex pattern did not match.
+E         Expected regex: 'exceeds maximum allowed size'
+E         Actual message: 'Security Violation: Resolved destination /tmp/pytest-of-jules/pytest-125/test_secure_copy_potential_size_limit_tmp0/potentials lies outside project root.'
+
+tests/unit/test_orchestrator.py:328: AssertionError
 ================================ tests coverage ================================
 _______________ coverage: platform linux, python 3.12.13-final-0 _______________
 
@@ -41,22 +228,22 @@ src/__init__.py                             0      0   100%
 src/core/__init__.py                       21      0   100%
 src/core/checkpoint.py                     42      4    90%   39-42
 src/core/exceptions.py                      2      0   100%
-src/core/orchestrator.py                  574    312    46%   69, 85-86, 91, 102-105, 124-125, 128-129, 134-136, 158-172, 176, 182-183, 216-298, 306-313, 318, 330-398, 401-407, 423-424, 429-430, 441-442, 445-446, 449-450, 453-460, 496-497, 501-507, 512-513, 516-524, 527-590, 593-594, 597-601, 608-611, 614-617, 620-624, 633-680, 712-715, 719-722, 727-730, 734-737, 745-750, 753-754, 763, 767, 773-776, 815, 823-824, 856, 862-893, 896, 927-930
-src/core/retry.py                          80     36    55%   25-30, 35, 43-50, 74-75, 82-103, 108-109
+src/core/orchestrator.py                  541    290    46%   85-86, 91, 102-105, 124-125, 128-129, 134-136, 158-172, 176, 182-183, 212-215, 220, 226-308, 316-323, 328, 340-408, 411-417, 428-430, 433-434, 448-449, 452-453, 460-461, 465-467, 472-473, 476-484, 487-551, 554-555, 558-562, 569-572, 575-578, 581-585, 594-641, 663-666, 670-673, 679-680, 689, 693, 699-702, 741, 749-750, 757, 782, 788-822, 825
+src/core/retry.py                          80     13    84%   35, 45-47, 50, 83-89, 108-109
 src/domain_models/__init__.py               3      0   100%
-src/domain_models/config.py               527    150    72%   26-27, 32-33, 48-49, 67-68, 70-71, 77-78, 81-82, 97-98, 101-102, 118-119, 206, 227-228, 234-235, 255-269, 273, 276, 316-317, 322-327, 443-446, 511-514, 519-522, 576-584, 589-590, 592-593, 597-599, 607-608, 611-612, 617-618, 622-623, 634-635, 643-646, 649-650, 671-672, 674-675, 680-702, 865-891, 900-901, 903-904, 922-923, 925-926, 932-933, 936-937, 945-946, 953-954, 958-959
+src/domain_models/config.py               529    132    75%   24-25, 29-33, 36-37, 52-53, 71-72, 74-75, 81-82, 85-86, 93-94, 102-103, 106-107, 110-111, 127-128, 215, 236-237, 243-244, 264-278, 282, 285, 325-326, 331-336, 452-455, 520-523, 528-531, 625-626, 630-631, 642-643, 651-654, 657-658, 679-680, 682-683, 688-705, 868-894, 906-907, 925-926, 928-929, 935-936, 939-940, 948-949, 956-957, 961-962
 src/domain_models/dtos.py                  50      4    92%   41-44
 src/dynamics/__init__.py                    0      0   100%
 src/dynamics/dynamics_engine.py           261     57    78%   35-36, 43-44, 47-48, 51-52, 55-56, 60-61, 65-66, 104-105, 113-114, 129-130, 136-137, 140-141, 144-145, 148-149, 152-153, 157-158, 162-163, 201, 210-211, 220-221, 236-237, 243-244, 246-247, 319-321, 341-342, 348-349, 353-354, 358-359, 415
 src/dynamics/eon_driver.py                167     51    69%   13-14, 28-29, 42-51, 81-84, 88-89, 94-95, 121-124, 135-136, 138-139, 152-154, 157-158, 166-173, 177-179, 187-189, 192-193, 235
-src/dynamics/eon_wrapper.py               213     39    82%   43-44, 66-67, 78-79, 82-83, 146-147, 167-168, 170-171, 193-194, 199-211, 218, 231, 241-242, 245-246, 265, 269, 294-295, 330-331
+src/dynamics/eon_wrapper.py               213     37    83%   43-44, 66-67, 78-79, 82-83, 167-168, 170-171, 193-194, 199-211, 218, 231, 241-242, 245-246, 265, 269, 294-295, 330-331
 src/dynamics/security_utils.py            110     24    78%   17-18, 26-32, 78, 101-102, 110-111, 121-122, 133-134, 137-138, 141-142, 162-163
 src/generators/__init__.py                  0      0   100%
 src/generators/adaptive_policy.py          85     15    82%   16, 44-45, 123-124, 137-138, 140-141, 143-144, 146-147, 149-150
-src/generators/defect_builder.py           72     15    79%   14, 22-23, 26, 43-44, 47, 66-67, 76-77, 81, 103, 105-106
+src/generators/defect_builder.py           72     14    81%   14, 22-23, 26, 43-44, 47, 66-67, 76-77, 81, 105-106
 src/generators/structure_generator.py     142     34    76%   47-48, 52-53, 99, 105-108, 126-127, 164, 192-214, 226-227, 231-233, 276-278
 src/oracles/__init__.py                     0      0   100%
-src/oracles/base.py                         6      0   100%
+src/oracles/base.py                         8      0   100%
 src/oracles/dft_oracle.py                 258     61    76%   22-23, 26-27, 33-34, 38-39, 42-43, 48-49, 59-60, 79-80, 86-87, 117-118, 120-121, 123-124, 142, 145, 150, 160, 172-173, 177-179, 184-185, 190-195, 222-224, 227-228, 239-240, 259-260, 275, 288-291, 294-295, 301-303, 364-365
 src/oracles/mace_manager.py                40      4    90%   23-26, 63, 65
 src/oracles/tiered_oracle.py               25      1    96%   31
@@ -69,7 +256,11 @@ src/validators/reporter.py                  7      0   100%
 src/validators/stability_tests.py         119      5    96%   51, 59-60, 63-66
 src/validators/validator.py                90     11    88%   20-22, 28-30, 34-36, 80, 94-95
 ---------------------------------------------------------------------
-TOTAL                                    3289    958    71%
-======================== 206 passed, 2 skipped in 8.22s ========================
+TOTAL                                    3260    892    73%
+Required test coverage of 70% reached. Total coverage: 72.64%
+=========================== short test summary info ============================
+FAILED tests/unit/test_orchestrator.py::test_run_cycle_converged - RuntimeErr...
+FAILED tests/unit/test_orchestrator.py::test_secure_copy_potential_size_limit
+================== 2 failed, 221 passed, 2 skipped in 12.57s ===================
 /app/.venv/lib/python3.12/site-packages/coverage/inorout.py:561: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.4/messages.html#warning-module-not-imported
   self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")

@@ -19,15 +19,19 @@ class InterfaceTarget(BaseModel):
 def _check_allowed_base_dirs(resolved_str: str, path_str: str, check_exists: bool = True) -> None:
     import os
     import tempfile
-    import urllib.parse
 
-    decoded_path_str = urllib.parse.unquote(path_str)
-    if ".." in decoded_path_str or "%2E%2E" in path_str.upper():
-        msg = f"Path traversal sequences (..) are not allowed: {path_str}"
+    if "%" in path_str or "%" in resolved_str:
+        msg = f"URL encoded paths are not permitted: {path_str}"
         raise ValueError(msg)
 
-    # Use strict absolute path checking right after atomic resolution to prevent TOCTOU
-    canonical_str = str(Path(resolved_str).resolve(strict=check_exists))
+    try:
+        canonical_str = os.path.realpath(str(Path(resolved_str).resolve(strict=check_exists)))
+    except Exception as e:
+        if isinstance(e, FileNotFoundError):
+            raise
+        msg = f"Failed to securely resolve directory {resolved_str}: {e}"
+        raise ValueError(msg) from e
+
     if ".." in canonical_str:
         msg = f"Path traversal sequences (..) are not allowed: {canonical_str}"
         raise ValueError(msg)
@@ -83,15 +87,20 @@ def _check_ownership_and_perms(resolved: Path, path_str: str) -> None:
 
 
 def _secure_resolve_and_validate_dir(path_str: str, check_exists: bool = True) -> str:
-    import urllib.parse
+    import os
 
-    decoded_path = urllib.parse.unquote(path_str)
-    if ".." in decoded_path or "%2E%2E" in path_str.upper():
-        msg = f"Path traversal sequences (..) are not allowed: {path_str}"
+    if "%" in path_str:
+        msg = f"URL encoded paths are not permitted: {path_str}"
         raise ValueError(msg)
 
-    canonical_path = Path(path_str).resolve(strict=check_exists)
-    canonical_str = str(canonical_path)
+    try:
+        canonical_path = Path(os.path.realpath(str(Path(path_str).resolve(strict=check_exists))))
+        canonical_str = str(canonical_path)
+    except Exception as e:
+        if isinstance(e, FileNotFoundError):
+            raise
+        msg = f"Failed to securely resolve directory {path_str}: {e}"
+        raise ValueError(msg) from e
 
     if ".." in canonical_str:
         msg = f"Path traversal sequences (..) are not allowed: {canonical_str}"
@@ -585,17 +594,16 @@ def _validate_env_key(key: str) -> None:
 
 
 def _validate_env_value(val: str) -> None:
+    import re
+
     if len(val) > 256:
         msg = "Environment variable value exceeds maximum length of 256 characters"
         raise ValueError(msg)
     if ".." in val:
         msg = "Path traversal sequences not allowed in .env values"
         raise ValueError(msg)
-    if any(char in val for char in [';', '&', '|', '$', '!', '`']):
-        msg = "Environment variable value contains command injection characters"
-        raise ValueError(msg)
-    if not re.match(r"^[a-zA-Z0-9_.+-]+$", val):
-        msg = "Invalid characters detected in .env variable value."
+    if not re.match(r"^[a-zA-Z0-9_.:/+-]+$", val):
+        msg = f"Environment variable value contains invalid or injection characters: {val}"
         raise ValueError(msg)
 
 
@@ -692,12 +700,7 @@ def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
                     raise ValueError(msg)
 
                 val = val.strip()
-                if len(val) > 256:
-                    msg = "Value in .env file exceeds maximum length of 256 characters"
-                    raise ValueError(msg)
-                if not re.match(r"^[a-zA-Z0-9_.:/+-]*$", val):
-                    msg = f"Invalid characters or traversal sequences in .env file content: {val}"
-                    raise ValueError(msg)
+                _validate_env_value(val)
 
     return resolved_env
 

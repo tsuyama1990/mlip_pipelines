@@ -1,50 +1,35 @@
-# PyAcemaker: MLIP Pipelines
-
-An automated system for building and operating state-of-the-art Machine Learning Interatomic Potentials (MLIPs).
+# PyAcemaker
 
 ## Overview
-PyAcemaker simplifies the process of creating high-quality MLIPs, lowering the barrier to entry for researchers by automating complex workflows like structure generation, DFT calculation, potential training, and validation. The system is designed to autonomously handle complex physical failures, refining its mathematical understanding of interatomic potentials to build physically sound models without requiring human intervention.
+PyAcemaker is a comprehensive automation pipeline for generating highly accurate Machine Learning Interatomic Potentials (MLIPs). It orchestrates advanced Molecular Dynamics (MD) and Adaptive Kinetic Monte Carlo (aKMC) simulations, automates Quantum Espresso (DFT) calculations with self-healing routines, and fine-tunes base models like MACE with active learning protocols using Atomic Cluster Expansion (ACE). The system is highly resilient and guarantees physical accuracy of the resulting potentials by ensuring robust Lennard-Jones baselines, rigorous quality assurance, and automated surface passivation.
 
 ## Features
-- **Zero-Config Workflow**: Drive the entire computational pipeline using a single configuration file.
-- **Physics-Informed Robustness**: Ensures physical safety in extrapolation regions via baseline delta-learning techniques (e.g., Lennard-Jones/ZBL).
-- **Intelligent Error Handling**: Uses robust two-tier uncertainty thresholds to determine exactly when the system requires DFT quantum calculations versus generic machine learning predictions.
-- **Automated Structure Passivation**: Intelligently extracts uncertain structures and passivates their boundaries to avoid artificial surface energy artifacts before executing rigorous DFT tasks.
-- **Incremental Neural Updates**: Accelerates system training efficiently through dynamic replay buffers instead of relearning potentials from scratch.
-- **Seamless Resume**: Recovers from uncertainty events and continues molecular dynamics simulations automatically from soft-start checkpoints.
-- **Hierarchical Distillation**: Transfers generalization capabilities from foundational models like MACE-MP-0 to ACE frameworks to avoid expensive initial DFT calculations.
+- **Highly Configurable**: Control complex multi-stage MLIP generation with a single valid YAML specification.
+- **Resilient Orchestration**: State management with SQLite-based checkpointing ensuring long-running processes survive job kills.
+- **Automated QA & Physical Validation**: Automatic detection of imaginary phonon frequencies and elastic tensor checks using built-in validators with `phonopy`.
+- **Intelligent Fault Tolerance**: Automated "cut-out" generation for regions exceeding expected extrapolation uncertainties.
+- **Seamless Integrations**: Tight coupling with robust computational engines like LAMMPS, Quantum Espresso, and MACE base models.
 
-## Installation & Setup
-Requires Python 3.12+ and `uv` package manager installed on your system.
-
+## Installation
+Ensure you have `uv` installed, then synchronize the environment:
 ```bash
-git clone https://github.com/example/mlip-pipelines.git
-cd mlip-pipelines
 uv sync
 ```
 
 ## Usage
-PyAcemaker is fully automated and designed to run persistently in the background. To initiate the simulation workflow with active learning:
+Run the main PyAcemaker orchestration flow (ensure your config `.env` and `input.yaml` are correctly set):
+```python
+from src.core.orchestrator import Orchestrator
+from src.domain_models.config import ProjectConfig
 
-```bash
-uv run python src/core/orchestrator.py
+config = ProjectConfig()
+orchestrator = Orchestrator(config)
+orchestrator.run_cycle()
 ```
 
 ## Project Structure
-```text
-.
-├── src/               # Application source code
-│   ├── core/          # Orchestrator and base classes
-│   ├── domain_models/ # Pydantic configuration schemas
-│   ├── dynamics/      # MD and kMC simulation engines
-│   ├── generators/    # Structure and defect generation
-│   ├── oracles/       # DFT and MACE calculation managers
-│   ├── trainers/      # ACE potential training wrappers
-│   └── validators/    # Physics and stability validation
-├── tests/             # Unit, integration, and UAT tests
-├── tutorials/         # Interactive Marimo notebooks
-└── pyproject.toml     # Project dependencies
-```
-
-## License
-MIT License
+- `src/domain_models/`: Pydantic models acting as strict type-safe data contracts.
+- `src/core/`: Orchestration and execution pipelines.
+- `src/dynamics/`: MD and aKMC wrappers for simulators like LAMMPS and EON.
+- `src/trainers/`: Training routines, Finetune managers, and incremental updates.
+- `src/validators/`: Stability and quality assurance tools.
