@@ -14,8 +14,8 @@ def config(tmp_path: Path) -> DynamicsConfig:
         trusted_directories=[],
         project_root=str(tmp_path),
         uncertainty_threshold=5.0,
-        md_steps=100,
-        temperature=300.0,
+
+
     )
 
 
@@ -107,7 +107,7 @@ def test_write_pace_driver_invalid_potential(
     engine = EONWrapper(config, sys_config)
 
     # Potential path is outside project root
-    pot_path = Path("/var/tmp/hacker_dummy.yace")
+    pot_path = tmp_path.parent / "hacker_dummy.yace"
     pot_path.parent.mkdir(parents=True, exist_ok=True)
     pot_path.touch()
 
@@ -415,7 +415,6 @@ def test_run_kmc_untrusted_binary(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     engine = EONWrapper(config, sys_config)
 
     # We mock validate_executable_path to return a valid path but then the test will fail in the eon wrapper because the path is not in trusted directory list
-    import src.dynamics.security_utils
 
     dummy_bin = tmp_path / "eonclient"
     dummy_bin.touch()
@@ -424,11 +423,7 @@ def test_run_kmc_untrusted_binary(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
 
     monkeypatch.setattr(shutil, "which", lambda *args, **kwargs: str(dummy_bin))
 
-    monkeypatch.setattr(
-        src.dynamics.security_utils,
-        "validate_executable_path",
-        lambda *args, **kwargs: dummy_bin.resolve(strict=True),
-    )
+
     work_dir = tmp_path / "work"
 
     with pytest.raises(ValueError, match="Resolved binary must reside in a trusted directory:"):

@@ -23,11 +23,8 @@ def _check_allowed_base_dirs(resolved_str: str, path_str: str) -> None:
     home_dir = str(Path.home().resolve(strict=True))
     tmp_dir = str(Path(tempfile.gettempdir()).resolve(strict=True))
 
-    # Explicitly check for /app mapping because the tests run within an /app container block
-    app_dir = "/app"
-
     is_safe = False
-    for safe_base in [home_dir, tmp_dir, app_dir]:
+    for safe_base in [home_dir, tmp_dir]:
         try:
             if os.path.commonpath([safe_base, resolved_str]) == safe_base:
                 is_safe = True
@@ -39,7 +36,7 @@ def _check_allowed_base_dirs(resolved_str: str, path_str: str) -> None:
         msg = f"Directory {path_str} must reside securely within an allowed base directory (home, tmp, or /app)."
         raise ValueError(msg)
 
-    restricted_prefixes = ["/etc", "/bin", "/usr", "/sbin", "/var", "/lib", "/boot", "/root"]
+    restricted_prefixes = ["/etc", "/bin", "/usr", "/sbin", "/var", "/lib", "/boot", "/root", "/proc", "/sys", "/dev"]
     for restricted in restricted_prefixes:
         try:
             is_restricted = os.path.commonpath([restricted, resolved_str]) == restricted
@@ -101,7 +98,7 @@ class SystemConfig(BaseModel):
         default=0, description="The AL iteration number to inject the generated interface target."
     )
     restricted_directories: list[str] = Field(
-        default_factory=lambda: ["/etc", "/bin", "/usr", "/sbin", "/var", "/lib", "/boot", "/root"],
+        default_factory=lambda: ["/etc", "/bin", "/usr", "/sbin", "/var", "/lib", "/boot", "/root", "/proc", "/sys", "/dev"],
         description="System directories forbidden from sandbox execution.",
     )
 
@@ -111,7 +108,7 @@ class ActiveLearningThresholds(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
     threshold_call_dft: float = Field(
-        default=0.05, description="Global threshold to halt MD and call DFT"
+        default=0.05, description="Threshold to call DFT"
     )
     threshold_add_train: float = Field(
         default=0.02, description="Local threshold to select atoms for training"
@@ -530,7 +527,7 @@ def _validate_env_key(key: str) -> None:
 
 
 def _validate_env_value(val: str) -> None:
-    if not re.match(r"^[-a-zA-Z0-9_.:/=]{1,1024}$", val):
+    if not re.match(r"^[a-zA-Z0-9_-]{1,1024}$", val):
         msg = "Invalid characters detected in .env variable value."
         raise ValueError(msg)
 
@@ -545,7 +542,7 @@ def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
         msg = f".env file must reside securely within the allowed base directory: {expected_base}"
         raise ValueError(msg)
 
-    restricted_prefixes = ["/etc", "/bin", "/usr", "/sbin", "/var", "/lib", "/boot", "/root"]
+    restricted_prefixes = ["/etc", "/bin", "/usr", "/sbin", "/var", "/lib", "/boot", "/root", "/proc", "/sys", "/dev"]
     for restricted in restricted_prefixes:
         try:
             import os
@@ -559,11 +556,13 @@ def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
 
     st = os.lstat(resolved_env)
 
-    # Remove the 1KB size limit
-    # Relax ownership check to allow root execution (UID 0) in containerized environments
+    if st.st_size > 1024:
+        msg = ".env file is too large (max 1KB)."
+        raise ValueError(msg)
+
     current_uid = os.getuid()
     if st.st_uid != current_uid:
-        msg = ".env file is not owned by the current user or root."
+        msg = ".env file is not owned by the current user."
         raise ValueError(msg)
 
     if bool(st.st_mode & stat.S_IRWXO) or bool(st.st_mode & stat.S_IRWXG):
@@ -586,7 +585,7 @@ def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
                     raise ValueError(msg)
 
                 val = val.strip()
-                if not re.match(r"^[-a-zA-Z0-9_.:/=]{1,1024}$", val):
+                if not re.match(r"^[a-zA-Z0-9_-]{1,1024}$", val):
                     msg = f"Invalid characters or traversal sequences in .env file content: {val}"
                     raise ValueError(msg)
 
@@ -644,9 +643,9 @@ class CutoutConfig(BaseModel):
     """Phase 3: Intelligent cutout and passivation configuration."""
 
     model_config = ConfigDict(extra="forbid")
-    core_radius: float = Field(default=3.0, description="Radius for core atoms (force weight 1.0)")
+    core_radius: float = Field(default_factory=lambda: 3.0, description="Radius for core atoms (force weight 1.0)")
     buffer_radius: float = Field(
-        default=4.0, description="Radius for buffer layer (force weight 0.0)"
+        default_factory=lambda: 4.0, description="Radius for buffer layer (force weight 0.0)"
     )
     enable_pre_relaxation: bool = Field(
         default=True, description="Enable MACE pre-relaxation of buffer"
@@ -654,7 +653,7 @@ class CutoutConfig(BaseModel):
     enable_passivation: bool = Field(
         default=True, description="Enable automatic surface passivation"
     )
-    passivation_element: str = Field(default="H", description="Element used for passivation")
+    passivation_element: str = Field(default_factory=lambda: "H", description="Element used for passivation")
 
     @model_validator(mode="after")
     def validate_radii(self) -> "CutoutConfig":
@@ -683,7 +682,7 @@ class LoopStrategyConfig(BaseModel):
         ..., description="Size of history replay buffer to prevent catastrophic forgetting"
     )
     baseline_potential_type: str = Field(
-        default="LJ", description="Baseline physical potential type (e.g., LJ)"
+        default_factory=lambda: "LJ", description="Baseline physical potential type (e.g., LJ)"
     )
     thresholds: ActiveLearningThresholds = Field(default_factory=ActiveLearningThresholds)
     checkpoint_interval: int = Field(
