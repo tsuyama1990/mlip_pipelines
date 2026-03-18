@@ -119,7 +119,7 @@ class PacemakerWrapper(AbstractTrainer, BinaryResolverMixin):
             msg = "pace_activeset did not generate the output file."
             raise RuntimeError(msg)
 
-    def _manage_replay_buffer(
+    def manage_replay_buffer(
         self, new_surrogate_data: list[Atoms], history_file_path: Path, buffer_size: int
     ) -> list[Atoms]:
         """Samples the replay buffer to prevent catastrophic forgetting and returns combined training set."""

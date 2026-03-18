@@ -241,9 +241,48 @@ class Orchestrator:
             else:
                 high_gamma_atoms = []
 
+        mace_calc = None
+        if hasattr(self, "oracle") and isinstance(self.oracle, TieredOracle) and hasattr(self.oracle, "primary_oracle"):
+            mace_calc_provider = getattr(self.oracle.primary_oracle, "_init_calculator", None)
+            if callable(mace_calc_provider):
+                try:
+                    mace_calc = mace_calc_provider()
+                except Exception as e:
+                    logging.warning(f"Could not initialize MACE calculator for pre-relaxation: {e}")
+
         for s0 in high_gamma_atoms:
-            candidates = self.structure_generator.generate_local_candidates(s0, n=20)
-            yield self.trainer.select_local_active_set(list(candidates), anchor=s0, n=5)
+            # Phase 3: Intelligent Cutout
+            # Determine target atoms dynamically based on highest gamma values
+            import numpy as np
+
+            target_atoms = []
+            if "c_pace_gamma" in s0.arrays:
+                gamma = s0.arrays["c_pace_gamma"]
+                threshold = self.config.loop_strategy.thresholds.threshold_add_train
+                target_atoms = np.where(gamma > threshold)[0].tolist()
+
+            if not target_atoms:
+                # Fallback to atom with max gamma
+                if "c_pace_gamma" in s0.arrays:
+                    target_atoms = [int(np.argmax(s0.arrays["c_pace_gamma"]))]
+                else:
+                    target_atoms = [0]
+
+            s_base = s0
+            # Use structure generator for extraction and pre-relaxation
+            if hasattr(self.structure_generator, "extract_intelligent_cluster"):
+                try:
+                    s_base = self.structure_generator.extract_intelligent_cluster(  # type: ignore[no-untyped-call]
+                        structure=s0,
+                        target_atoms=target_atoms,
+                        config=self.config.cutout_config,
+                        mace_calc=mace_calc
+                    )
+                except Exception as e:
+                    logging.warning(f"Failed to extract intelligent cluster: {e}")
+
+            candidates = self.structure_generator.generate_local_candidates(s_base, n=20)
+            yield self.trainer.select_local_active_set(list(candidates), anchor=s_base, n=5)
 
     def _compute_dft_and_update_dataset(
         self,
@@ -286,6 +325,38 @@ class Orchestrator:
         if not has_new_data:
             logging.error("No valid data obtained from DFT.")
             return "ERROR"
+
+        # Phase 4: Incremental Update & Replay Buffer
+        if getattr(self.config.loop_strategy, "incremental_update", False):
+            import ase.io
+
+            if dataset_path.exists():
+                new_surrogate_data = ase.io.read(str(dataset_path), index=":")
+                if not isinstance(new_surrogate_data, list):
+                    new_surrogate_data = [new_surrogate_data]
+
+                history_file_path = self.config.project_root / "data" / "training_history.extxyz"
+                buffer_size = getattr(self.config.loop_strategy, "replay_buffer_size", 500)
+
+                if hasattr(self.trainer, "manage_replay_buffer"):
+                    combined_data = self.trainer.manage_replay_buffer(
+                        new_surrogate_data=new_surrogate_data,
+                        history_file_path=history_file_path,
+                        buffer_size=buffer_size
+                    )
+
+                    # Update dataset with combined data
+                    import os
+
+                    # Secure replace strategy
+                    import tempfile
+
+                    from ase.io import write
+                    fd, temp_path_str = tempfile.mkstemp(dir=str(dataset_path.parent), suffix=".extxyz")
+                    os.close(fd)
+                    temp_path = Path(temp_path_str)
+                    write(temp_path_str, combined_data, format="extxyz")
+                    temp_path.replace(dataset_path)
 
         return self._train_model(dataset_path, current_pot, tmp_work_dir)
 
@@ -703,6 +774,7 @@ class Orchestrator:
 
                             # 2. Extract Intelligent Cluster & DFT
                             candidate_generator = self._select_candidates(halt_dict)
+
                             new_pot_path = self._run_dft_and_train(
                                 candidate_generator, tmp_work_dir, current_pot
                             )
@@ -711,6 +783,34 @@ class Orchestrator:
                                 return new_pot_path
 
                             # 3. Finetune explicitly triggering hierarchical trainers
+                            if isinstance(self.oracle, TieredOracle) and hasattr(self.oracle, "primary_oracle"):
+                                mace_model = getattr(self.oracle.primary_oracle, "mace_model_path", None)
+                                if mace_model:
+                                    import tempfile
+
+                                    from ase.io import read
+
+                                    # Get training dataset path to use for finetuning
+                                    data_dir = self.config.project_root / "data"
+                                    dataset_path = data_dir / "accumulated.extxyz"
+                                    if dataset_path.exists():
+                                        try:
+                                            structures = read(str(dataset_path), index=":")
+                                            if not isinstance(structures, list):
+                                                structures = [structures]
+
+                                            with tempfile.TemporaryDirectory(dir=str(tmp_work_dir)) as mace_tmp:
+                                                mace_out_path = Path(mace_tmp) / "finetuned.model"
+                                                new_mace_model = self.finetune_manager.finetune_mace(
+                                                    structures=structures,
+                                                    model_path=str(mace_model),
+                                                    output_path=mace_out_path.parent
+                                                )
+                                                # Update primary oracle with the awakened MACE model
+                                                self.oracle.primary_oracle.mace_model_path = str(new_mace_model)  # type: ignore[attr-defined]
+                                        except Exception as e:
+                                            logging.warning(f"Finetuning MACE failed: {e}")
+
                             if not self._validate_potential(new_pot_path):
                                 return "VALIDATION_FAILED"
 

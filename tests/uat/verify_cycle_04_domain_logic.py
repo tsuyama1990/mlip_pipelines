@@ -56,18 +56,19 @@ def test_scenario_01(
     print("Executing UAT-C04-01: Validation of LAMMPS Soft-Start Resume Generation")
     print("Executing UAT-C04-03: Generation of Two-Tier Watchdog Commands and Smooth Steps")
 
-    # GIVEN
-    _config = DynamicsConfig(trusted_directories=[], project_root=str(Path.cwd()))
-    _config.thresholds.smooth_steps = 5
-    _config.thresholds.threshold_call_dft = 0.08
-    _sys_config = SystemConfig(elements=["Fe"])
-    _engine = MDInterface(_config, _sys_config)
-
     # Use a dummy environment
     import tempfile as _tempfile
 
     with _tempfile.TemporaryDirectory() as _td:
         _tmp_path = Path(_td)
+
+        # GIVEN
+        _config = DynamicsConfig(trusted_directories=[], project_root=str(_tmp_path))
+        _config.thresholds.smooth_steps = 5
+        _config.thresholds.threshold_call_dft = 0.08
+        _sys_config = SystemConfig(elements=["Fe"])
+        _engine = MDInterface(_config, _sys_config)
+
         _pot_file = _tmp_path / "dummy.yace"
         _pot_file.touch()
 
@@ -188,11 +189,11 @@ def test_scenario_02(
         # WHEN unexpected crash
         _log_file.write_text("Lost Atoms error: simulation exploded\n")
 
-        import pytest
+        import pytest as _pytest  # noqa: PT013
 
         try:
             _engine.run_exploration(_pot_file, _work_dir)
-            pytest.fail("Should have raised DynamicsHaltInterrupt")
+            _pytest.fail("Should have raised DynamicsHaltInterrupt")
         except DynamicsHaltInterrupt:
             print(
                 "✓ UAT-C04-02: Correctly recognized missing AL_HALT as a fatal physical crash, raising DynamicsHaltInterrupt."
