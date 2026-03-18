@@ -58,8 +58,8 @@ def test_scenario_01(
     print("Verifying autonomous execution, hybrid potential enforcement, and extrapolation halt logic")
 
     _tmp_path = Path("/home/jules/tmp_test_dir")
-    if _tmp_path.exists(): shutil.rmtree(_tmp_path)
-    _tmp_path.mkdir(parents=True)
+
+
 
     # GIVEN: A valid YAML-equivalent configuration defining materials and thresholds
     import os as _os
@@ -69,21 +69,22 @@ def test_scenario_01(
 
     with _patch("pathlib.Path.cwd", return_value=_tmp_path):
         (_tmp_path / "README.md").touch()
+        from src.domain_models.config import DynamicsConfig as _DynamicsConfig, SystemConfig as _SystemConfig, LoopStrategyConfig as _LoopStrategyConfig, DistillationConfig as _DistillationConfig, TrainerConfig as _TrainerConfig, OracleConfig as _OracleConfig, ValidatorConfig as _ValidatorConfig, ActiveLearningThresholds as _ActiveLearningThresholds
         _full_config = _ProjectConfig(
             project_root=_tmp_path,
-            dynamics={
-                "project_root": str(_tmp_path),
-                "trusted_directories": [str(_tmp_path)],
-                "md_steps": 1000,
-                "temperature": 300.0,
-                "thresholds": {"threshold_call_dft": 5.0, "smooth_steps": 3}
-            },
-            system={"elements": ["Fe", "Pt"], "baseline_potential": "zbl"},
-            loop_strategy={"replay_buffer_size": 500, "checkpoint_interval": 5, "timeout_seconds": 3600},
-            distillation_config={"temp_dir": str(_tmp_path), "output_dir": str(_tmp_path), "model_storage_path": str(_tmp_path)},
-            trainer={"trusted_directories": [str(_tmp_path)]},
-            oracle={"pseudo_dir": str(_tmp_path)},
-            validator={}
+            dynamics=_DynamicsConfig(
+                project_root=str(_tmp_path),
+                trusted_directories=[str(_tmp_path)],
+                md_steps=1000,
+                temperature=300.0,
+                thresholds=_ActiveLearningThresholds(threshold_call_dft=5.0, smooth_steps=3)
+            ),
+            system=_SystemConfig(elements=["Fe", "Pt"], baseline_potential="zbl"),
+            loop_strategy=_LoopStrategyConfig(replay_buffer_size=500, checkpoint_interval=5, timeout_seconds=3600),
+            distillation_config=_DistillationConfig(temp_dir=str(_tmp_path), output_dir=str(_tmp_path), model_storage_path=str(_tmp_path)),
+            trainer=_TrainerConfig(trusted_directories=[str(_tmp_path)]),
+            oracle=_OracleConfig(pseudo_dir=str(_tmp_path)),
+            validator=_ValidatorConfig()
         )
         _config = _full_config.dynamics
         _sys_config = _full_config.system
@@ -93,13 +94,11 @@ def test_scenario_01(
         _engine = MDInterface(_config, _sys_config)
 
         # Mocking external LAMMPS execution for purely functional UAT
-        def mock_run_explore(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[bytes]:
-            # Simulate LAMMPS halting due to extrapolation threshold breach
-            _work_dir = Path(kwargs.get("cwd", str(_tmp_path)))
-
-            _dump_file = _work_dir / "dump.lammps"
-            # Dump with high c_pace_gamma exceeding the threshold
-            _dump_content = """ITEM: TIMESTEP
+        _lmp_path = _tmp_path / "lmp"
+        _lmp_path.write_text("""#!/app/.venv/bin/python3
+import sys
+from pathlib import Path
+Path("dump.lammps").write_text('''ITEM: TIMESTEP
 0
 ITEM: NUMBER OF ATOMS
 1
@@ -108,16 +107,12 @@ ITEM: BOX BOUNDS pp pp pp
 0.0 10.0
 0.0 10.0
 ITEM: ATOMS id type x y z c_pace_gamma
-1 1 0.0 0.0 0.0 6.0
-"""
-            _dump_file.write_text(_dump_content)
-
-            # Write AL_HALT into the log to simulate fix watchdog
-            _log_file = _work_dir / "log.lammps"
-            _log_file.write_text("AL_HALT\n")
-
-            raise subprocess.CalledProcessError(1, ["lmp"])
-
+1 1 0.0 0.0 0.0 6.0''')
+Path("log.lammps").write_text("AL_HALT
+")
+sys.exit(1)
+""")
+        _lmp_path.chmod(0o755)
         _lmp_path = _tmp_path / "lmp"
         _lmp_path.touch()
         _lmp_path.chmod(0o755)
@@ -126,9 +121,9 @@ ITEM: ATOMS id type x y z c_pace_gamma
         _pot_file.touch()
 
         _work_dir = _tmp_path / "md_run"
-        _work_dir.mkdir(parents=True)
+        _work_dir.mkdir(parents=True, exist_ok=True)
 
-        with _patch("subprocess.run", side_effect=mock_run_explore), _patch("shutil.which", return_value=str(_lmp_path.resolve())):
+        with _patch("shutil.which", return_value=str(_lmp_path.resolve())):
             _config.lmp_binary = "lmp"
 
             # THEN: The system flawlessly executes and gracefully halts upon encountering unknown extrapolation region
@@ -151,11 +146,11 @@ ITEM: ATOMS id type x y z c_pace_gamma
         # WHEN: The simulation resumes using the brand newly updated potential
 
         # Mock resume execution
-        def mock_run_resume(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[bytes]:
-            # Simulate successful continuation
-            _work_dir = Path(kwargs.get("cwd", str(_tmp_path)))
-            _dump_file = _work_dir / "dump.lammps"
-            _dump_content = """ITEM: TIMESTEP
+        _lmp_resume = _tmp_path / "lmp_resume"
+        _lmp_resume.write_text("""#!/app/.venv/bin/python3
+import sys
+from pathlib import Path
+Path("dump.lammps").write_text('''ITEM: TIMESTEP
 0
 ITEM: NUMBER OF ATOMS
 1
@@ -164,19 +159,18 @@ ITEM: BOX BOUNDS pp pp pp
 0.0 10.0
 0.0 10.0
 ITEM: ATOMS id type x y z c_pace_gamma
-1 1 0.0 0.0 0.0 1.0
-"""
-            _dump_file.write_text(_dump_content)
-            return subprocess.CompletedProcess(args=["lmp"], returncode=0, stdout=b"", stderr=b"")
-
+1 1 0.0 0.0 0.0 1.0''')
+sys.exit(0)
+""")
+        _lmp_resume.chmod(0o755)
         _restart_dir = _tmp_path / "md_run"
         _restart_file = _restart_dir / "restart.lammps"
         _restart_file.touch()
 
         _resume_dir = _tmp_path / "resume_run"
-        _resume_dir.mkdir(parents=True)
+        _resume_dir.mkdir(parents=True, exist_ok=True)
 
-        with _patch("subprocess.run", side_effect=mock_run_resume), _patch("shutil.which", return_value=str(_lmp_path.resolve())):
+        with _patch("shutil.which", return_value=str(_lmp_resume.resolve())):
             # THEN: Seamlessly flawlessly resume the paused simulation
             _res_resume = _engine.resume(_pot_file, _restart_dir, _resume_dir)
             assert _res_resume["halted"] is False
@@ -202,8 +196,8 @@ def test_scenario_02_eon_client(
     print("Executing UAT-C02-02: Interfacing with the EON client for long-timescale Adaptive KMC")
 
     _tmp_path = Path("/home/jules/tmp_test_dir2")
-    if _tmp_path.exists(): shutil.rmtree(_tmp_path)
-    _tmp_path.mkdir(parents=True)
+
+
 
     import os as _os
     from src.domain_models.config import ProjectConfig as _ProjectConfig
@@ -212,21 +206,22 @@ def test_scenario_02_eon_client(
 
     with _patch("pathlib.Path.cwd", return_value=_tmp_path):
         (_tmp_path / "README.md").touch()
+        from src.domain_models.config import DynamicsConfig as _DynamicsConfig, SystemConfig as _SystemConfig, LoopStrategyConfig as _LoopStrategyConfig, DistillationConfig as _DistillationConfig, TrainerConfig as _TrainerConfig, OracleConfig as _OracleConfig, ValidatorConfig as _ValidatorConfig, ActiveLearningThresholds as _ActiveLearningThresholds
         _full_config = _ProjectConfig(
             project_root=_tmp_path,
-            dynamics={
-                "project_root": str(_tmp_path),
-                "trusted_directories": [str(_tmp_path)],
-                "md_steps": 1000,
-                "temperature": 300.0,
-                "thresholds": {"threshold_call_dft": 5.0, "smooth_steps": 3}
-            },
-            system={"elements": ["Fe", "Pt"], "baseline_potential": "zbl"},
-            loop_strategy={"replay_buffer_size": 500, "checkpoint_interval": 5, "timeout_seconds": 3600},
-            distillation_config={"temp_dir": str(_tmp_path), "output_dir": str(_tmp_path), "model_storage_path": str(_tmp_path)},
-            trainer={"trusted_directories": [str(_tmp_path)]},
-            oracle={"pseudo_dir": str(_tmp_path)},
-            validator={}
+            dynamics=_DynamicsConfig(
+                project_root=str(_tmp_path),
+                trusted_directories=[str(_tmp_path)],
+                md_steps=1000,
+                temperature=300.0,
+                thresholds=_ActiveLearningThresholds(threshold_call_dft=5.0, smooth_steps=3)
+            ),
+            system=_SystemConfig(elements=["Fe", "Pt"], baseline_potential="zbl"),
+            loop_strategy=_LoopStrategyConfig(replay_buffer_size=500, checkpoint_interval=5, timeout_seconds=3600),
+            distillation_config=_DistillationConfig(temp_dir=str(_tmp_path), output_dir=str(_tmp_path), model_storage_path=str(_tmp_path)),
+            trainer=_TrainerConfig(trusted_directories=[str(_tmp_path)]),
+            oracle=_OracleConfig(pseudo_dir=str(_tmp_path)),
+            validator=_ValidatorConfig()
         )
         _config = _full_config.dynamics
         _sys_config = _full_config.system
@@ -234,19 +229,12 @@ def test_scenario_02_eon_client(
         _wrapper = EONWrapper(_config, _sys_config)
 
         # Mocking the Popen call for eonclient
-        class _MockProc:
-            returncode = 100  # 100 is our OTF halt code
-            def communicate(self, *args, **kwargs):
-                return b"out", b"err"
-            def kill(self):
-                pass
-            def poll(self):
-                return self.returncode
-            def __enter__(self) -> "_MockProc":
-                return self
-            def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-                pass
-
+        _eon_bin = _tmp_path / "eonclient"
+        _eon_bin.write_text("""#!/app/.venv/bin/python3
+import sys
+sys.exit(100)
+""")
+        _eon_bin.chmod(0o755)
         _eon_bin = _tmp_path / "eonclient"
         _eon_bin.touch()
         _eon_bin.chmod(0o755)
@@ -255,7 +243,7 @@ def test_scenario_02_eon_client(
         _pot_file.touch()
         _work_dir = _tmp_path / "eon_run"
 
-        with _patch("subprocess.Popen", return_value=_MockProc()), _patch("shutil.which", return_value=str(_eon_bin.resolve())):
+        with _patch("shutil.which", return_value=str(_eon_bin.resolve())):
             _config.eon_binary = "eonclient"
             _res = _wrapper.run_kmc(_pot_file, _work_dir)
 
@@ -268,6 +256,12 @@ def test_scenario_02_eon_client(
             assert "job = process_search" in _ini_content
             assert "min_mode_method = dimer" in _ini_content
             print("✓ Engine can accurately explore slow diffusion pathways and calculate precise activation energy barriers.")
+
+            assert (_work_dir / "potentials" / "pace_driver.py").exists()
+            driver_content = (_work_dir / "potentials" / "pace_driver.py").read_text()
+            assert "dummy.yace" in driver_content
+            print("✓ Driver script created correctly.")
+
 
     return ()
 
