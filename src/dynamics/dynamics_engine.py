@@ -3,12 +3,12 @@ import os
 import re
 import subprocess
 import tempfile
+import typing
 from pathlib import Path
 from typing import Any
 
 from ase import Atoms
 from ase.data import atomic_numbers
-from ase.io import read
 
 from src.core import AbstractDynamics
 from src.domain_models.config import DynamicsConfig, SystemConfig
@@ -25,7 +25,7 @@ class MDInterface(AbstractDynamics):
     def _get_zbl_mapping(self) -> str:
         return " ".join(str(atomic_numbers.get(el, 1)) for el in self.system_config.elements)
 
-    def _write_cold_start_input(self, tmp_in_file: Any, dump_name: str, work_dir: Path) -> None:
+    def _write_cold_start_input(self, tmp_in_file: typing.TextIO, dump_name: str, work_dir: Path) -> None:
         from src.domain_models.config import _secure_resolve_and_validate_dir
 
         _secure_resolve_and_validate_dir(str(work_dir), check_exists=False)
@@ -116,7 +116,7 @@ write_data {work_dir_str}/data.lammps
         return str(resolved_pot)
 
     def _write_potential_input(
-        self, tmp_in_file: Any, potential: Path, dump_name: str, work_dir: Path
+        self, tmp_in_file: typing.TextIO, potential: Path, dump_name: str, work_dir: Path
     ) -> None:
         from src.domain_models.config import _secure_resolve_and_validate_dir
 
@@ -403,36 +403,42 @@ write_data {work_dir_str}/data.lammps
         return self._check_halt(dump_file)
 
     def extract_high_gamma_structures(self, dump_file: Path, threshold: float) -> list[Atoms]:
-        """Extracts structures with high gamma from LAMMPS dump."""
-        # Read the trajectory.
-        # This requires the dump to be in a readable format, e.g., custom format with gamma.
+        """Extracts structures with high gamma from LAMMPS dump using O(N) memory streaming."""
         if not dump_file.exists():
             msg = f"Dump file not found: {dump_file}"
             raise FileNotFoundError(msg)
 
-        traj = read(str(dump_file), index=":", format="lammps-dump-text")  # type: ignore[no-untyped-call]
-        if not isinstance(traj, list):
-            traj = [traj]
+        import numpy as np
+        from ase.io import iread
 
-        if not traj:
+        high_gamma: list[Atoms] = []
+        last_frame = None
+
+        try:
+            # Stream frames one by one instead of loading all into memory
+            for atoms in iread(str(dump_file), index=":", format="lammps-dump-text"):  # type: ignore[no-untyped-call]
+                last_frame = atoms
+                if "c_pace_gamma" in atoms.arrays:
+                    gamma_array = atoms.arrays["c_pace_gamma"]
+                    if np.max(gamma_array) > threshold:
+                        self._reservoir_sample(high_gamma, atoms)
+        except StopIteration:
+            pass
+
+        if not last_frame:
             msg = f"No structures read from dump file: {dump_file}"
             raise ValueError(msg)
 
-        # Filter high gamma structures out of trajectory dump frames
-        high_gamma = []
-        for atoms in traj:
-            if "c_pace_gamma" in atoms.arrays:
-                # Find maximum gamma over atoms
-                gamma_array = atoms.arrays["c_pace_gamma"]
-                import numpy as np
-
-                if np.max(gamma_array) > threshold:
-                    high_gamma.append(atoms)
-            else:
-                # Default to last frame if gamma is not mapped, e.g. for cold start
-                continue
-
         if not high_gamma:
-            return [traj[-1]]
+            return [last_frame]
 
         return high_gamma
+
+    def _reservoir_sample(self, reservoir: list[Atoms], new_item: Atoms) -> None:
+        if len(reservoir) < 100:
+            reservoir.append(new_item)
+        else:
+            import random
+            j = random.randint(0, len(reservoir))
+            if j < 100:
+                reservoir[j] = new_item

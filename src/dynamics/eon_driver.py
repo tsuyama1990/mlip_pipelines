@@ -139,7 +139,7 @@ def write_bad_structure(path: str, atoms: "Atoms") -> None:
         sys.exit(100)
 
 
-def print_forces(forces: typing.Any) -> None:
+def print_forces(forces: typing.Any) -> None:  # Using Any to avoid np import overhead
     # Any represents an nx3 numpy array of forces from ASE
     for f in forces:
         sys.stdout.write(f"{f[0]} {f[1]} {f[2]}\n")
