@@ -23,9 +23,12 @@ def test_uat_05_01_otf_halting(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) 
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
-    # Mock security_utils.validate_executable_path to prevent executable file checks
-    from unittest.mock import patch
-    monkeypatch.setattr("src.dynamics.security_utils.validate_executable_path", lambda *args, **kwargs: tmp_path / "lmp")
+    # Setup trusted binary
+    dummy_lmp = tmp_path / "lmp"
+    dummy_lmp.touch()
+    dummy_lmp.chmod(0o755)
+    import os
+    monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ.get('PATH', '')}")
 
     # Setup working directory
     work_dir = tmp_path / "md_run"
@@ -86,8 +89,12 @@ def test_uat_05_02_hybrid_potential_safety(monkeypatch: pytest.MonkeyPatch, tmp_
     sys_config = SystemConfig(elements=["Fe", "Pt"], baseline_potential="zbl")
     engine = MDInterface(config, sys_config)
 
-    # Mock security_utils.validate_executable_path to prevent executable file checks
-    monkeypatch.setattr("src.dynamics.security_utils.validate_executable_path", lambda *args, **kwargs: tmp_path / "lmp")
+    # Setup trusted binary
+    dummy_lmp = tmp_path / "lmp"
+    dummy_lmp.touch()
+    dummy_lmp.chmod(0o755)
+    import os
+    monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ.get('PATH', '')}")
 
     work_dir = tmp_path / "md_run_2"
     work_dir.mkdir(parents=True)

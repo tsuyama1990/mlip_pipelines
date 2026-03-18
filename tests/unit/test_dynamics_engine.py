@@ -28,7 +28,12 @@ def test_run_exploration_watchdog(monkeypatch: pytest.MonkeyPatch, tmp_path: Pat
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
-    monkeypatch.setattr("src.dynamics.security_utils.validate_executable_path", lambda *args, **kwargs: tmp_path / "lmp")
+    # Setup dummy binary in PATH
+    dummy_lmp = tmp_path / "lmp"
+    dummy_lmp.touch()
+    dummy_lmp.chmod(0o755)
+    import os
+    monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ.get('PATH', '')}")
 
     pot_file = tmp_path / "dummy.yace"
     pot_file.touch()
@@ -68,7 +73,12 @@ def test_resume(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
-    monkeypatch.setattr("src.dynamics.security_utils.validate_executable_path", lambda *args, **kwargs: tmp_path / "lmp")
+    # Setup dummy binary in PATH
+    dummy_lmp = tmp_path / "lmp"
+    dummy_lmp.touch()
+    dummy_lmp.chmod(0o755)
+    import os
+    monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ.get('PATH', '')}")
 
     pot_file = tmp_path / "dummy.yace"
     pot_file.touch()
@@ -189,7 +199,12 @@ def test_run_exploration_cold_start(monkeypatch: pytest.MonkeyPatch, tmp_path: P
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
-    monkeypatch.setattr("src.dynamics.security_utils.validate_executable_path", lambda *args, **kwargs: tmp_path / "lmp")
+    # Setup dummy binary in PATH
+    dummy_lmp = tmp_path / "lmp"
+    dummy_lmp.touch()
+    dummy_lmp.chmod(0o755)
+    import os
+    monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ.get('PATH', '')}")
 
     work_dir = tmp_path / "md_run"
     work_dir.mkdir(parents=True)
@@ -404,7 +419,12 @@ def test_resume_subprocess_calledprocesserror(
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
-    monkeypatch.setattr("src.dynamics.security_utils.validate_executable_path", lambda *args, **kwargs: tmp_path / "lmp")
+    # Setup dummy binary in PATH
+    dummy_lmp = tmp_path / "lmp"
+    dummy_lmp.touch()
+    dummy_lmp.chmod(0o755)
+    import os
+    monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ.get('PATH', '')}")
 
     pot_file = tmp_path / "dummy.yace"
     pot_file.touch()
@@ -538,7 +558,12 @@ def test_resume_script_generation(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
-    monkeypatch.setattr("src.dynamics.security_utils.validate_executable_path", lambda *args, **kwargs: tmp_path / "lmp")
+    # Setup dummy binary in PATH
+    dummy_lmp = tmp_path / "lmp"
+    dummy_lmp.touch()
+    dummy_lmp.chmod(0o755)
+    import os
+    monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ.get('PATH', '')}")
 
     pot_file = tmp_path / "dummy.yace"
     pot_file.touch()
@@ -662,7 +687,12 @@ def test_mock_lammps_integration(monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
-    monkeypatch.setattr("src.dynamics.security_utils.validate_executable_path", lambda *args, **kwargs: tmp_path / "lmp")
+    # Setup dummy binary in PATH
+    dummy_lmp = tmp_path / "lmp"
+    dummy_lmp.touch()
+    dummy_lmp.chmod(0o755)
+    import os
+    monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ.get('PATH', '')}")
 
     pot_file = tmp_path / "dummy.yace"
     pot_file.touch()

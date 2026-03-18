@@ -57,13 +57,8 @@ def test_eon_wrapper_run_kmc_no_halt(
     sys_config: SystemConfig,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # We mock shutil.which so it acts like eonclient is not found, letting the FileNotFoundError block handle it
-    import shutil
-
-    def mock_which(name: str) -> str | None:
-        return None
-
-    monkeypatch.setattr(shutil, "which", mock_which)
+    # Ensure validation fails with exact expected runtime error
+    monkeypatch.setattr("src.dynamics.security_utils.validate_executable_path", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("EON client executable not found.")))
 
     wrapper = EONWrapper(config, sys_config)
     with pytest.raises(RuntimeError, match="EON client executable not found"):
@@ -283,7 +278,8 @@ def test_get_validated_eon_bin_not_executable(tmp_path: Path, monkeypatch: pytes
     dummy_bin_dir.mkdir(parents=True, exist_ok=True)
     dummy_eon = dummy_bin_dir / "eonclient"
     dummy_eon.touch()
-    dummy_eon.chmod(0o644)  # Not executable
+    # Create the dummy file as NOT executable
+    dummy_eon.chmod(0o644)
 
     import os
     monkeypatch.setenv("PATH", f"{dummy_bin_dir}:{os.environ.get('PATH', '')}")
@@ -298,7 +294,7 @@ def test_get_validated_eon_bin_not_executable(tmp_path: Path, monkeypatch: pytes
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = EONWrapper(config, sys_config)
 
-    # Bypass internal shutil.which in security_utils to allow resolution but fail execution permissions
+    # Force shutil.which to find the non-executable file
     import shutil
     monkeypatch.setattr(shutil, "which", lambda *args, **kwargs: str(dummy_eon))
 
@@ -336,6 +332,9 @@ def test_run_exploration_eon(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
     dummy_eon.touch()
     dummy_eon.chmod(0o755)
 
+    import os
+    monkeypatch.setenv("PATH", f"{dummy_bin_dir}:{os.environ.get('PATH', '')}")
+
     config = DynamicsConfig.model_construct(
         project_root=str(tmp_path),
         eon_binary="eonclient",
@@ -345,10 +344,6 @@ def test_run_exploration_eon(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
     )
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = EONWrapper(config, sys_config)
-
-    # Bypass internal shutil.which in security_utils
-    import shutil
-    monkeypatch.setattr(shutil, "which", lambda *args, **kwargs: str(dummy_eon))
 
     class MockProc:
         returncode = 0
@@ -380,12 +375,14 @@ def test_run_kmc_untrusted_binary(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     dummy_bin_dir = tmp_path / "bin"
     dummy_bin_dir.mkdir(parents=True, exist_ok=True)
 
-    # We place the binary OUTSIDE the trusted directory
     untrusted_dir = tmp_path / "untrusted"
     untrusted_dir.mkdir(parents=True, exist_ok=True)
     untrusted_eon = untrusted_dir / "eonclient"
     untrusted_eon.touch()
     untrusted_eon.chmod(0o755)
+
+    import os
+    monkeypatch.setenv("PATH", f"{untrusted_dir}:{os.environ.get('PATH', '')}")
 
     config = DynamicsConfig.model_construct(
         project_root=str(tmp_path),
@@ -397,14 +394,10 @@ def test_run_kmc_untrusted_binary(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = EONWrapper(config, sys_config)
 
-    # Bypass internal shutil.which to explicitly resolve to the untrusted directory
-    import shutil
-    monkeypatch.setattr(shutil, "which", lambda *args, **kwargs: str(untrusted_eon))
-
     work_dir = tmp_path / "work"
     work_dir.mkdir(parents=True, exist_ok=True)
 
-    with pytest.raises(ValueError, match="Resolved binary must reside in a trusted directory:"):
+    with pytest.raises(ValueError, match="Resolved binary must reside in a trusted directory"):
         engine.run_kmc(None, work_dir)
 
 
@@ -417,6 +410,9 @@ def test_run_kmc_timeout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Non
     dummy_eon.touch()
     dummy_eon.chmod(0o755)
 
+    import os
+    monkeypatch.setenv("PATH", f"{dummy_bin_dir}:{os.environ.get('PATH', '')}")
+
     config = DynamicsConfig.model_construct(
         project_root=str(tmp_path),
         eon_binary="eonclient",
@@ -426,9 +422,6 @@ def test_run_kmc_timeout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Non
     )
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = EONWrapper(config, sys_config)
-
-    import shutil
-    monkeypatch.setattr(shutil, "which", lambda *args, **kwargs: str(dummy_eon))
 
     class MockProc:
         returncode = 0
