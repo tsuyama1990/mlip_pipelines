@@ -8,38 +8,22 @@ from src.domain_models.config import DynamicsConfig, SystemConfig
 from src.dynamics.dynamics_engine import MDInterface
 
 
-def test_uat_05_01_otf_halting(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """
-    UAT-05-01: On-The-Fly (OTF) Extrapolation Halting
-    """
-    from src.domain_models.config import ActiveLearningThresholds
-    config = DynamicsConfig.model_construct(
-        project_root=str(tmp_path),
-        md_steps=1000,
-        lmp_binary="lmp",
-        trusted_directories=[str(tmp_path)],
-        thresholds=ActiveLearningThresholds(threshold_call_dft=5.0, threshold_add_train=0.02, smooth_steps=3)
-    )
-    sys_config = SystemConfig(elements=["Fe", "Pt"])
-    engine = MDInterface(config, sys_config)
+class SubprocessMockLAMMPS:
+    """A realistic test double that simulates LAMMPS execution."""
+    def __init__(self, mode: str) -> None:
+        self.mode = mode
 
-    # Setup trusted binary
-    dummy_lmp = tmp_path / "lmp"
-    dummy_lmp.touch()
-    dummy_lmp.chmod(0o755)
-    import os
-    monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ.get('PATH', '')}")
+    def __call__(self, cmd: list[str], *args: Any, **kwargs: Any) -> subprocess.CompletedProcess[bytes]:
+        work_dir = Path(kwargs.get("cwd", "."))
 
-    # Setup working directory
-    work_dir = tmp_path / "md_run"
-    work_dir.mkdir(parents=True)
-    dump_file = work_dir / "dump.lammps"
-    log_file = work_dir / "log.lammps"
+        # Extract the input script and log file arguments using parsing
+        log_idx = cmd.index("-log") + 1 if "-log" in cmd else -1
+        log_file = work_dir / Path(cmd[log_idx]).name if log_idx > 0 else work_dir / "log.lammps"
 
-    # Define a test double for subprocess.run
-    def mock_run(cmd: list[str], *args: Any, **kwargs: Any) -> subprocess.CompletedProcess:
-        # Simulate LAMMPS output dynamically
-        dump_content = """ITEM: TIMESTEP
+        dump_file = work_dir / "dump.lammps"
+
+        if self.mode == "halt":
+            dump_content = """ITEM: TIMESTEP
 0
 ITEM: NUMBER OF ATOMS
 1
@@ -50,18 +34,64 @@ ITEM: BOX BOUNDS pp pp pp
 ITEM: ATOMS id type x y z c_pace_gamma
 1 1 0.0 0.0 0.0 6.0
 """
-        dump_file.write_text(dump_content)
-        log_file.write_text("AL_HALT\n")
-        raise subprocess.CalledProcessError(1, cmd)
+            dump_file.write_text(dump_content)
+            log_file.write_text("AL_HALT\n")
+            raise subprocess.CalledProcessError(1, cmd, output=b"", stderr=b"")
 
-    monkeypatch.setattr(subprocess, "run", mock_run)
+        if self.mode == "safe":
+            dump_content = """ITEM: TIMESTEP
+0
+ITEM: NUMBER OF ATOMS
+1
+ITEM: BOX BOUNDS pp pp pp
+0.0 10.0
+0.0 10.0
+0.0 10.0
+ITEM: ATOMS id type x y z c_pace_gamma
+1 1 0.0 0.0 0.0 1.0
+"""
+            dump_file.write_text(dump_content)
+            log_file.write_text("NORMAL RUN\n")
+            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout=b"", stderr=b"")
+
+        msg = "Unknown mode"
+        raise ValueError(msg)
+
+
+def test_uat_05_01_otf_halting(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """
+    UAT-05-01: On-The-Fly (OTF) Extrapolation Halting
+    """
+    import shutil
+    bash_bin = shutil.which("bash") or "/usr/bin/bash"
+    bash_dir = str(Path(bash_bin).parent.resolve())
+
+    from src.domain_models.config import ActiveLearningThresholds
+    config = DynamicsConfig.model_construct(
+        project_root=str(tmp_path),
+        md_steps=1000,
+        lmp_binary="bash", # use bash as a valid, trusted binary
+        trusted_directories=[bash_dir],
+        thresholds=ActiveLearningThresholds(threshold_call_dft=5.0, threshold_add_train=0.02, smooth_steps=3)
+    )
+    sys_config = SystemConfig(elements=["Fe", "Pt"])
+    engine = MDInterface(config, sys_config)
+
+    # Setup working directory
+    work_dir = tmp_path / "md_run"
+
+    # Define a proper test double
+    mock_lammps = SubprocessMockLAMMPS(mode="halt")
+    monkeypatch.setattr(subprocess, "run", mock_lammps)
 
     # Mock dummy potential
     pot_file = tmp_path / "dummy.yace"
     pot_file.touch()
 
-    # Run exploration
+    # Run exploration -> invokes actual SUT logic
     res = engine.run_exploration(potential=pot_file, work_dir=work_dir)
+
+    dump_file = work_dir / "dump.lammps"
 
     # Verify the generated input script contains the watchdog instruction
     in_file = work_dir / "in.lammps"
@@ -81,43 +111,23 @@ def test_uat_05_02_hybrid_potential_safety(monkeypatch: pytest.MonkeyPatch, tmp_
     """
     UAT-05-02: Hybrid Potential Safety Enforcement
     """
+    import shutil
+    bash_bin = shutil.which("bash") or "/usr/bin/bash"
+    bash_dir = str(Path(bash_bin).parent.resolve())
+
     config = DynamicsConfig.model_construct(
         project_root=str(tmp_path),
-        lmp_binary="lmp",
-        trusted_directories=[str(tmp_path)]
+        lmp_binary="bash",
+        trusted_directories=[bash_dir]
     )
     sys_config = SystemConfig(elements=["Fe", "Pt"], baseline_potential="zbl")
     engine = MDInterface(config, sys_config)
 
-    # Setup trusted binary
-    dummy_lmp = tmp_path / "lmp"
-    dummy_lmp.touch()
-    dummy_lmp.chmod(0o755)
-    import os
-    monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ.get('PATH', '')}")
-
     work_dir = tmp_path / "md_run_2"
     work_dir.mkdir(parents=True)
-    dump_file = work_dir / "dump.lammps"
 
-    # Define a test double for subprocess.run
-    def mock_run(cmd: list[str], *args: Any, **kwargs: Any) -> subprocess.CompletedProcess:
-        # Simulate LAMMPS output dynamically
-        dump_content = """ITEM: TIMESTEP
-0
-ITEM: NUMBER OF ATOMS
-1
-ITEM: BOX BOUNDS pp pp pp
-0.0 10.0
-0.0 10.0
-0.0 10.0
-ITEM: ATOMS id type x y z c_pace_gamma
-1 1 0.0 0.0 0.0 1.0
-"""
-        dump_file.write_text(dump_content)
-        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout=b"", stderr=b"")
-
-    monkeypatch.setattr(subprocess, "run", mock_run)
+    mock_lammps = SubprocessMockLAMMPS(mode="safe")
+    monkeypatch.setattr(subprocess, "run", mock_lammps)
 
     pot_file = tmp_path / "dummy.yace"
     pot_file.touch()
