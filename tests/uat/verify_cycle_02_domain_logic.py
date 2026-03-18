@@ -61,17 +61,34 @@ def test_scenario_01(
         _tmp_path = Path(_td)
 
         # GIVEN: A valid YAML-equivalent configuration defining materials and thresholds
-        _config = DynamicsConfig(
-            trusted_directories=[str(_tmp_path)],
-            project_root=str(_tmp_path),
-            md_steps=1000,
-            temperature=300.0
-        )
-        _config.thresholds.threshold_call_dft = 5.0
-        _config.thresholds.smooth_steps = 3
+        import os as _os
+        _os.environ["MLIP_DYNAMICS__TRUSTED_DIRECTORIES"] = '["' + str(_tmp_path) + '"]'
+        _os.environ["MLIP_PROJECT_ROOT"] = str(_tmp_path)
+        _os.environ["MLIP_DYNAMICS__PROJECT_ROOT"] = str(_tmp_path)
+        _os.environ["MLIP_DYNAMICS__MD_STEPS"] = "1000"
+        _os.environ["MLIP_DYNAMICS__TEMPERATURE"] = "300.0"
+        _os.environ["MLIP_DYNAMICS__THRESHOLDS__THRESHOLD_CALL_DFT"] = "5.0"
+        _os.environ["MLIP_DYNAMICS__THRESHOLDS__SMOOTH_STEPS"] = "3"
+        _os.environ["MLIP_SYSTEM__ELEMENTS"] = '["Fe", "Pt"]'
+        _os.environ["MLIP_SYSTEM__BASELINE_POTENTIAL"] = "zbl"
 
-        # Enforcing Lennard-Jones/ZBL baseline
-        _sys_config = SystemConfig(elements=["Fe", "Pt"], baseline_potential="zbl")
+        # Instantiate from base config which reads env
+        from src.domain_models.config import ProjectConfig as _ProjectConfig
+
+        # Provide minimal required config for missing fields so instantiation succeeds
+        _os.environ["MLIP_LOOP_STRATEGY__REPLAY_BUFFER_SIZE"] = "500"
+        _os.environ["MLIP_LOOP_STRATEGY__CHECKPOINT_INTERVAL"] = "5"
+        _os.environ["MLIP_LOOP_STRATEGY__TIMEOUT_SECONDS"] = "3600"
+        _os.environ["MLIP_DISTILLATION_CONFIG__TEMP_DIR"] = str(_tmp_path)
+        _os.environ["MLIP_DISTILLATION_CONFIG__OUTPUT_DIR"] = str(_tmp_path)
+        _os.environ["MLIP_DISTILLATION_CONFIG__MODEL_STORAGE_PATH"] = str(_tmp_path)
+        _os.environ["MLIP_TRAINER__TRUSTED_DIRECTORIES"] = '["' + str(_tmp_path) + '"]'
+
+        (_tmp_path / "README.md").touch()
+        _full_config = _ProjectConfig(oracle={"pseudo_dir": str(_tmp_path)}, validator={})
+        _config = _full_config.dynamics
+        _sys_config = _full_config.system
+        # Config loaded from env variables via ProjectConfig
 
         # WHEN: Initiating the powerful active learning computational pipeline
         _engine = MDInterface(_config, _sys_config)
@@ -197,13 +214,27 @@ def test_scenario_02_eon_client(
     with tempfile.TemporaryDirectory() as _td:
         _tmp_path = Path(_td)
 
-        _config = DynamicsConfig(
-            trusted_directories=[str(_tmp_path)],
-            project_root=str(_tmp_path),
-            eon_job="process_search",
-            eon_min_mode_method="dimer"
-        )
-        _sys_config = SystemConfig(elements=["Fe", "Pt"])
+        import os as _os
+        _os.environ["MLIP_DYNAMICS__TRUSTED_DIRECTORIES"] = '["' + str(_tmp_path) + '"]'
+        _os.environ["MLIP_PROJECT_ROOT"] = str(_tmp_path)
+        _os.environ["MLIP_DYNAMICS__PROJECT_ROOT"] = str(_tmp_path)
+        _os.environ["MLIP_DYNAMICS__EON_JOB"] = "process_search"
+        _os.environ["MLIP_DYNAMICS__EON_MIN_MODE_METHOD"] = "dimer"
+        _os.environ["MLIP_SYSTEM__ELEMENTS"] = '["Fe", "Pt"]'
+
+        from src.domain_models.config import ProjectConfig as _ProjectConfig
+        _os.environ["MLIP_LOOP_STRATEGY__REPLAY_BUFFER_SIZE"] = "500"
+        _os.environ["MLIP_LOOP_STRATEGY__CHECKPOINT_INTERVAL"] = "5"
+        _os.environ["MLIP_LOOP_STRATEGY__TIMEOUT_SECONDS"] = "3600"
+        _os.environ["MLIP_DISTILLATION_CONFIG__TEMP_DIR"] = str(_tmp_path)
+        _os.environ["MLIP_DISTILLATION_CONFIG__OUTPUT_DIR"] = str(_tmp_path)
+        _os.environ["MLIP_DISTILLATION_CONFIG__MODEL_STORAGE_PATH"] = str(_tmp_path)
+        _os.environ["MLIP_TRAINER__TRUSTED_DIRECTORIES"] = '["' + str(_tmp_path) + '"]'
+
+        (_tmp_path / "README.md").touch()
+        _full_config = _ProjectConfig(oracle={"pseudo_dir": str(_tmp_path)}, validator={})
+        _config = _full_config.dynamics
+        _sys_config = _full_config.system
 
         _wrapper = EONWrapper(_config, _sys_config)
 

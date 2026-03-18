@@ -11,8 +11,8 @@ from src.dynamics.dynamics_engine import MDInterface
 def test_md_interface_initialization() -> None:
     config = DynamicsConfig(
         uncertainty_threshold=6.0,
-        md_steps=1000,
-        temperature=300.0,
+
+
         project_root=str(Path.cwd()),
         trusted_directories=[],
     )
@@ -665,7 +665,7 @@ ITEM: ATOMS id type x y z c_pace_gamma
 
 def test_mock_lammps_integration(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     config = DynamicsConfig(
-        uncertainty_threshold=5.0, trusted_directories=[], project_root=str(tmp_path), md_steps=1000
+        uncertainty_threshold=5.0, trusted_directories=[], project_root=str(tmp_path)
     )
     config.thresholds.threshold_call_dft = 5.0
     sys_config = SystemConfig(elements=["Fe", "Pt"])

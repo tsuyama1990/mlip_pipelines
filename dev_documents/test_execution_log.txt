@@ -52,7 +52,7 @@ src/dynamics/eon_wrapper.py               213     39    82%   43-44, 66-67, 78-7
 src/dynamics/security_utils.py            110     26    76%   17-18, 26-32, 47-48, 78, 101-102, 110-111, 121-122, 133-134, 137-138, 141-142, 162-163
 src/generators/__init__.py                  0      0   100%
 src/generators/adaptive_policy.py          67      5    93%   16, 44-45, 123-124
-src/generators/defect_builder.py           72     14    81%   14, 22-23, 26, 43-44, 47, 66-67, 76-77, 81, 105-106
+src/generators/defect_builder.py           72     15    79%   14, 22-23, 26, 43-44, 47, 66-67, 76-77, 81, 103, 105-106
 src/generators/structure_generator.py      62      9    85%   47-48, 52-53, 99, 105-108
 src/oracles/__init__.py                     0      0   100%
 src/oracles/base.py                         6      0   100%
@@ -68,7 +68,7 @@ src/validators/reporter.py                  7      0   100%
 src/validators/stability_tests.py         119      5    96%   51, 59-60, 63-66
 src/validators/validator.py                90     11    88%   20-22, 28-30, 34-36, 80, 94-95
 ---------------------------------------------------------------------
-TOTAL                                    2813    679    76%
-======================== 204 passed, 2 skipped in 7.15s ========================
+TOTAL                                    2813    680    76%
+======================== 204 passed, 2 skipped in 6.63s ========================
 /app/.venv/lib/python3.12/site-packages/coverage/inorout.py:561: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.4/messages.html#warning-module-not-imported
   self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")

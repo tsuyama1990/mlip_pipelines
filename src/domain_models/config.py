@@ -111,7 +111,7 @@ class ActiveLearningThresholds(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
     threshold_call_dft: float = Field(
-        default=0.05, description="Global threshold to halt MD and call DFT"
+        default=0.05, description="Threshold to call DFT"
     )
     threshold_add_train: float = Field(
         default=0.02, description="Local threshold to select atoms for training"
@@ -644,9 +644,9 @@ class CutoutConfig(BaseModel):
     """Phase 3: Intelligent cutout and passivation configuration."""
 
     model_config = ConfigDict(extra="forbid")
-    core_radius: float = Field(default=3.0, description="Radius for core atoms (force weight 1.0)")
+    core_radius: float = Field(default_factory=lambda: 3.0, description="Radius for core atoms (force weight 1.0)")
     buffer_radius: float = Field(
-        default=4.0, description="Radius for buffer layer (force weight 0.0)"
+        default_factory=lambda: 4.0, description="Radius for buffer layer (force weight 0.0)"
     )
     enable_pre_relaxation: bool = Field(
         default=True, description="Enable MACE pre-relaxation of buffer"
@@ -654,7 +654,7 @@ class CutoutConfig(BaseModel):
     enable_passivation: bool = Field(
         default=True, description="Enable automatic surface passivation"
     )
-    passivation_element: str = Field(default="H", description="Element used for passivation")
+    passivation_element: str = Field(default_factory=lambda: "H", description="Element used for passivation")
 
     @model_validator(mode="after")
     def validate_radii(self) -> "CutoutConfig":
@@ -683,7 +683,7 @@ class LoopStrategyConfig(BaseModel):
         ..., description="Size of history replay buffer to prevent catastrophic forgetting"
     )
     baseline_potential_type: str = Field(
-        default="LJ", description="Baseline physical potential type (e.g., LJ)"
+        default_factory=lambda: "LJ", description="Baseline physical potential type (e.g., LJ)"
     )
     thresholds: ActiveLearningThresholds = Field(default_factory=ActiveLearningThresholds)
     checkpoint_interval: int = Field(

@@ -14,8 +14,8 @@ def config(tmp_path: Path) -> DynamicsConfig:
         trusted_directories=[],
         project_root=str(tmp_path),
         uncertainty_threshold=5.0,
-        md_steps=100,
-        temperature=300.0,
+
+
     )
 
 
