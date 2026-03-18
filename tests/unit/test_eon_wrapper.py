@@ -148,17 +148,20 @@ def test_run_kmc_invalid_work_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
 
 
 def test_run_kmc_subprocess_fail(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    import os
     import shutil
-    bash_bin = shutil.which("bash") or "/usr/bin/bash"
-    bash_dir = str(Path(bash_bin).parent.resolve())
-    st = Path(bash_bin).stat()
-    monkeypatch.setattr(os, "getuid", lambda: st.st_uid)
+
+    mock_bin_dir = tmp_path / "bin"
+    mock_bin_dir.mkdir(parents=True, exist_ok=True)
+    mock_eon = mock_bin_dir / "eonclient"
+    mock_eon.touch()
+    mock_eon.chmod(0o755)
+
+    monkeypatch.setattr(shutil, "which", lambda *args, **kwargs: str(mock_eon.resolve()))
 
     config = DynamicsConfig.model_construct(
         project_root=str(tmp_path),
-        eon_binary="bash",
-        trusted_directories=[bash_dir],
+        eon_binary="eonclient",
+        trusted_directories=[str(mock_bin_dir)],
         eon_job="dummy",
         eon_min_mode_method="dummy",
     )
@@ -168,10 +171,15 @@ def test_run_kmc_subprocess_fail(monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     class MockProc:
         returncode = 1
 
-        def communicate(self, *args, **kwargs):
+        def __init__(self, cmd: list[str]) -> None:
+            if not cmd or "eonclient" not in cmd[0]:
+                msg = "Invalid EON command"
+                raise ValueError(msg)
+
+        def communicate(self, *args: Any, **kwargs: Any) -> tuple[bytes, bytes]:
             return b"out", b"err"
 
-        def kill(self):
+        def kill(self) -> None:
             return None
 
         def poll(self) -> int | None:
@@ -185,7 +193,7 @@ def test_run_kmc_subprocess_fail(monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 
     import subprocess
 
-    monkeypatch.setattr(subprocess, "Popen", lambda *args, **kwargs: MockProc())
+    monkeypatch.setattr(subprocess, "Popen", lambda cmd, **kwargs: MockProc(cmd))
 
     work_dir = tmp_path / "work"
     work_dir.mkdir(parents=True, exist_ok=True)
@@ -195,17 +203,20 @@ def test_run_kmc_subprocess_fail(monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 
 
 def test_run_kmc_subprocess_halted(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    import os
     import shutil
-    bash_bin = shutil.which("bash") or "/usr/bin/bash"
-    bash_dir = str(Path(bash_bin).parent.resolve())
-    st = Path(bash_bin).stat()
-    monkeypatch.setattr(os, "getuid", lambda: st.st_uid)
+
+    mock_bin_dir = tmp_path / "bin"
+    mock_bin_dir.mkdir(parents=True, exist_ok=True)
+    mock_eon = mock_bin_dir / "eonclient"
+    mock_eon.touch()
+    mock_eon.chmod(0o755)
+
+    monkeypatch.setattr(shutil, "which", lambda *args, **kwargs: str(mock_eon.resolve()))
 
     config = DynamicsConfig.model_construct(
         project_root=str(tmp_path),
-        eon_binary="bash",
-        trusted_directories=[bash_dir],
+        eon_binary="eonclient",
+        trusted_directories=[str(mock_bin_dir)],
         eon_job="dummy",
         eon_min_mode_method="dummy",
     )
@@ -215,10 +226,15 @@ def test_run_kmc_subprocess_halted(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
     class MockProc:
         returncode = 100
 
-        def communicate(self, *args, **kwargs):
+        def __init__(self, cmd: list[str]) -> None:
+            if not cmd or "eonclient" not in cmd[0]:
+                msg = "Invalid EON command"
+                raise ValueError(msg)
+
+        def communicate(self, *args: Any, **kwargs: Any) -> tuple[bytes, bytes]:
             return b"out", b"err"
 
-        def kill(self):
+        def kill(self) -> None:
             return None
 
         def poll(self) -> int | None:
@@ -232,7 +248,7 @@ def test_run_kmc_subprocess_halted(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
 
     import subprocess
 
-    monkeypatch.setattr(subprocess, "Popen", lambda *args, **kwargs: MockProc())
+    monkeypatch.setattr(subprocess, "Popen", lambda cmd, **kwargs: MockProc(cmd))
 
     work_dir = tmp_path / "work"
     work_dir.mkdir(parents=True, exist_ok=True)
@@ -333,18 +349,21 @@ def test_build_safe_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
 
 def test_run_exploration_eon(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    import os
     import shutil
     import subprocess
-    bash_bin = shutil.which("bash") or "/usr/bin/bash"
-    bash_dir = str(Path(bash_bin).parent.resolve())
-    st = Path(bash_bin).stat()
-    monkeypatch.setattr(os, "getuid", lambda: st.st_uid)
+
+    mock_bin_dir = tmp_path / "bin"
+    mock_bin_dir.mkdir(parents=True, exist_ok=True)
+    mock_eon = mock_bin_dir / "eonclient"
+    mock_eon.touch()
+    mock_eon.chmod(0o755)
+
+    monkeypatch.setattr(shutil, "which", lambda *args, **kwargs: str(mock_eon.resolve()))
 
     config = DynamicsConfig.model_construct(
         project_root=str(tmp_path),
-        eon_binary="bash",
-        trusted_directories=[bash_dir],
+        eon_binary="eonclient",
+        trusted_directories=[str(mock_bin_dir)],
         eon_job="dummy",
         eon_min_mode_method="dummy",
     )
@@ -354,10 +373,15 @@ def test_run_exploration_eon(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) ->
     class MockProc:
         returncode = 0
 
-        def communicate(self, *args, **kwargs):
+        def __init__(self, cmd: list[str]) -> None:
+            if not cmd or "eonclient" not in cmd[0]:
+                msg = "Invalid EON command"
+                raise ValueError(msg)
+
+        def communicate(self, *args: Any, **kwargs: Any) -> tuple[bytes, bytes]:
             return b"out", b"err"
 
-        def kill(self):
+        def kill(self) -> None:
             return None
 
         def poll(self) -> int | None:
@@ -369,7 +393,7 @@ def test_run_exploration_eon(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) ->
         def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
             return None
 
-    monkeypatch.setattr(subprocess, "Popen", lambda *args, **kwargs: MockProc())
+    monkeypatch.setattr(subprocess, "Popen", lambda cmd, **kwargs: MockProc(cmd))
 
     work_dir = tmp_path / "work"
     res = engine.run_exploration(None, work_dir)
@@ -377,46 +401,55 @@ def test_run_exploration_eon(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) ->
 
 
 def test_run_kmc_untrusted_binary(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    import os
     import shutil
-    bash_bin = shutil.which("bash") or "/usr/bin/bash"
 
-    # We must patch os.getuid() to match the file owner so the test makes it to the trusted directory check
-    st = Path(bash_bin).stat()
-    monkeypatch.setattr(os, "getuid", lambda: st.st_uid)
+    mock_bin_dir = tmp_path / "bin"
+    mock_bin_dir.mkdir(parents=True, exist_ok=True)
+    mock_eon = mock_bin_dir / "eonclient"
+    mock_eon.touch()
+    mock_eon.chmod(0o755)
+
+    monkeypatch.setattr(shutil, "which", lambda *args, **kwargs: str(mock_eon.resolve()))
+
+    # Needs to exist to resolve it successfully
+    other_trusted = tmp_path / "other_trusted"
+    other_trusted.mkdir(parents=True, exist_ok=True)
 
     config = DynamicsConfig.model_construct(
         project_root=str(tmp_path),
-        eon_binary="bash",
-        trusted_directories=["/tmp/nonexistent/trusted"],
+        eon_binary="eonclient",
+        trusted_directories=[str(other_trusted)],
         eon_job="dummy",
         eon_min_mode_method="dummy",
     )
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = EONWrapper(config, sys_config)
 
-    # Note: validation will find bash via which, but its directory won't be in the trusted list
+    # Note: validation will find eonclient via which, but its directory won't be in the trusted list
 
     work_dir = tmp_path / "work"
     work_dir.mkdir(parents=True, exist_ok=True)
 
-    with pytest.raises(ValueError, match="Resolved binary must reside in a trusted directory:"):
+    with pytest.raises(ValueError, match="EON binary is not within trusted directories."):
         engine.run_kmc(None, work_dir)
 
 
 def test_run_kmc_timeout(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    import os
     import shutil
     import subprocess
-    bash_bin = shutil.which("bash") or "/usr/bin/bash"
-    bash_dir = str(Path(bash_bin).parent.resolve())
-    st = Path(bash_bin).stat()
-    monkeypatch.setattr(os, "getuid", lambda: st.st_uid)
+
+    mock_bin_dir = tmp_path / "bin"
+    mock_bin_dir.mkdir(parents=True, exist_ok=True)
+    mock_eon = mock_bin_dir / "eonclient"
+    mock_eon.touch()
+    mock_eon.chmod(0o755)
+
+    monkeypatch.setattr(shutil, "which", lambda *args, **kwargs: str(mock_eon.resolve()))
 
     config = DynamicsConfig.model_construct(
         project_root=str(tmp_path),
-        eon_binary="bash",
-        trusted_directories=[bash_dir],
+        eon_binary="eonclient",
+        trusted_directories=[str(mock_bin_dir)],
         eon_job="dummy",
         eon_min_mode_method="dummy",
     )
@@ -426,8 +459,11 @@ def test_run_kmc_timeout(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Non
     class MockProc:
         returncode = 0
 
-        def __init__(self) -> None:
+        def __init__(self, cmd: list[str]) -> None:
             self.count = 0
+            if not cmd or "eonclient" not in cmd[0]:
+                msg = "Invalid EON command"
+                raise ValueError(msg)
 
         def poll(self) -> int | None:
             return self.returncode
@@ -447,7 +483,7 @@ def test_run_kmc_timeout(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Non
         def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
             return None
 
-    monkeypatch.setattr(subprocess, "Popen", lambda *args, **kwargs: MockProc())
+    monkeypatch.setattr(subprocess, "Popen", lambda cmd, **kwargs: MockProc(cmd))
 
     work_dir = tmp_path / "work"
     work_dir.mkdir(parents=True, exist_ok=True)

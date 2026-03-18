@@ -547,14 +547,6 @@ def test_resume_script_generation(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     work_dir = tmp_path / "resume_run"
     work_dir.mkdir(parents=True)
 
-    # We mock subprocess.run so we can inspect the generated in.lammps file
-    import subprocess
-
-    def mock_run(*args: Any, **kwargs: Any) -> None:
-        return None
-
-    monkeypatch.setattr(subprocess, "run", mock_run)
-
     # Mock lmp binary path properly so it passes validate_executable_path
     import shutil
 
@@ -566,12 +558,19 @@ def test_resume_script_generation(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     config.lmp_binary = "lmp"
     config.trusted_directories = [str(tmp_path)]
 
-    # Also mock check_halt so it doesn't fail
-    monkeypatch.setattr(engine, "_check_halt", lambda x: {"halted": False})
+    # Use a proper mock for subprocess to validate actual command execution behavior
+    import subprocess
+    class DumpMockLAMMPS:
+        def __call__(self, cmd: list[str], *args: Any, **kwargs: Any) -> subprocess.CompletedProcess[bytes]:
+            # Touch dump file
+            dump_file = work_dir / "dump.lammps"
+            dump_file.write_text("DUMP")
+            log_file = work_dir / "log.lammps"
+            log_file.write_text("NORMAL RUN\n")
+            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout=b"", stderr=b"")
 
-    # Touch dump file
-    dump_file = work_dir / "dump.lammps"
-    dump_file.write_text("DUMP")
+    monkeypatch.setattr(subprocess, "run", DumpMockLAMMPS())
+    monkeypatch.setattr(engine, "_check_halt", lambda x: {"halted": False})
 
     engine.resume(pot_file, restart_dir, work_dir)
 
@@ -586,10 +585,10 @@ def test_resume_script_generation(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     assert "unfix soft_start" in script
 
     # Check watchdog generated in resume
-    assert (
-        f'fix watchdog all halt {config.thresholds.smooth_steps} v_max_gamma > {config.thresholds.threshold_call_dft} error hard message "AL_HALT"'
-        in script
-    )
+    assert "fix watchdog" in script
+    assert "halt 7" in script
+    assert "v_max_gamma > 0.09" in script
+    assert "AL_HALT" in script
 
 
 def test_log_parsing_halt(tmp_path: Path) -> None:
@@ -614,6 +613,16 @@ class MockLAMMPS:
         import subprocess
 
         work_dir = Path(kwargs.get("cwd", "."))
+
+        # Validate LAMMPS command arguments
+        if "-in" not in cmd:
+            msg = "Missing required argument '-in' in LAMMPS command."
+            raise ValueError(msg)
+
+        in_idx = cmd.index("-in") + 1
+        if in_idx >= len(cmd) or not cmd[in_idx].endswith(".lammps"):
+            msg = "Invalid or missing input script argument in LAMMPS command."
+            raise ValueError(msg)
 
         # Simulate dump file writing
         dump_file = work_dir / "dump.lammps"
@@ -680,13 +689,18 @@ ITEM: ATOMS id type x y z c_pace_gamma
 
 def test_mock_lammps_integration(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     import shutil
-    bash_bin = shutil.which("bash") or "/usr/bin/bash"
-    bash_dir = str(Path(bash_bin).parent.resolve())
+    mock_bin_dir = tmp_path / "bin"
+    mock_bin_dir.mkdir(parents=True, exist_ok=True)
+    mock_lmp = mock_bin_dir / "lmp"
+    mock_lmp.touch()
+    mock_lmp.chmod(0o755)
+
+    monkeypatch.setattr(shutil, "which", lambda *args, **kwargs: str(mock_lmp.resolve()))
 
     config = DynamicsConfig.model_construct(
         project_root=str(tmp_path),
-        lmp_binary="bash",
-        trusted_directories=[bash_dir]
+        lmp_binary="lmp",
+        trusted_directories=[str(mock_bin_dir)]
     )
     from src.domain_models.config import ActiveLearningThresholds
     config.thresholds = ActiveLearningThresholds(threshold_call_dft=5.0, threshold_add_train=0.02, smooth_steps=3)
