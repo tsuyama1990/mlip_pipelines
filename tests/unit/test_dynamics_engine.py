@@ -24,27 +24,10 @@ def test_run_exploration_watchdog(monkeypatch: pytest.MonkeyPatch, tmp_path: Pat
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
-    def mock_run(*args: Any, **kwargs: Any) -> None:
-        raise subprocess.CalledProcessError(1, ["lmp"])
-
-    monkeypatch.setattr(subprocess, "run", mock_run)
-
-    import shutil
-
-    lmp_path = tmp_path / "lmp"
-    lmp_path.touch()
-    lmp_path.chmod(0o755)
-
-    monkeypatch.setattr(shutil, "which", lambda *args, **kwargs: str(lmp_path.resolve()))
-    config.lmp_binary = "lmp"
-    config.trusted_directories = [str(tmp_path)]
-    pot_file = tmp_path / "dummy.yace"
-    pot_file.touch()
-
-    dump_file = tmp_path / "md_run" / "dump.lammps"
-    dump_file.parent.mkdir(parents=True)
-    # Write a real dump file format that will trigger high gamma evaluation
-    dump_content = """ITEM: TIMESTEP
+    dummy_lmp = tmp_path / "lmp"
+    dummy_lmp_script = """#!/bin/bash
+    cat << 'EOF' > dump.lammps
+ITEM: TIMESTEP
 0
 ITEM: NUMBER OF ATOMS
 1
@@ -54,14 +37,28 @@ ITEM: BOX BOUNDS pp pp pp
 0.0 10.0
 ITEM: ATOMS id type x y z c_pace_gamma
 1 1 0.0 0.0 0.0 6.0
-"""
-    dump_file.write_text(dump_content)
+EOF
+    cat << 'EOF' > log.lammps
+AL_HALT
+EOF
+    exit 1
+    """
+    dummy_lmp.write_text(dummy_lmp_script)
+    dummy_lmp.chmod(0o755)
 
-    # Mock log.lammps AL_HALT
-    log_file = tmp_path / "md_run" / "log.lammps"
-    log_file.write_text("AL_HALT")
+    import os
+    monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ.get('PATH', '')}")
+    config.lmp_binary = "lmp"
+    config.trusted_directories = [str(tmp_path)]
+    config.project_root = str(tmp_path)
 
-    result = engine.run_exploration(potential=pot_file, work_dir=tmp_path / "md_run")
+    pot_file = tmp_path / "dummy.yace"
+    pot_file.touch()
+
+    work_dir = tmp_path / "md_run"
+    work_dir.mkdir(parents=True)
+
+    result = engine.run_exploration(potential=pot_file, work_dir=work_dir)
     assert result["halted"] is True
 
 
@@ -78,18 +75,13 @@ def test_resume(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     restart_file = restart_dir / "restart.lammps"
     restart_file.touch()
 
-    restart_dir = tmp_path / "md_run"
-    restart_dir.mkdir(parents=True, exist_ok=True)
     work_dir = tmp_path / "resume_run"
+    work_dir.mkdir(parents=True, exist_ok=True)
 
-    def mock_run(*args: Any, **kwargs: Any) -> None:
-        return None
-
-    monkeypatch.setattr(subprocess, "run", mock_run)
-
-    dump_file = tmp_path / "resume_run" / "dump.lammps"
-    dump_file.parent.mkdir(parents=True, exist_ok=True)
-    dump_content = """ITEM: TIMESTEP
+    dummy_lmp = tmp_path / "lmp"
+    dummy_lmp_script = """#!/bin/bash
+    cat << 'EOF' > dump.lammps
+ITEM: TIMESTEP
 0
 ITEM: NUMBER OF ATOMS
 1
@@ -99,12 +91,20 @@ ITEM: BOX BOUNDS pp pp pp
 0.0 10.0
 ITEM: ATOMS id type x y z c_pace_gamma
 1 1 0.0 0.0 0.0 1.0
-"""
-    dump_file.write_text(dump_content)
+EOF
+    cat << 'EOF' > log.lammps
+NORMAL_RUN
+EOF
+    exit 0
+    """
+    dummy_lmp.write_text(dummy_lmp_script)
+    dummy_lmp.chmod(0o755)
 
-    # Mock AL_HALT log
-    log_file = work_dir / "log.lammps"
-    log_file.write_text("AL_HALT")
+    import os
+    monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ.get('PATH', '')}")
+    config.lmp_binary = "lmp"
+    config.trusted_directories = [str(tmp_path)]
+    config.project_root = str(tmp_path)
 
     res = engine.resume(pot_file, restart_dir, work_dir)
     assert res["halted"] is False
@@ -190,13 +190,13 @@ def test_run_exploration_cold_start(monkeypatch: pytest.MonkeyPatch, tmp_path: P
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
-    def mock_run(*args: Any, **kwargs: Any) -> None:
-        return None
+    work_dir = tmp_path / "md_run"
+    work_dir.mkdir(parents=True)
 
-    monkeypatch.setattr(subprocess, "run", mock_run)
-    dump_file = tmp_path / "md_run" / "dump.lammps"
-    dump_file.parent.mkdir(parents=True)
-    dump_content = """ITEM: TIMESTEP
+    dummy_lmp = tmp_path / "lmp"
+    dummy_lmp_script = """#!/bin/bash
+    cat << 'EOF' > dump.lammps
+ITEM: TIMESTEP
 0
 ITEM: NUMBER OF ATOMS
 1
@@ -206,10 +206,22 @@ ITEM: BOX BOUNDS pp pp pp
 0.0 10.0
 ITEM: ATOMS id type x y z c_pace_gamma
 1 1 0.0 0.0 0.0 1.0
-"""
-    dump_file.write_text(dump_content)
+EOF
+    cat << 'EOF' > log.lammps
+NORMAL_RUN
+EOF
+    exit 0
+    """
+    dummy_lmp.write_text(dummy_lmp_script)
+    dummy_lmp.chmod(0o755)
 
-    result = engine.run_exploration(potential=None, work_dir=tmp_path / "md_run")
+    import os
+    monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ.get('PATH', '')}")
+    config.lmp_binary = "lmp"
+    config.trusted_directories = [str(tmp_path)]
+    config.project_root = str(tmp_path)
+
+    result = engine.run_exploration(potential=None, work_dir=work_dir)
     assert result["halted"] is False
 
 
@@ -403,30 +415,13 @@ def test_resume_subprocess_calledprocesserror(
     restart_file = restart_dir / "restart.lammps"
     restart_file.touch()
 
-    restart_dir = tmp_path / "md_run"
-    restart_dir.mkdir(parents=True, exist_ok=True)
     work_dir = tmp_path / "resume_run"
     work_dir.mkdir(parents=True)
 
-    def mock_run(*args: Any, **kwargs: Any) -> None:
-        raise subprocess.CalledProcessError(1, ["lmp"])
-
-    monkeypatch.setattr(subprocess, "run", mock_run)
-
-    import shutil
-
-    lmp_path = tmp_path / "lmp"
-    lmp_path.touch()
-    lmp_path.chmod(0o755)
-
-    monkeypatch.setattr(shutil, "which", lambda *args, **kwargs: str(lmp_path.resolve()))
-    config.lmp_binary = "lmp"
-    config.trusted_directories = [str(tmp_path)]
-
-    # Mock writing a dump file so _check_halt doesn't fail on missing dump
-    dump_file = tmp_path / "resume_run" / "dump.lammps"
-    dump_file.parent.mkdir(parents=True, exist_ok=True)
-    dump_content = """ITEM: TIMESTEP
+    dummy_lmp = tmp_path / "lmp"
+    dummy_lmp_script = """#!/bin/bash
+    cat << 'EOF' > dump.lammps
+ITEM: TIMESTEP
 0
 ITEM: NUMBER OF ATOMS
 1
@@ -436,11 +431,20 @@ ITEM: BOX BOUNDS pp pp pp
 0.0 10.0
 ITEM: ATOMS id type x y z c_pace_gamma
 1 1 0.0 0.0 0.0 1.0
-"""
-    dump_file.write_text(dump_content)
+EOF
+    cat << 'EOF' > log.lammps
+AL_HALT
+EOF
+    exit 1
+    """
+    dummy_lmp.write_text(dummy_lmp_script)
+    dummy_lmp.chmod(0o755)
 
-    log_file = work_dir / "log.lammps"
-    log_file.write_text("AL_HALT")
+    import os
+    monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ.get('PATH', '')}")
+    config.lmp_binary = "lmp"
+    config.trusted_directories = [str(tmp_path)]
+    config.project_root = str(tmp_path)
 
     res = engine.resume(pot_file, restart_dir, work_dir)
     assert res["halted"] is False
@@ -547,31 +551,27 @@ def test_resume_script_generation(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     work_dir = tmp_path / "resume_run"
     work_dir.mkdir(parents=True)
 
-    # We mock subprocess.run so we can inspect the generated in.lammps file
-    import subprocess
+    dummy_lmp = tmp_path / "lmp"
+    dummy_lmp_script = """#!/bin/bash
+    cat << 'EOF' > dump.lammps
+DUMP
+EOF
+    cat << 'EOF' > log.lammps
+NORMAL_RUN
+EOF
+    exit 0
+    """
+    dummy_lmp.write_text(dummy_lmp_script)
+    dummy_lmp.chmod(0o755)
 
-    def mock_run(*args: Any, **kwargs: Any) -> None:
-        return None
-
-    monkeypatch.setattr(subprocess, "run", mock_run)
-
-    # Mock lmp binary path properly so it passes validate_executable_path
-    import shutil
-
-    lmp_path = tmp_path / "lmp"
-    lmp_path.touch()
-    lmp_path.chmod(0o755)
-
-    monkeypatch.setattr(shutil, "which", lambda *args, **kwargs: str(lmp_path.resolve()))
+    import os
+    monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ.get('PATH', '')}")
     config.lmp_binary = "lmp"
     config.trusted_directories = [str(tmp_path)]
+    config.project_root = str(tmp_path)
 
     # Also mock check_halt so it doesn't fail
     monkeypatch.setattr(engine, "_check_halt", lambda x: {"halted": False})
-
-    # Touch dump file
-    dump_file = work_dir / "dump.lammps"
-    dump_file.write_text("DUMP")
 
     engine.resume(pot_file, restart_dir, work_dir)
 

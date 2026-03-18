@@ -19,21 +19,11 @@ def test_uat_05_01_otf_halting(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) 
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
-    # Mock subprocess to prevent actual LAMMPS execution
-    def mock_run(*args: Any, **kwargs: Any) -> None:
-        pass
-
-    monkeypatch.setattr(subprocess, "run", mock_run)
-
-    # Mock dummy potential
-    pot_file = tmp_path / "dummy.yace"
-    pot_file.touch()
-
-    # Setup working directory and dummy dump file
-    work_dir = tmp_path / "md_run"
-    work_dir.mkdir(parents=True)
-    dump_file = work_dir / "dump.lammps"
-    dump_content = """ITEM: TIMESTEP
+    # To test actual LAMMPS execution behavior without running real LAMMPS, we will provide a dummy bash script in PATH
+    dummy_lmp = tmp_path / "lmp"
+    dummy_lmp_script = """#!/bin/bash
+    cat << 'EOF' > dump.lammps
+ITEM: TIMESTEP
 0
 ITEM: NUMBER OF ATOMS
 1
@@ -43,11 +33,33 @@ ITEM: BOX BOUNDS pp pp pp
 0.0 10.0
 ITEM: ATOMS id type x y z c_pace_gamma
 1 1 0.0 0.0 0.0 6.0
-"""
-    dump_file.write_text(dump_content)
+EOF
+    cat << 'EOF' > log.lammps
+AL_HALT
+EOF
+    exit 1
+    """
+    dummy_lmp.write_text(dummy_lmp_script)
+    dummy_lmp.chmod(0o755)
+
+    import os
+    monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ.get('PATH', '')}")
+    config.lmp_binary = "lmp"
+    config.trusted_directories = [str(tmp_path)]
+    config.project_root = str(tmp_path)
+
+    # Mock dummy potential
+    pot_file = tmp_path / "dummy.yace"
+    pot_file.touch()
+
+    # Setup working directory
+    work_dir = tmp_path / "md_run"
+    work_dir.mkdir(parents=True)
 
     # Run exploration
     res = engine.run_exploration(potential=pot_file, work_dir=work_dir)
+
+    dump_file = work_dir / "dump.lammps"
 
     # Verify the generated input script contains the watchdog instruction
     in_file = work_dir / "in.lammps"
@@ -73,19 +85,11 @@ def test_uat_05_02_hybrid_potential_safety(monkeypatch: pytest.MonkeyPatch, tmp_
     sys_config = SystemConfig(elements=["Fe", "Pt"], baseline_potential="zbl")
     engine = MDInterface(config, sys_config)
 
-    # Mock subprocess
-    def mock_run(*args: Any, **kwargs: Any) -> None:
-        pass
-
-    monkeypatch.setattr(subprocess, "run", mock_run)
-
-    pot_file = tmp_path / "dummy.yace"
-    pot_file.touch()
-
-    work_dir = tmp_path / "md_run_2"
-    work_dir.mkdir(parents=True)
-    dump_file = work_dir / "dump.lammps"
-    dump_content = """ITEM: TIMESTEP
+    # Mock subprocess securely using dummy bash script
+    dummy_lmp = tmp_path / "lmp"
+    dummy_lmp_script = """#!/bin/bash
+    cat << 'EOF' > dump.lammps
+ITEM: TIMESTEP
 0
 ITEM: NUMBER OF ATOMS
 1
@@ -95,8 +99,26 @@ ITEM: BOX BOUNDS pp pp pp
 0.0 10.0
 ITEM: ATOMS id type x y z c_pace_gamma
 1 1 0.0 0.0 0.0 1.0
-"""
-    dump_file.write_text(dump_content)
+EOF
+    cat << 'EOF' > log.lammps
+LAMMPS Normal Output
+EOF
+    exit 0
+    """
+    dummy_lmp.write_text(dummy_lmp_script)
+    dummy_lmp.chmod(0o755)
+
+    import os
+    monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ.get('PATH', '')}")
+    config.lmp_binary = "lmp"
+    config.trusted_directories = [str(tmp_path)]
+    config.project_root = str(tmp_path)
+
+    pot_file = tmp_path / "dummy.yace"
+    pot_file.touch()
+
+    work_dir = tmp_path / "md_run_2"
+    work_dir.mkdir(parents=True)
 
     engine.run_exploration(potential=pot_file, work_dir=work_dir)
 
