@@ -299,6 +299,7 @@ class Orchestrator:
         self, src_pot: Path, pot_dir: Path, iteration: int, tmp_work_dir: Path
     ) -> Path:
         from src.domain_models.config import _secure_resolve_and_validate_dir
+
         _secure_resolve_and_validate_dir(str(src_pot.parent), check_exists=False)
         _secure_resolve_and_validate_dir(str(pot_dir), check_exists=False)
         _secure_resolve_and_validate_dir(str(tmp_work_dir), check_exists=False)
@@ -387,6 +388,7 @@ class Orchestrator:
 
     def _validate_tmp_directories(self, tmp_work_dir: Path) -> None:
         from src.domain_models.config import _secure_resolve_and_validate_dir
+
         _secure_resolve_and_validate_dir(str(tmp_work_dir), check_exists=False)
 
         expected_dirs = ["training"]
@@ -397,6 +399,7 @@ class Orchestrator:
 
     def _swap_directories(self, tmp_work_dir: Path, work_dir: Path) -> None:
         from src.domain_models.config import _secure_resolve_and_validate_dir
+
         _secure_resolve_and_validate_dir(str(tmp_work_dir), check_exists=False)
         _secure_resolve_and_validate_dir(str(work_dir), check_exists=False)
         import shutil
@@ -499,8 +502,6 @@ class Orchestrator:
         else:
             return None
 
-
-
     def _cleanup_artifacts(self, paths: list[Path]) -> None:
         """Daemon to aggressively clean up huge files to prevent HPC quota breaches."""
         for path in paths:
@@ -515,7 +516,6 @@ class Orchestrator:
     def run_cycle(self) -> str | None:
         """Runs the 4-phase Hierarchical Distillation Workflow infinitely or bounded."""
         import tempfile
-
 
         max_iters = getattr(self.config.loop_strategy, "max_iterations", 9999999)
         if max_iters is None:
@@ -589,12 +589,14 @@ class Orchestrator:
                             halt_dict = {
                                 "halt_type": "uncertainty",
                                 "reason": str(halt_exc),
-                                "dump_file": str(tmp_work_dir / "md_run" / "dump.lammps")
+                                "dump_file": str(tmp_work_dir / "md_run" / "dump.lammps"),
                             }
 
                             # 2. Extract Intelligent Cluster & DFT
                             candidate_generator = self._select_candidates(halt_dict)
-                            new_pot_path = self._run_dft_and_train(candidate_generator, tmp_work_dir, current_pot)
+                            new_pot_path = self._run_dft_and_train(
+                                candidate_generator, tmp_work_dir, current_pot
+                            )
 
                             if isinstance(new_pot_path, str):
                                 return new_pot_path
@@ -611,13 +613,20 @@ class Orchestrator:
                             current_state = "PHASE3_MD_RESUME"
 
                             # Cleanup Artifacts
-                            heavy_files = [tmp_work_dir / f for f in ["wfc.dat", "dump.lammps", "wavefunctions.wfc"]]
+                            heavy_files = [
+                                tmp_work_dir / f
+                                for f in ["wfc.dat", "dump.lammps", "wavefunctions.wfc"]
+                            ]
                             self._cleanup_artifacts(heavy_files)
 
                 if current_state == "PHASE3_MD_RESUME":
                     logging.info("Resuming MD Exploration")
                     # Smoothly resume the simulation
-                    pot_to_resume = Path(final_dest_str) if 'final_dest_str' in locals() else self.get_latest_potential()
+                    pot_to_resume = (
+                        Path(final_dest_str)
+                        if "final_dest_str" in locals()
+                        else self.get_latest_potential()
+                    )
                     if pot_to_resume:
                         self._resume_md_engine(pot_to_resume, work_dir)
 

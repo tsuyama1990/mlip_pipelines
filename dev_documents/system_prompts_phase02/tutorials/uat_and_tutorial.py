@@ -54,7 +54,10 @@ def __() -> tuple[Any, ...]:
         trainer_config = TrainerConfig(max_epochs=2, trusted_directories=[])
         val_config = ValidatorConfig()
 
+        from src.domain_models.config import DistillationConfig, LoopStrategyConfig
         project_config = ProjectConfig(
+            distillation_config=DistillationConfig(temp_dir='/tmp', output_dir='/tmp', model_storage_path='/tmp'),
+            loop_strategy=LoopStrategyConfig(replay_buffer_size=100, checkpoint_interval=10, max_retries=3, timeout_seconds=3600),
             project_root=Path.cwd(),
             system=sys_config,
             dynamics=dyn_config,

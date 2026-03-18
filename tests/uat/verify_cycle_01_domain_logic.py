@@ -43,7 +43,21 @@ def test_uat_c01_03_legacy_config():
         "shutil.which", lambda x: "/usr/bin/lmp" if x == "lmp" else "/usr/bin/eonclient"
     ):
         with unittest.mock.patch("os.access", return_value=True):
+            from src.domain_models.config import (
+                DistillationConfig,
+                LoopStrategyConfig,
+            )
+
             config = ProjectConfig(
+                distillation_config=DistillationConfig(
+                    temp_dir="/tmp", output_dir="/tmp", model_storage_path="/tmp"
+                ),
+                loop_strategy=LoopStrategyConfig(
+                    replay_buffer_size=100,
+                    checkpoint_interval=10,
+                    max_retries=3,
+                    timeout_seconds=3600,
+                ),
                 project_root=tmp_dir,
                 system=SystemConfig(elements=["Fe", "O"]),
                 dynamics=DynamicsConfig(project_root=str(tmp_dir), trusted_directories=[]),
@@ -62,14 +76,23 @@ def test_uat_c01_04_distillation_overrides():
     from src.domain_models.config import DistillationConfig
 
     config = DistillationConfig(
-        mace_model_path="mace-mp-0-large", sampling_structures_per_system=5000
+        temp_dir="/tmp/mace_distill",
+        output_dir="/tmp/mace_out",
+        model_storage_path="/tmp/mace_cache",
+        mace_model_path="mace-mp-0-large",
+        sampling_structures_per_system=5000,
     )
 
     assert config.mace_model_path == "mace-mp-0-large"
     assert config.sampling_structures_per_system == 5000
 
     with pytest.raises(ValidationError) as exc_info:
-        DistillationConfig(sampling_structures_per_system=-100)
+        DistillationConfig(
+            temp_dir="/tmp",
+            output_dir="/tmp",
+            model_storage_path="/tmp",
+            sampling_structures_per_system=-100,
+        )
     assert "must be an integer strictly greater than zero" in str(exc_info.value)
 
 
