@@ -147,6 +147,12 @@ def test_run_kmc_invalid_work_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
 def test_run_kmc_subprocess_fail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     dummy_bin_dir = tmp_path / "bin"
     dummy_bin_dir.mkdir(parents=True, exist_ok=True)
+    dummy_eon = dummy_bin_dir / "eonclient"
+    dummy_eon.touch()
+    dummy_eon.chmod(0o755)
+
+    import os
+    monkeypatch.setenv("PATH", f"{dummy_bin_dir}:{os.environ.get('PATH', '')}")
 
     config = DynamicsConfig.model_construct(
         project_root=str(tmp_path),
@@ -157,8 +163,6 @@ def test_run_kmc_subprocess_fail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     )
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = EONWrapper(config, sys_config)
-
-    monkeypatch.setattr("src.dynamics.security_utils.validate_executable_path", lambda *args, **kwargs: dummy_bin_dir / "eonclient")
 
     class MockProc:
         returncode = 1
@@ -191,6 +195,12 @@ def test_run_kmc_subprocess_fail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 def test_run_kmc_subprocess_halted(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     dummy_bin_dir = tmp_path / "bin"
     dummy_bin_dir.mkdir(parents=True, exist_ok=True)
+    dummy_eon = dummy_bin_dir / "eonclient"
+    dummy_eon.touch()
+    dummy_eon.chmod(0o755)
+
+    import os
+    monkeypatch.setenv("PATH", f"{dummy_bin_dir}:{os.environ.get('PATH', '')}")
 
     config = DynamicsConfig.model_construct(
         project_root=str(tmp_path),
@@ -201,8 +211,6 @@ def test_run_kmc_subprocess_halted(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     )
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = EONWrapper(config, sys_config)
-
-    monkeypatch.setattr("src.dynamics.security_utils.validate_executable_path", lambda *args, **kwargs: dummy_bin_dir / "eonclient")
 
     class MockProc:
         returncode = 100
@@ -273,6 +281,12 @@ def test_validate_work_dir_outside_root(tmp_path: Path) -> None:
 def test_get_validated_eon_bin_not_executable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     dummy_bin_dir = tmp_path / "bin"
     dummy_bin_dir.mkdir(parents=True, exist_ok=True)
+    dummy_eon = dummy_bin_dir / "eonclient"
+    dummy_eon.touch()
+    dummy_eon.chmod(0o644)  # Not executable
+
+    import os
+    monkeypatch.setenv("PATH", f"{dummy_bin_dir}:{os.environ.get('PATH', '')}")
 
     config = DynamicsConfig.model_construct(
         project_root=str(tmp_path),
@@ -284,7 +298,9 @@ def test_get_validated_eon_bin_not_executable(tmp_path: Path, monkeypatch: pytes
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = EONWrapper(config, sys_config)
 
-    monkeypatch.setattr("src.dynamics.security_utils.validate_executable_path", lambda *args, **kwargs: (_ for _ in ()).throw(ValueError("is not an executable file")))
+    # Bypass internal shutil.which in security_utils to allow resolution but fail execution permissions
+    import shutil
+    monkeypatch.setattr(shutil, "which", lambda *args, **kwargs: str(dummy_eon))
 
     with pytest.raises(ValueError, match="is not an executable file"):
         engine._get_validated_eon_bin()
