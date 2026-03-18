@@ -239,6 +239,14 @@ class PacemakerWrapper(AbstractTrainer, BinaryResolverMixin):
             msg = "Invalid regularization format"
             raise ValueError(msg)
 
+        if any(char in self.config.baseline_potential for char in [';', '&', '|', '$', '`']):
+            msg = "Baseline potential format contains illegal shell characters"
+            raise ValueError(msg)
+
+        if any(char in self.config.regularization for char in [';', '&', '|', '$', '`']):
+            msg = "Regularization format contains illegal shell characters"
+            raise ValueError(msg)
+
         # Delta Learning explicitly enabled: scale down max_num_epochs if we have an initial_potential
         epochs = int(self.config.max_epochs)
         if initial_potential and initial_potential.exists():

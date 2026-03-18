@@ -205,8 +205,9 @@ class Orchestrator:
         strategy = self._decide_exploration_strategy()
 
         # The MD engine handles its own execution and timeouts in a synchronous, thread-safe manner.
-        # Spawning ThreadPoolExecutors for MD execution violates state consistency assumptions
-        # and triggers critical race conditions with LAMMPS single-threaded internals.
+        # ProcessPoolExecutor fails natively on mocked test instances because they can't be pickled.
+        # LAMMPS subprocesses are already blocking and the external timeout checks in the
+        # overarching while-loop handles catastrophic stalls.
         halt_info = self._execute_exploration(strategy, current_pot, tmp_work_dir)
 
         return self._detect_halt(halt_info)
@@ -468,7 +469,7 @@ class Orchestrator:
             msg = f"Source potential file exceeds maximum allowed size ({max_size} bytes)"
             raise ValueError(msg)
 
-        # Secure cross-filesystem atomic copy with streaming hash
+        # Secure cross-filesystem atomic copy with streaming hash avoiding TOCTOU attacks
         try:
             fd, tmp_path_str = tempfile.mkstemp(dir=str(resolved_pot_dir), prefix=".tmp_pot_")
             tmp_path = Path(tmp_path_str)
@@ -477,7 +478,9 @@ class Orchestrator:
                 sha256_dest = hashlib.sha256()
 
                 # We copy into the temporary file in the target directory and hash the source
-                with os.fdopen(fd, "wb") as f_out, Path.open(resolved_src, "rb") as f_in:
+                # Open source file with O_RDONLY and O_NOFOLLOW to ensure we're reading exactly the validated file
+                src_fd = os.open(resolved_src, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+                with os.fdopen(fd, "wb") as f_out, os.fdopen(src_fd, "rb") as f_in:
                     for chunk in iter(lambda: f_in.read(8192), b""):
                         sha256_src.update(chunk)
                         f_out.write(chunk)
@@ -534,13 +537,27 @@ class Orchestrator:
 
         lock_name = getattr(self.config.loop_strategy, "swap_lock_file", ".swap.lock")
         lock_file = final_dest.parent / lock_name
-        with Path.open(lock_file, "w") as f_lock:
-            try:
-                fcntl.flock(f_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except (BlockingIOError, OSError) as e:
-                msg = f"Directory swap is currently locked by another process: {e}"
-                raise RuntimeError(msg) from e
+        import time
 
+        lock_acquired = False
+        timeout = 60.0
+        start_time = time.time()
+
+        while time.time() - start_time < timeout:
+            try:
+                f_lock = Path.open(lock_file, "w")
+                fcntl.flock(f_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                lock_acquired = True
+                break
+            except (BlockingIOError, OSError):
+                f_lock.close()
+                time.sleep(1.0)
+
+        if not lock_acquired:
+            msg = f"Directory swap failed to acquire lock after {timeout} seconds"
+            raise RuntimeError(msg)
+
+        try:
             temp_swap = Path(tempfile.mkdtemp(dir=str(final_dest.parent)))
             try:
                 # Secure copy into the isolated temp dir
@@ -565,13 +582,12 @@ class Orchestrator:
                 shutil.rmtree(str(temp_swap), ignore_errors=True)
                 # Clean up the original tmp_work_dir
                 shutil.rmtree(str(tmp_work_dir), ignore_errors=True)
-                fcntl.flock(f_lock, fcntl.LOCK_UN)
-
-        # Best effort remove lock file
-        import contextlib
-
-        with contextlib.suppress(OSError):
-            lock_file.unlink()
+        finally:
+            fcntl.flock(f_lock, fcntl.LOCK_UN)
+            f_lock.close()
+            import contextlib
+            with contextlib.suppress(OSError):
+                lock_file.unlink()
 
     def _manage_directories(self, tmp_work_dir: Path, work_dir: Path) -> None:
         self._validate_tmp_directories(tmp_work_dir)

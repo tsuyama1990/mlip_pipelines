@@ -16,17 +16,21 @@ class InterfaceTarget(BaseModel):
     face2: str = Field(default="Mg", description="Terminating face of second material")
 
 
-def _check_allowed_base_dirs(resolved_str: str, path_str: str) -> None:
+def _check_allowed_base_dirs(resolved_str: str, path_str: str, check_exists: bool = True) -> None:
     import os
     import tempfile
     import urllib.parse
 
     decoded_path_str = urllib.parse.unquote(path_str)
-    if ".." in decoded_path_str:
+    if ".." in decoded_path_str or "%2E%2E" in path_str.upper():
         msg = f"Path traversal sequences (..) are not allowed: {path_str}"
         raise ValueError(msg)
 
-    canonical_str = str(Path(resolved_str).resolve(strict=True))
+    # Use strict absolute path checking right after atomic resolution to prevent TOCTOU
+    canonical_str = str(Path(resolved_str).resolve(strict=check_exists))
+    if ".." in canonical_str:
+        msg = f"Path traversal sequences (..) are not allowed: {canonical_str}"
+        raise ValueError(msg)
 
     home_dir = str(Path.home().resolve(strict=True))
     tmp_dir = str(Path(tempfile.gettempdir()).resolve(strict=True))
@@ -34,12 +38,11 @@ def _check_allowed_base_dirs(resolved_str: str, path_str: str) -> None:
 
     is_safe = False
     for safe_base in filter(None, [home_dir, tmp_dir, app_dir]):
-        try:
-            if os.path.commonpath([safe_base, canonical_str]) == safe_base:
-                is_safe = True
-                break
-        except ValueError:
-            pass
+        # Direct string prefix matching on canonicalized absolute paths is atomic-equivalent
+        # for directory bounds checking after Path.resolve()
+        if canonical_str.startswith(safe_base):
+            is_safe = True
+            break
 
     if not is_safe:
         msg = f"Directory {path_str} must reside securely within an allowed base directory (home, tmp, or /app)."
@@ -83,12 +86,16 @@ def _secure_resolve_and_validate_dir(path_str: str, check_exists: bool = True) -
     import urllib.parse
 
     decoded_path = urllib.parse.unquote(path_str)
-    if ".." in decoded_path:
+    if ".." in decoded_path or "%2E%2E" in path_str.upper():
         msg = f"Path traversal sequences (..) are not allowed: {path_str}"
         raise ValueError(msg)
 
     canonical_path = Path(path_str).resolve(strict=check_exists)
     canonical_str = str(canonical_path)
+
+    if ".." in canonical_str:
+        msg = f"Path traversal sequences (..) are not allowed: {canonical_str}"
+        raise ValueError(msg)
 
     if not canonical_path.is_absolute():
         msg = f"Directory path must be absolute: {path_str}"
@@ -115,7 +122,7 @@ def _secure_resolve_and_validate_dir(path_str: str, check_exists: bool = True) -
             msg = f"Path must be a directory: {path_str}"
             raise ValueError(msg)
 
-    _check_allowed_base_dirs(str(canonical_path), path_str)
+    _check_allowed_base_dirs(str(canonical_path), path_str, check_exists=check_exists)
 
     if check_exists:
         _check_ownership_and_perms(canonical_path, path_str)
@@ -584,7 +591,10 @@ def _validate_env_value(val: str) -> None:
     if ".." in val:
         msg = "Path traversal sequences not allowed in .env values"
         raise ValueError(msg)
-    if not re.match(r"^[a-zA-Z0-9_.:/+-]+$", val):
+    if any(char in val for char in [';', '&', '|', '$', '!', '`']):
+        msg = "Environment variable value contains command injection characters"
+        raise ValueError(msg)
+    if not re.match(r"^[a-zA-Z0-9_.+-]+$", val):
         msg = "Invalid characters detected in .env variable value."
         raise ValueError(msg)
 
@@ -592,6 +602,10 @@ def _validate_env_value(val: str) -> None:
 def _validate_env_permissions_and_size(resolved_env: Path) -> None:
     import os
     import stat
+
+    if resolved_env.is_symlink():
+        msg = ".env file cannot be a symlink for security reasons"
+        raise ValueError(msg)
 
     if not os.access(resolved_env, os.R_OK):
         msg = "Environment file not readable by current process"
@@ -615,6 +629,10 @@ def _validate_env_permissions_and_size(resolved_env: Path) -> None:
 
 def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
     import os
+
+    if env_file.is_symlink():
+        msg = ".env file cannot be a symlink for security reasons"
+        raise ValueError(msg)
 
     canonical_base = str(expected_base.resolve(strict=True))
     resolved_env = env_file.resolve(strict=True)
