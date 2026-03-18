@@ -143,7 +143,7 @@ def test_run_kmc_invalid_work_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     engine = EONWrapper(config, sys_config)
 
     work_dir = Path("/var/tmp/hacker_work")
-    with pytest.raises(ValueError, match="must reside securely within an allowed base directory"):
+    with pytest.raises(ValueError, match="Path outside allowed directories"):
         engine.run_kmc(None, work_dir)
 
 
@@ -422,6 +422,7 @@ def test_run_kmc_untrusted_binary(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     monkeypatch.setattr(shutil, "which", lambda *args, **kwargs: str(dummy_bin))
 
     work_dir = tmp_path / "work"
+    work_dir.mkdir(parents=True, exist_ok=True)
 
     with pytest.raises(ValueError, match="Resolved binary must reside in a trusted directory:"):
         engine.run_kmc(None, work_dir)
@@ -479,5 +480,6 @@ def test_run_kmc_timeout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(subprocess, "Popen", lambda *args, **kwargs: MockProc())
 
     work_dir = tmp_path / "work"
+    work_dir.mkdir(parents=True, exist_ok=True)
     with pytest.raises(RuntimeError, match="EON client execution timed out"):
         engine.run_exploration(None, work_dir)

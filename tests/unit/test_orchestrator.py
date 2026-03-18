@@ -428,6 +428,7 @@ def test_cleanup_artifacts_idempotency(tmp_path_factory):
         class LoopStrategy:
             use_tiered_oracle: typing.ClassVar[bool] = False
             max_iterations: typing.ClassVar[int] = 1
+            allowed_cleanup_extensions: typing.ClassVar[set[str]] = {".dat"}
 
             class Thresholds:
                 threshold_call_dft: typing.ClassVar[float] = 0.5
