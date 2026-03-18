@@ -311,40 +311,31 @@ class Orchestrator:
             msg = "Source potential file missing or invalid"
             raise FileNotFoundError(msg)
 
-        # Atomic resolution and bounds checking to prevent symlink traversal
-        canonical_src = Path(os.path.realpath(str(src_pot)))
-        canonical_tmp = Path(os.path.realpath(str(tmp_work_dir)))
+        # Resolve source potential strictly
+        resolved_src = src_pot.resolve(strict=True)
 
-        if not str(canonical_src).startswith(str(canonical_tmp)):
-            msg = "Path traversal detected"
-            raise ValueError(msg)
-
-        # Ensure purely safe alphanumeric filename without any special characters
         if not re.match(r"^[a-zA-Z0-9_-]+\.yace$", src_pot.name):
             msg = "Source potential file must have a valid .yace filename format"
             raise ValueError(msg)
 
         pot_dir.mkdir(parents=True, exist_ok=True)
-        final_dest = pot_dir / f"generation_{iteration:03d}.yace"
-        canonical_pot = Path(os.path.realpath(str(pot_dir)))
-        canonical_dest = Path(os.path.realpath(str(final_dest)))
+        resolved_pot_dir = pot_dir.resolve()
 
-        if not str(canonical_dest).startswith(str(canonical_pot)):
-            msg = "Path traversal detected in destination"
-            raise ValueError(msg)
+        final_dest = resolved_pot_dir / f"generation_{iteration:03d}.yace"
 
         max_size = self.config.trainer.max_potential_size
         sha256_hash = hashlib.sha256()
 
         # Use tempfile for atomic write + validation
-        fd_out, temp_dest_str = tempfile.mkstemp(dir=str(canonical_pot))
+        # Create temp file in the destination directory to ensure they are on the same filesystem
+        fd_out, temp_dest_str = tempfile.mkstemp(dir=str(resolved_pot_dir), prefix=".tmp_pot_")
         temp_dest = Path(temp_dest_str)
 
         try:
             headers_found = set()
             required_headers = {"elements", "version", "b_functions"}
 
-            with Path.open(canonical_src, "rb") as f, os.fdopen(fd_out, "wb") as f_out:
+            with Path.open(resolved_src, "rb") as f, os.fdopen(fd_out, "wb") as f_out:
                 # Atomic file size constraint
                 st = os.fstat(f.fileno())
                 if st.st_size > max_size:
@@ -374,13 +365,13 @@ class Orchestrator:
             logging.info(f"Verified YACE file integrity. SHA256: {computed_hash}")
 
             # Atomic replace
-            temp_dest.rename(canonical_dest)
+            Path(temp_dest_str).replace(str(final_dest))
 
         except Exception:
             temp_dest.unlink(missing_ok=True)
             raise
 
-        return canonical_dest
+        return final_dest
 
     def _copy_potential(self, tmp_work_dir: Path, pot_dir: Path, iteration: int) -> Path:
         src_pot = tmp_work_dir / "training" / "output_potential.yace"

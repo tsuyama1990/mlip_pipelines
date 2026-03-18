@@ -530,9 +530,7 @@ def _validate_env_key(key: str) -> None:
 
 
 def _validate_env_value(val: str) -> None:
-    # Remove length limit to allow long API keys/URLs/configurations
-    # Expand whitelist to prevent shell injections while allowing ?, &, #, @, %
-    if not re.match(r"^[-a-zA-Z0-9_.:/=,+?&#@%]*$", val):
+    if not re.match(r"^[-a-zA-Z0-9_.:/=]{1,1024}$", val):
         msg = "Invalid characters detected in .env variable value."
         raise ValueError(msg)
 
@@ -552,7 +550,7 @@ def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
     # Remove the 1KB size limit
     # Relax ownership check to allow root execution (UID 0) in containerized environments
     current_uid = os.getuid()
-    if st.st_uid not in (current_uid, 0):
+    if st.st_uid != current_uid:
         msg = ".env file is not owned by the current user or root."
         raise ValueError(msg)
 

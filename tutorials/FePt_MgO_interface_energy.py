@@ -5,7 +5,7 @@ app = marimo.App()
 
 
 @app.cell
-def __1(): # type: ignore[no-untyped-def]
+def __1():  # type: ignore[no-untyped-def]
 
     import sys
     from pathlib import Path
@@ -15,7 +15,7 @@ def __1(): # type: ignore[no-untyped-def]
 
 
 @app.cell
-def __2(sys, Path): # type: ignore[no-untyped-def]
+def __2(sys, Path):  # type: ignore[no-untyped-def]
 
     import tempfile
 
@@ -38,7 +38,9 @@ def __2(sys, Path): # type: ignore[no-untyped-def]
     config = ProjectConfig(
         project_root=tmp_dir,
         system=SystemConfig(elements=["Fe", "Pt", "Mg", "O"]),
-        dynamics=DynamicsConfig(project_root=str(tmp_dir), thresholds=ActiveLearningThresholds(), trusted_directories=[]),
+        dynamics=DynamicsConfig(
+            project_root=str(tmp_dir), thresholds=ActiveLearningThresholds(), trusted_directories=[]
+        ),
         oracle=OracleConfig(),
         trainer=TrainerConfig(trusted_directories=[]),
         validator=ValidatorConfig(),
@@ -55,7 +57,7 @@ def __2(sys, Path): # type: ignore[no-untyped-def]
 
 
 @app.cell
-def __3(config, tmp_dir): # type: ignore[no-untyped-def]
+def __3(config, tmp_dir):  # type: ignore[no-untyped-def]
 
     from src.core.orchestrator import Orchestrator
 

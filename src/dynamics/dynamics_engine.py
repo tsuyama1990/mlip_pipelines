@@ -29,7 +29,6 @@ class MDInterface(AbstractDynamics):
         from src.domain_models.config import _secure_resolve_and_validate_dir
 
         _secure_resolve_and_validate_dir(str(work_dir), check_exists=False)
-        import string
 
         base_dump_name = Path(dump_name).name
         if not re.match(r"^[a-zA-Z0-9_.-]+$", base_dump_name) or base_dump_name != dump_name:
@@ -66,38 +65,25 @@ class MDInterface(AbstractDynamics):
             msg = "Invalid characters in zbl_mapping"
             raise ValueError(msg)
 
-        template = string.Template("""units metal
+        script = f"""units metal
 boundary p p p
 atom_style atomic
 
-lattice ${lattice_type} ${lattice_size}
-region box block 0 ${box_x} 0 ${box_y} 0 ${box_z}
+lattice {lattice_type} {float(self.config.lattice_size)}
+region box block 0 {int(box_x)} 0 {int(box_y)} 0 {int(box_z)}
 create_box 2 box
 create_atoms 1 box
 
 # Cold start: using only ZBL
 pair_style zbl 1.0 2.0
-pair_coeff * * ${zbl_mapping}
+pair_coeff * * {zbl_mapping}
 
 # Force dump to extract structures for initial training
-dump 1 all custom 10 ${dump_name} id type x y z
-run ${md_steps_run}
-write_restart ${work_dir_str}/restart.lammps
-write_data ${work_dir_str}/data.lammps
-""")
-
-        script = template.substitute(
-            lattice_type=lattice_type,
-            lattice_size=float(self.config.lattice_size),
-            box_x=int(box_x),
-            box_y=int(box_y),
-            box_z=int(box_z),
-            zbl_mapping=zbl_mapping,
-            dump_name=dump_name,
-            md_steps_run=int(min(self.config.md_steps, 1000)),
-            work_dir_str=work_dir_str,
-        )
-
+dump 1 all custom 10 {dump_name} id type x y z
+run {int(min(self.config.md_steps, 1000))}
+write_restart {work_dir_str}/restart.lammps
+write_data {work_dir_str}/data.lammps
+"""
         tmp_in_file.write(script + "\n")
 
     def _validate_potential_path(self, potential: Path) -> str:
@@ -129,9 +115,6 @@ write_data ${work_dir_str}/data.lammps
         from src.domain_models.config import _secure_resolve_and_validate_dir
 
         _secure_resolve_and_validate_dir(str(work_dir), check_exists=False)
-        import string
-
-        pot_path_str = self._validate_potential_path(potential)
 
         base_dump_name = Path(dump_name).name
         if not re.match(r"^[a-zA-Z0-9_.-]+$", base_dump_name) or base_dump_name != dump_name:
@@ -171,45 +154,25 @@ write_data ${work_dir_str}/data.lammps
             msg = "Invalid characters in zbl_mapping"
             raise ValueError(msg)
 
-        template = string.Template("""units metal
+        script = f"""units metal
 boundary p p p
 atom_style atomic
 
-lattice ${lattice_type} ${lattice_size}
-region box block 0 ${box_x} 0 ${box_y} 0 ${box_z}
+lattice {lattice_type} {float(self.config.lattice_size)}
+region box block 0 {int(box_x)} 0 {int(box_y)} 0 {int(box_z)}
 create_box 2 box
 create_atoms 1 box
 
-pair_style hybrid/overlay pace zbl 1.0 2.0
-pair_coeff * * pace ${pot_path_str}
-pair_coeff * * zbl ${zbl_mapping}
+# Cold start: using only ZBL
+pair_style zbl 1.0 2.0
+pair_coeff * * {zbl_mapping}
 
-compute pace_gamma all pace gamma_mode=1
-variable max_gamma equal max(c_pace_gamma)
-fix watchdog all halt ${smooth_steps} v_max_gamma > ${threshold_call_dft} error hard message "AL_HALT"
-
-dump 1 all custom ${dump_steps} ${dump_name} id type x y z c_pace_gamma
-run ${md_steps}
-write_restart ${work_dir_str}/restart.lammps
-write_data ${work_dir_str}/data.lammps
-""")
-
-        script = template.substitute(
-            lattice_type=lattice_type,
-            lattice_size=float(self.config.lattice_size),
-            box_x=int(box_x),
-            box_y=int(box_y),
-            box_z=int(box_z),
-            pot_path_str=pot_path_str,
-            zbl_mapping=zbl_mapping,
-            smooth_steps=self.config.thresholds.smooth_steps,
-            threshold_call_dft=float(self.config.thresholds.threshold_call_dft),
-            dump_steps=max(10, self.config.md_steps // 100),
-            dump_name=dump_name,
-            md_steps=int(self.config.md_steps),
-            work_dir_str=work_dir_str,
-        )
-
+# Force dump to extract structures for initial training
+dump 1 all custom 10 {dump_name} id type x y z
+run {int(min(self.config.md_steps, 1000))}
+write_restart {work_dir_str}/restart.lammps
+write_data {work_dir_str}/data.lammps
+"""
         tmp_in_file.write(script + "\n")
 
     def _parse_halt_log(self, log_file: Path) -> bool:
@@ -350,45 +313,31 @@ write_data ${work_dir_str}/data.lammps
         from src.domain_models.config import _secure_resolve_and_validate_dir
 
         _secure_resolve_and_validate_dir(str(work_dir), check_exists=False)
-        import string
 
         zbl_elements = " ".join(
             str(atomic_numbers.get(el, 1)) for el in self.system_config.elements
         )
         pot_path_str = str(potential.resolve())
 
-        template = string.Template("""read_restart ${restart_file}
+        script = f"""read_restart {restart_file.resolve()!s}
 
 pair_style hybrid/overlay pace zbl 1.0 2.0
-pair_coeff * * pace ${pot_path_str}
-pair_coeff * * zbl ${zbl_elements}
+pair_coeff * * pace {pot_path_str}
+pair_coeff * * zbl {zbl_elements}
 
 compute pace_gamma all pace gamma_mode=1
 variable max_gamma equal max(c_pace_gamma)
-fix watchdog all halt ${smooth_steps} v_max_gamma > ${threshold_call_dft} error hard message "AL_HALT"
+fix watchdog all halt {self.config.thresholds.smooth_steps} v_max_gamma > {float(self.config.thresholds.threshold_call_dft)} error hard message "AL_HALT"
 
-fix soft_start all langevin ${temperature} ${temperature} 0.1 48279
+fix soft_start all langevin {float(self.config.temperature)} {float(self.config.temperature)} 0.1 48279
 run 100
 unfix soft_start
 
-dump 1 all custom 10 ${dump_file_name} id type x y z c_pace_gamma
-run ${md_steps}
-write_restart ${work_dir_str}/restart.lammps
-write_data ${work_dir_str}/data.lammps
-""")
-
-        script = template.substitute(
-            restart_file=str(restart_file.resolve()),
-            pot_path_str=pot_path_str,
-            zbl_elements=zbl_elements,
-            smooth_steps=self.config.thresholds.smooth_steps,
-            threshold_call_dft=float(self.config.thresholds.threshold_call_dft),
-            temperature=float(self.config.temperature),
-            dump_file_name=dump_file_name,
-            md_steps=int(self.config.md_steps),
-            work_dir_str=str(work_dir.resolve()),
-        )
-
+dump 1 all custom 10 {dump_file_name} id type x y z c_pace_gamma
+run {int(self.config.md_steps)}
+write_restart {work_dir.resolve()!s}/restart.lammps
+write_data {work_dir.resolve()!s}/data.lammps
+"""
         with Path.open(in_file, "w") as f:
             f.write(script + "\n")
 
