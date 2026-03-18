@@ -11,8 +11,6 @@ from src.dynamics.dynamics_engine import MDInterface
 def test_md_interface_initialization() -> None:
     config = DynamicsConfig(
         uncertainty_threshold=6.0,
-
-
         project_root="/home/jules",
         trusted_directories=[],
     )
@@ -553,7 +551,7 @@ def test_resume_script_generation(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     import subprocess
 
     def mock_run(*args: Any, **kwargs: Any) -> None:
-        pass
+        return None
 
     monkeypatch.setattr(subprocess, "run", mock_run)
 

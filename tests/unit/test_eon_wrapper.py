@@ -14,8 +14,6 @@ def config(tmp_path: Path) -> DynamicsConfig:
         trusted_directories=[],
         project_root=str(tmp_path),
         uncertainty_threshold=5.0,
-
-
     )
 
 
@@ -181,7 +179,7 @@ def test_run_kmc_subprocess_fail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
             return b"out", b"err"
 
         def kill(self):
-            pass
+            return None
 
         def poll(self) -> int | None:
             return self.returncode
@@ -190,7 +188,7 @@ def test_run_kmc_subprocess_fail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
             return self
 
         def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-            pass
+            return None
 
     import subprocess
 
@@ -235,7 +233,7 @@ def test_run_kmc_subprocess_halted(tmp_path: Path, monkeypatch: pytest.MonkeyPat
             return b"out", b"err"
 
         def kill(self):
-            pass
+            return None
 
         def poll(self) -> int | None:
             return self.returncode
@@ -244,7 +242,7 @@ def test_run_kmc_subprocess_halted(tmp_path: Path, monkeypatch: pytest.MonkeyPat
             return self
 
         def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-            pass
+            return None
 
     import subprocess
 
@@ -294,7 +292,7 @@ def test_validate_work_dir_outside_root(tmp_path: Path):
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = EONWrapper(config, sys_config)
 
-    with pytest.raises(ValueError, match="is outside the allowed project root"):
+    with pytest.raises(ValueError, match="Path traversal sequences"):
         engine._validate_work_dir(tmp_path / "../outside")
 
 
@@ -380,7 +378,7 @@ def test_run_exploration_eon(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
             return b"out", b"err"
 
         def kill(self):
-            pass
+            return None
 
         def poll(self) -> int | None:
             return self.returncode
@@ -389,7 +387,7 @@ def test_run_exploration_eon(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
             return self
 
         def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-            pass
+            return None
 
     monkeypatch.setattr(subprocess, "Popen", lambda *args, **kwargs: MockProc())
 
@@ -422,7 +420,6 @@ def test_run_kmc_untrusted_binary(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     import shutil
 
     monkeypatch.setattr(shutil, "which", lambda *args, **kwargs: str(dummy_bin))
-
 
     work_dir = tmp_path / "work"
 
@@ -471,13 +468,13 @@ def test_run_kmc_timeout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
             return b"out", b"err"
 
         def kill(self) -> None:
-            pass
+            return None
 
         def __enter__(self) -> "MockProc":
             return self
 
         def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-            pass
+            return None
 
     monkeypatch.setattr(subprocess, "Popen", lambda *args, **kwargs: MockProc())
 

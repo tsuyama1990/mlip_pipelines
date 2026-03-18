@@ -9,6 +9,7 @@ import marimo
 __generated_with = "0.11.1"
 app = marimo.App(width="medium")
 
+
 @app.cell
 def __() -> tuple:
     import logging
@@ -55,21 +56,28 @@ def test_scenario_01(
     Any: Any,
 ) -> tuple:
     print("Executing UAT-C02-01: End-to-End Dynamics Engine and LAMMPS Integration")
-    print("Verifying autonomous execution, hybrid potential enforcement, and extrapolation halt logic")
+    print(
+        "Verifying autonomous execution, hybrid potential enforcement, and extrapolation halt logic"
+    )
 
     _tmp_path = Path("/home/jules/tmp_test_dir")
 
-
-
     # GIVEN: A valid YAML-equivalent configuration defining materials and thresholds
-    import os as _os
-    from src.domain_models.config import ProjectConfig as _ProjectConfig
     from unittest.mock import patch as _patch
 
+    from src.domain_models.config import ProjectConfig as _ProjectConfig
 
     with _patch("pathlib.Path.cwd", return_value=_tmp_path):
         (_tmp_path / "README.md").touch()
-        from src.domain_models.config import DynamicsConfig as _DynamicsConfig, SystemConfig as _SystemConfig, LoopStrategyConfig as _LoopStrategyConfig, DistillationConfig as _DistillationConfig, TrainerConfig as _TrainerConfig, OracleConfig as _OracleConfig, ValidatorConfig as _ValidatorConfig, ActiveLearningThresholds as _ActiveLearningThresholds
+        from src.domain_models.config import ActiveLearningThresholds as _ActiveLearningThresholds
+        from src.domain_models.config import DistillationConfig as _DistillationConfig
+        from src.domain_models.config import DynamicsConfig as _DynamicsConfig
+        from src.domain_models.config import LoopStrategyConfig as _LoopStrategyConfig
+        from src.domain_models.config import OracleConfig as _OracleConfig
+        from src.domain_models.config import SystemConfig as _SystemConfig
+        from src.domain_models.config import TrainerConfig as _TrainerConfig
+        from src.domain_models.config import ValidatorConfig as _ValidatorConfig
+
         _full_config = _ProjectConfig(
             project_root=_tmp_path,
             dynamics=_DynamicsConfig(
@@ -77,14 +85,20 @@ def test_scenario_01(
                 trusted_directories=[str(_tmp_path)],
                 md_steps=1000,
                 temperature=300.0,
-                thresholds=_ActiveLearningThresholds(threshold_call_dft=5.0, smooth_steps=3)
+                thresholds=_ActiveLearningThresholds(threshold_call_dft=5.0, smooth_steps=3),
             ),
             system=_SystemConfig(elements=["Fe", "Pt"], baseline_potential="zbl"),
-            loop_strategy=_LoopStrategyConfig(replay_buffer_size=500, checkpoint_interval=5, timeout_seconds=3600),
-            distillation_config=_DistillationConfig(temp_dir=str(_tmp_path), output_dir=str(_tmp_path), model_storage_path=str(_tmp_path)),
+            loop_strategy=_LoopStrategyConfig(
+                replay_buffer_size=500, checkpoint_interval=5, timeout_seconds=3600
+            ),
+            distillation_config=_DistillationConfig(
+                temp_dir=str(_tmp_path),
+                output_dir=str(_tmp_path),
+                model_storage_path=str(_tmp_path),
+            ),
             trainer=_TrainerConfig(trusted_directories=[str(_tmp_path)]),
             oracle=_OracleConfig(pseudo_dir=str(_tmp_path)),
-            validator=_ValidatorConfig()
+            validator=_ValidatorConfig(),
         )
         _config = _full_config.dynamics
         _sys_config = _full_config.system
@@ -129,7 +143,9 @@ sys.exit(1)
             # THEN: The system flawlessly executes and gracefully halts upon encountering unknown extrapolation region
             _res = _engine.run_exploration(_pot_file, _work_dir)
             assert _res["halted"] is True
-            print("✓ Successfully executed molecular dynamics _engine and gracefully halted on high systemic uncertainty.")
+            print(
+                "✓ Successfully executed molecular dynamics _engine and gracefully halted on high systemic uncertainty."
+            )
 
             # Verify that the generated input script rigorously enforces the Lennard-Jones/ZBL baseline
             _in_file = _work_dir / "in.lammps"
@@ -137,11 +153,18 @@ sys.exit(1)
             assert "pair_style hybrid/overlay pace zbl 1.0 2.0" in _script_content
             assert "pair_coeff * * pace" in _script_content
             assert "pair_coeff * * zbl" in _script_content
-            print("✓ System rigorously enforced the Lennard-Jones/ZBL baseline to prevent unphysical atomic collisions.")
+            print(
+                "✓ System rigorously enforced the Lennard-Jones/ZBL baseline to prevent unphysical atomic collisions."
+            )
 
             # Verify the extrapolative grade (gamma value) watchdog
-            assert 'fix watchdog all halt 3 v_max_gamma > 5.0 error hard message "AL_HALT"' in _script_content
-            print("✓ Orchestrator actively monitored the extrapolation grade emitted by the ACE potential.")
+            assert (
+                'fix watchdog all halt 3 v_max_gamma > 5.0 error hard message "AL_HALT"'
+                in _script_content
+            )
+            print(
+                "✓ Orchestrator actively monitored the extrapolation grade emitted by the ACE potential."
+            )
 
         # WHEN: The simulation resumes using the brand newly updated potential
 
@@ -197,16 +220,21 @@ def test_scenario_02_eon_client(
 
     _tmp_path = Path("/home/jules/tmp_test_dir2")
 
-
-
-    import os as _os
-    from src.domain_models.config import ProjectConfig as _ProjectConfig
     from unittest.mock import patch as _patch
 
+    from src.domain_models.config import ProjectConfig as _ProjectConfig
 
     with _patch("pathlib.Path.cwd", return_value=_tmp_path):
         (_tmp_path / "README.md").touch()
-        from src.domain_models.config import DynamicsConfig as _DynamicsConfig, SystemConfig as _SystemConfig, LoopStrategyConfig as _LoopStrategyConfig, DistillationConfig as _DistillationConfig, TrainerConfig as _TrainerConfig, OracleConfig as _OracleConfig, ValidatorConfig as _ValidatorConfig, ActiveLearningThresholds as _ActiveLearningThresholds
+        from src.domain_models.config import ActiveLearningThresholds as _ActiveLearningThresholds
+        from src.domain_models.config import DistillationConfig as _DistillationConfig
+        from src.domain_models.config import DynamicsConfig as _DynamicsConfig
+        from src.domain_models.config import LoopStrategyConfig as _LoopStrategyConfig
+        from src.domain_models.config import OracleConfig as _OracleConfig
+        from src.domain_models.config import SystemConfig as _SystemConfig
+        from src.domain_models.config import TrainerConfig as _TrainerConfig
+        from src.domain_models.config import ValidatorConfig as _ValidatorConfig
+
         _full_config = _ProjectConfig(
             project_root=_tmp_path,
             dynamics=_DynamicsConfig(
@@ -214,14 +242,20 @@ def test_scenario_02_eon_client(
                 trusted_directories=[str(_tmp_path)],
                 md_steps=1000,
                 temperature=300.0,
-                thresholds=_ActiveLearningThresholds(threshold_call_dft=5.0, smooth_steps=3)
+                thresholds=_ActiveLearningThresholds(threshold_call_dft=5.0, smooth_steps=3),
             ),
             system=_SystemConfig(elements=["Fe", "Pt"], baseline_potential="zbl"),
-            loop_strategy=_LoopStrategyConfig(replay_buffer_size=500, checkpoint_interval=5, timeout_seconds=3600),
-            distillation_config=_DistillationConfig(temp_dir=str(_tmp_path), output_dir=str(_tmp_path), model_storage_path=str(_tmp_path)),
+            loop_strategy=_LoopStrategyConfig(
+                replay_buffer_size=500, checkpoint_interval=5, timeout_seconds=3600
+            ),
+            distillation_config=_DistillationConfig(
+                temp_dir=str(_tmp_path),
+                output_dir=str(_tmp_path),
+                model_storage_path=str(_tmp_path),
+            ),
             trainer=_TrainerConfig(trusted_directories=[str(_tmp_path)]),
             oracle=_OracleConfig(pseudo_dir=str(_tmp_path)),
-            validator=_ValidatorConfig()
+            validator=_ValidatorConfig(),
         )
         _config = _full_config.dynamics
         _sys_config = _full_config.system
@@ -250,18 +284,21 @@ sys.exit(100)
             assert _res["halted"] is True
             assert _res["is_kmc"] is True
 
-            print("✓ System seamlessly transitions from standard molecular dynamics to long-timescale Adaptive Kinetic Monte Carlo (aKMC) simulations via EON.")
+            print(
+                "✓ System seamlessly transitions from standard molecular dynamics to long-timescale Adaptive Kinetic Monte Carlo (aKMC) simulations via EON."
+            )
 
             _ini_content = (_work_dir / "config.ini").read_text()
             assert "job = process_search" in _ini_content
             assert "min_mode_method = dimer" in _ini_content
-            print("✓ Engine can accurately explore slow diffusion pathways and calculate precise activation energy barriers.")
+            print(
+                "✓ Engine can accurately explore slow diffusion pathways and calculate precise activation energy barriers."
+            )
 
             assert (_work_dir / "potentials" / "pace_driver.py").exists()
             driver_content = (_work_dir / "potentials" / "pace_driver.py").read_text()
             assert "dummy.yace" in driver_content
             print("✓ Driver script created correctly.")
-
 
     return ()
 

@@ -118,10 +118,37 @@ class AdaptiveExplorationPolicyEngine:
     def __init__(self, config: PolicyConfig) -> None:
         self.config = config
 
-    def decide_policy(self, features: MaterialFeatures) -> ExplorationStrategy:
+    def decide_policy(self, features: MaterialFeatures) -> ExplorationStrategy:  # noqa: C901
         if features.melting_point <= 0:
             msg = "melting_point must be positive"
             raise ValueError(msg)
+
+        def _validate_strategy(strat: ExplorationStrategy) -> ExplorationStrategy:
+            # Enforce physical bounds and allowed policies
+            allowed_policies = {
+                "Standard",
+                "Cautious Exploration",
+                "High-MC Policy",
+                "Defect-Driven Policy",
+                "Strain-Heavy Policy",
+                "Fallback Standard",
+            }
+            if strat.policy_name not in allowed_policies:
+                msg = f"Invalid policy name selected: {strat.policy_name}"
+                raise ValueError(msg)
+            if not (0.0 <= strat.t_max <= 5000.0):
+                msg = f"Invalid temperature schedule max value: {strat.t_max}"
+                raise ValueError(msg)
+            if not (0.0 <= strat.md_mc_ratio <= 1000.0):
+                msg = f"Invalid MD/MC ratio: {strat.md_mc_ratio}"
+                raise ValueError(msg)
+            if not (0.0 <= strat.strain_range <= 0.5):
+                msg = f"Invalid strain range: {strat.strain_range}"
+                raise ValueError(msg)
+            if not (0.0 <= strat.n_defects <= 0.5):
+                msg = f"Invalid defect concentration: {strat.n_defects}"
+                raise ValueError(msg)
+            return strat
 
         # Default strategy
         strategy = ExplorationStrategy(
@@ -136,26 +163,26 @@ class AdaptiveExplorationPolicyEngine:
         if features.initial_gamma_variance > self.config.uncertainty_variance_threshold:
             strategy.policy_name = "Cautious Exploration"
             strategy.t_max = self.config.cautious_t_max_scale * features.melting_point
-            return strategy
+            return _validate_strategy(strategy)
 
         # Rule 2: Metal & Multi-component -> High-MC Policy
         if features.band_gap <= self.config.metal_band_gap_threshold and len(features.elements) > 1:
             strategy.policy_name = "High-MC Policy"
             strategy.md_mc_ratio = self.config.high_mc_ratio
             strategy.t_max = self.config.high_mc_t_max_scale * features.melting_point
-            return strategy
+            return _validate_strategy(strategy)
 
         # Rule 3: Insulator -> Defect-Driven Policy
         if features.band_gap > self.config.metal_band_gap_threshold:
             strategy.policy_name = "Defect-Driven Policy"
             strategy.n_defects = self.config.defect_driven_n_defects
             strategy.md_mc_ratio = self.config.default_md_mc_ratio
-            return strategy
+            return _validate_strategy(strategy)
 
         # Rule 4: Hard material -> Strain-Heavy Policy
         if features.bulk_modulus > self.config.hard_material_bulk_modulus_threshold:
             strategy.policy_name = "Strain-Heavy Policy"
             strategy.strain_range = self.config.strain_heavy_range
-            return strategy
+            return _validate_strategy(strategy)
 
-        return strategy
+        return _validate_strategy(strategy)
