@@ -36,7 +36,19 @@ def _check_allowed_base_dirs(resolved_str: str, path_str: str) -> None:
         msg = f"Directory {path_str} must reside securely within an allowed base directory (home, tmp, or /app)."
         raise ValueError(msg)
 
-    restricted_prefixes = ["/etc", "/bin", "/usr", "/sbin", "/var", "/lib", "/boot", "/root", "/proc", "/sys", "/dev"]
+    restricted_prefixes = [
+        "/etc",
+        "/bin",
+        "/usr",
+        "/sbin",
+        "/var",
+        "/lib",
+        "/boot",
+        "/root",
+        "/proc",
+        "/sys",
+        "/dev",
+    ]
     for restricted in restricted_prefixes:
         try:
             is_restricted = os.path.commonpath([restricted, resolved_str]) == restricted
@@ -98,7 +110,19 @@ class SystemConfig(BaseModel):
         default=0, description="The AL iteration number to inject the generated interface target."
     )
     restricted_directories: list[str] = Field(
-        default_factory=lambda: ["/etc", "/bin", "/usr", "/sbin", "/var", "/lib", "/boot", "/root", "/proc", "/sys", "/dev"],
+        default_factory=lambda: [
+            "/etc",
+            "/bin",
+            "/usr",
+            "/sbin",
+            "/var",
+            "/lib",
+            "/boot",
+            "/root",
+            "/proc",
+            "/sys",
+            "/dev",
+        ],
         description="System directories forbidden from sandbox execution.",
     )
 
@@ -107,9 +131,7 @@ class ActiveLearningThresholds(BaseModel):
     """Two-tier thresholds inspired by FLARE."""
 
     model_config = ConfigDict(extra="forbid")
-    threshold_call_dft: float = Field(
-        default=0.05, description="Threshold to call DFT"
-    )
+    threshold_call_dft: float = Field(default=0.05, description="Threshold to call DFT")
     threshold_add_train: float = Field(
         default=0.02, description="Local threshold to select atoms for training"
     )
@@ -542,7 +564,19 @@ def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
         msg = f".env file must reside securely within the allowed base directory: {expected_base}"
         raise ValueError(msg)
 
-    restricted_prefixes = ["/etc", "/bin", "/usr", "/sbin", "/var", "/lib", "/boot", "/root", "/proc", "/sys", "/dev"]
+    restricted_prefixes = [
+        "/etc",
+        "/bin",
+        "/usr",
+        "/sbin",
+        "/var",
+        "/lib",
+        "/boot",
+        "/root",
+        "/proc",
+        "/sys",
+        "/dev",
+    ]
     for restricted in restricted_prefixes:
         try:
             import os
@@ -643,7 +677,9 @@ class CutoutConfig(BaseModel):
     """Phase 3: Intelligent cutout and passivation configuration."""
 
     model_config = ConfigDict(extra="forbid")
-    core_radius: float = Field(default_factory=lambda: 3.0, description="Radius for core atoms (force weight 1.0)")
+    core_radius: float = Field(
+        default_factory=lambda: 3.0, description="Radius for core atoms (force weight 1.0)"
+    )
     buffer_radius: float = Field(
         default_factory=lambda: 4.0, description="Radius for buffer layer (force weight 0.0)"
     )
@@ -653,7 +689,9 @@ class CutoutConfig(BaseModel):
     enable_passivation: bool = Field(
         default=True, description="Enable automatic surface passivation"
     )
-    passivation_element: str = Field(default_factory=lambda: "H", description="Element used for passivation")
+    passivation_element: str = Field(
+        default_factory=lambda: "H", description="Element used for passivation"
+    )
 
     @model_validator(mode="after")
     def validate_radii(self) -> "CutoutConfig":

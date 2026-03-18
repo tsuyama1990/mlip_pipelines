@@ -27,7 +27,6 @@ def test_full_pipeline_skeleton(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
 
     # Touch a README.md to satisfy project root validation
 
-
     (tmp_path / "README.md").touch()
 
     from src.domain_models.config import CutoutConfig, DistillationConfig, LoopStrategyConfig

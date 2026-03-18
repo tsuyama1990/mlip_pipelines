@@ -11,8 +11,6 @@ from src.dynamics.dynamics_engine import MDInterface
 def test_md_interface_initialization() -> None:
     config = DynamicsConfig(
         uncertainty_threshold=6.0,
-
-
         project_root="/home/jules",
         trusted_directories=[],
     )

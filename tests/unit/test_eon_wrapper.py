@@ -14,8 +14,6 @@ def config(tmp_path: Path) -> DynamicsConfig:
         trusted_directories=[],
         project_root=str(tmp_path),
         uncertainty_threshold=5.0,
-
-
     )
 
 
@@ -422,7 +420,6 @@ def test_run_kmc_untrusted_binary(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     import shutil
 
     monkeypatch.setattr(shutil, "which", lambda *args, **kwargs: str(dummy_bin))
-
 
     work_dir = tmp_path / "work"
 

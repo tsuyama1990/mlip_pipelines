@@ -477,8 +477,13 @@ def test_cleanup_artifacts_idempotency(tmp_path_factory):
     sys.modules["pyacemaker"] = MagicMock()
     sys.modules["pyacemaker.calculator"] = MagicMock()
     orch = Orchestrator(DummyConfig())
+
+    # We need to simulate the active_learning directory to pass validation
+    al_dir = tmp_path / "active_learning"
+    al_dir.mkdir(parents=True, exist_ok=True)
+
     # Test valid
-    f1 = tmp_path / "f1.dat"
+    f1 = al_dir / "f1.dat"
     f1.write_text("123")
     orch._cleanup_artifacts([f1])
     assert not f1.exists()

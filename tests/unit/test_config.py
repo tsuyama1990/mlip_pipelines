@@ -141,7 +141,6 @@ def test_project_config_env_value() -> None:
     # and no longer triggers a ValueError in _validate_env_value itself
 
 
-
 def test_project_config_env_file_security(tmp_path: Path) -> None:
 
     from src.domain_models.config import _validate_env_file_security

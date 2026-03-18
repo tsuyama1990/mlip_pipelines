@@ -141,19 +141,48 @@ class Orchestrator:
     def _decide_exploration_strategy(self) -> ExplorationStrategy:
         features = MaterialFeatures(elements=self.config.system.elements)
 
+        def _validate_strategy(strat: ExplorationStrategy) -> ExplorationStrategy:
+            # Enforce physical bounds and allowed policies
+            allowed_policies = {
+                "Standard",
+                "Cautious Exploration",
+                "High-MC Policy",
+                "Defect-Driven Policy",
+                "Strain-Heavy Policy",
+                "Fallback Standard",
+            }
+            if strat.policy_name not in allowed_policies:
+                msg = f"Invalid policy name selected: {strat.policy_name}"
+                raise ValueError(msg)
+            if not (0.0 <= strat.t_max <= 5000.0):
+                msg = f"Invalid temperature schedule max value: {strat.t_max}"
+                raise ValueError(msg)
+            if not (0.0 <= strat.md_mc_ratio <= 1000.0):
+                msg = f"Invalid MD/MC ratio: {strat.md_mc_ratio}"
+                raise ValueError(msg)
+            if not (0.0 <= strat.strain_range <= 0.5):
+                msg = f"Invalid strain range: {strat.strain_range}"
+                raise ValueError(msg)
+            if not (0.0 <= strat.n_defects <= 0.5):
+                msg = f"Invalid defect concentration: {strat.n_defects}"
+                raise ValueError(msg)
+            return strat
+
         try:
-            return self.policy_engine.decide_policy(features)
-        except (ValueError, TypeError, KeyError):
+            strategy = self.policy_engine.decide_policy(features)
+            return _validate_strategy(strategy)
+        except (ValueError, TypeError, KeyError) as e:
             logging.warning(
-                "Policy engine parameter calculation failed. Falling back to default MD strategy."
+                f"Policy engine parameter calculation failed ({e}). Falling back to default MD strategy."
             )
-            return ExplorationStrategy(
+            fallback = ExplorationStrategy(
                 md_mc_ratio=0.0,
                 t_max=300.0,
                 n_defects=0.0,
                 strain_range=0.0,
                 policy_name="Fallback Standard",
             )
+            return _validate_strategy(fallback)
         except RuntimeError as e:
             msg = "Critical infrastructure failure in policy engine execution."
             logging.exception(msg)
@@ -285,7 +314,9 @@ class Orchestrator:
     def _secure_copy_potential(
         self, src_pot: Path, pot_dir: Path, iteration: int, tmp_work_dir: Path
     ) -> Path:
-        import shutil
+        import hashlib
+        import os
+        import tempfile
 
         from src.domain_models.config import _secure_resolve_and_validate_dir
 
@@ -313,9 +344,39 @@ class Orchestrator:
             msg = f"Source potential file exceeds maximum allowed size ({max_size} bytes)"
             raise ValueError(msg)
 
-        # Cross-filesystem atomic copy using shutil.copy2
+        # Hash source
+        sha256 = hashlib.sha256()
+        with Path.open(resolved_src, "rb") as f:
+            for chunk in iter(lambda: f.read(4096), b""):
+                sha256.update(chunk)
+        expected_hash = sha256.hexdigest()
+
+        # Secure cross-filesystem atomic copy
         try:
-            shutil.copy2(str(resolved_src), str(final_dest))
+            fd, tmp_path_str = tempfile.mkstemp(dir=str(resolved_pot_dir), prefix=".tmp_pot_")
+            tmp_path = Path(tmp_path_str)
+            try:
+                import shutil
+
+                # We copy into the temporary file in the target directory
+                with os.fdopen(fd, "wb") as f_out, Path.open(resolved_src, "rb") as f_in:
+                    shutil.copyfileobj(f_in, f_out)
+
+                # Hash destination to verify integrity
+                sha256_dest = hashlib.sha256()
+                with Path.open(tmp_path, "rb") as f:
+                    for chunk in iter(lambda: f.read(4096), b""):
+                        sha256_dest.update(chunk)
+                if sha256_dest.hexdigest() != expected_hash:
+                    msg = "File integrity check failed after copying."
+                    raise RuntimeError(msg)
+
+                # Atomic replace on the same filesystem
+                tmp_path.replace(final_dest)
+            except Exception:
+                if tmp_path.exists():
+                    tmp_path.unlink()
+                raise
         except Exception as e:
             msg = f"Failed to securely copy potential: {e}"
             raise RuntimeError(msg) from e
@@ -342,34 +403,52 @@ class Orchestrator:
 
         _secure_resolve_and_validate_dir(str(tmp_work_dir), check_exists=False)
         _secure_resolve_and_validate_dir(str(work_dir), check_exists=False)
+        import fcntl
         import shutil
 
         # To prevent race conditions and cross-filesystem issues, we will just use a direct copytree
         # onto a temporary resolved destination, then perform an atomic rename.
-        # This completely avoids hashes over changing filesystems.
         final_dest = work_dir.resolve(strict=False)
-        temp_swap = Path(tempfile.mkdtemp(dir=str(final_dest.parent)))
 
-        try:
-            # Secure copy into the isolated temp dir
-            shutil.copytree(str(tmp_work_dir), str(temp_swap / "new_work"))
+        lock_file = final_dest.parent / ".swap.lock"
+        with Path.open(lock_file, "w") as f_lock:
+            try:
+                fcntl.flock(f_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except (BlockingIOError, OSError) as e:
+                msg = f"Directory swap is currently locked by another process: {e}"
+                raise RuntimeError(msg) from e
 
-            # Atomic swap
-            if final_dest.exists():
-                backup_dest = temp_swap / "backup"
-                Path(final_dest).rename(backup_dest)
-                try:
+            temp_swap = Path(tempfile.mkdtemp(dir=str(final_dest.parent)))
+            try:
+                # Secure copy into the isolated temp dir
+                shutil.copytree(str(tmp_work_dir), str(temp_swap / "new_work"))
+
+                # Atomic swap
+                if final_dest.exists():
+                    backup_dest = temp_swap / "backup"
+                    Path(final_dest).rename(backup_dest)
+                    try:
+                        Path(temp_swap / "new_work").rename(final_dest)
+                    except Exception:
+                        # Rollback
+                        if final_dest.exists():
+                            Path(backup_dest).replace(final_dest)
+                        else:
+                            Path(backup_dest).rename(final_dest)
+                        raise
+                else:
                     Path(temp_swap / "new_work").rename(final_dest)
-                except Exception:
-                    # Rollback
-                    Path(backup_dest).rename(final_dest)
-                    raise
-            else:
-                Path(temp_swap / "new_work").rename(final_dest)
-        finally:
-            shutil.rmtree(str(temp_swap), ignore_errors=True)
-            # Clean up the original tmp_work_dir
-            shutil.rmtree(str(tmp_work_dir), ignore_errors=True)
+            finally:
+                shutil.rmtree(str(temp_swap), ignore_errors=True)
+                # Clean up the original tmp_work_dir
+                shutil.rmtree(str(tmp_work_dir), ignore_errors=True)
+                fcntl.flock(f_lock, fcntl.LOCK_UN)
+
+        # Best effort remove lock file
+        import contextlib
+
+        with contextlib.suppress(OSError):
+            lock_file.unlink()
 
     def _manage_directories(self, tmp_work_dir: Path, work_dir: Path) -> None:
         self._validate_tmp_directories(tmp_work_dir)
@@ -413,6 +492,25 @@ class Orchestrator:
             return None
 
         logging.info("Interface configuration detected. Pre-generating interface target.")
+
+        # Validating interface target input
+        if not hasattr(self.config.structure_generator, "valid_interface_targets"):
+            msg = "Security Validation: valid_interface_targets list missing in configuration."
+            raise ValueError(msg)
+
+        allowed_targets = self.config.structure_generator.valid_interface_targets
+        t = self.config.system.interface_target
+        # Using string representation mapping for checking validation list: "element1/element2" format
+        target_str = f"{t.element1}{t.element2}" if hasattr(t, "element1") else str(t)
+
+        if target_str not in allowed_targets:
+            msg = f"Security Violation: Interface target '{target_str}' is not in the trusted whitelist: {allowed_targets}"
+            raise ValueError(msg)
+
+        if len(target_str) > 100 or not re.match(r"^[a-zA-Z0-9]+$", target_str):
+            msg = f"Security Violation: Invalid characters or size in interface target string: {target_str}"
+            raise ValueError(msg)
+
         try:
             from src.generators.structure_generator import StructureGenerator
 
@@ -444,14 +542,42 @@ class Orchestrator:
 
     def _cleanup_artifacts(self, paths: list[Path]) -> None:
         """Daemon to aggressively clean up huge files to prevent HPC quota breaches."""
+        import os
+
+        # Authorized base path for cleanups
+        active_learning_dir_str = str(
+            (self.config.project_root / "active_learning").resolve(strict=False)
+        )
+
         for path in paths:
             try:
-                if path.exists() and path.is_file():
-                    path.unlink()
-                    logging.info(f"Cleaned up large artifact: {path}")
+                if not path.exists() or not path.is_file():
+                    continue
+
+                canonical_path = path.resolve(strict=True)
+                canonical_str = str(canonical_path)
+
+                # Ensure path is strictly within the allowed directory
+                if not canonical_str.startswith(active_learning_dir_str):
+                    logging.warning(
+                        f"Security Violation: Refusing to delete artifact outside active_learning directory: {canonical_str}"
+                    )
+                    continue
+
+                # Ensure ownership matches the current process
+                st = canonical_path.stat()
+                if st.st_uid != os.getuid():
+                    logging.warning(
+                        f"Security Violation: Refusing to delete file not owned by current user: {canonical_str}"
+                    )
+                    continue
+
+                # Proceed with deletion
+                canonical_path.unlink()
+                logging.info(f"Cleaned up large artifact securely: {canonical_str}")
             except Exception as e:
                 # Swallow error to ensure idempotency and non-blocking behavior
-                logging.warning(f"Failed to cleanup artifact {path}: {e}")
+                logging.warning(f"Failed to securely cleanup artifact {path}: {e}")
 
     def run_cycle(self) -> str | None:
         """Runs the 4-phase Hierarchical Distillation Workflow infinitely or bounded."""
