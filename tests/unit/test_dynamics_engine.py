@@ -606,3 +606,100 @@ def test_log_parsing_halt(tmp_path: Path) -> None:
 
     log_file.write_text("Some fatal crash\nLost Atoms\n")
     assert engine._parse_halt_log(log_file) is False
+
+
+class MockLAMMPS:
+    def __init__(self, mode: str, work_dir: Path) -> None:
+        self.mode = mode
+        self.work_dir = work_dir
+
+    def run(self, *args: Any, **kwargs: Any) -> subprocess.CompletedProcess[bytes]:
+        import subprocess
+
+        # Simulate dump file writing
+        dump_file = self.work_dir / "dump.lammps"
+
+        if self.mode == "al_halt":
+            dump_content = """ITEM: TIMESTEP
+0
+ITEM: NUMBER OF ATOMS
+2
+ITEM: BOX BOUNDS pp pp pp
+0.0 10.0
+0.0 10.0
+0.0 10.0
+ITEM: ATOMS id type x y z c_pace_gamma
+1 1 0.0 0.0 0.0 6.0
+2 2 1.0 1.0 1.0 2.0
+"""
+            dump_file.write_text(dump_content)
+
+            # Write AL_HALT into the log to simulate fix watchdog
+            log_file = self.work_dir / "log.lammps"
+            log_file.write_text("AL_HALT\n")
+
+            raise subprocess.CalledProcessError(1, ["lmp"])
+
+        if self.mode == "fatal_crash":
+            dump_content = """ITEM: TIMESTEP
+0
+ITEM: NUMBER OF ATOMS
+2
+ITEM: BOX BOUNDS pp pp pp
+0.0 10.0
+0.0 10.0
+0.0 10.0
+ITEM: ATOMS id type x y z c_pace_gamma
+1 1 0.0 0.0 0.0 1.0
+2 2 1.0 1.0 1.0 2.0
+"""
+            dump_file.write_text(dump_content)
+
+            log_file = self.work_dir / "log.lammps"
+            log_file.write_text("ERROR: Lost atoms: original 2 current 1 (src/thermo.cpp:433)\n")
+
+            raise subprocess.CalledProcessError(1, ["lmp"])
+
+        return subprocess.CompletedProcess(args=["lmp"], returncode=0, stdout=b"", stderr=b"")
+
+
+def test_mock_lammps_integration(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    config = DynamicsConfig(
+        uncertainty_threshold=5.0, trusted_directories=[], project_root=str(tmp_path), md_steps=1000
+    )
+    config.thresholds.threshold_call_dft = 5.0
+    sys_config = SystemConfig(elements=["Fe", "Pt"])
+    engine = MDInterface(config, sys_config)
+
+    # Setup environment
+    import shutil
+
+    lmp_path = tmp_path / "lmp"
+    lmp_path.touch()
+    lmp_path.chmod(0o755)
+    monkeypatch.setattr(shutil, "which", lambda *args, **kwargs: str(lmp_path.resolve()))
+    config.lmp_binary = "lmp"
+    config.trusted_directories = [str(tmp_path)]
+    pot_file = tmp_path / "dummy.yace"
+    pot_file.touch()
+    work_dir = tmp_path / "md_run_al"
+    work_dir.mkdir(parents=True)
+
+    # Test AL_HALT
+    mock_lammps_al = MockLAMMPS("al_halt", work_dir)
+    monkeypatch.setattr(subprocess, "run", mock_lammps_al.run)
+    res = engine.run_exploration(pot_file, work_dir)
+    assert res["halted"] is True
+    assert res["dump_file"] == work_dir / "dump.lammps"
+
+    # Test Fatal Crash
+    work_dir_fatal = tmp_path / "md_run_fatal"
+    work_dir_fatal.mkdir(parents=True)
+    mock_lammps_fatal = MockLAMMPS("fatal_crash", work_dir_fatal)
+    monkeypatch.setattr(subprocess, "run", mock_lammps_fatal.run)
+    from src.core.exceptions import DynamicsHaltInterrupt
+
+    with pytest.raises(
+        DynamicsHaltInterrupt, match="Fatal LAMMPS crash. log.lammps tail missing AL_HALT string."
+    ):
+        engine.run_exploration(pot_file, work_dir_fatal)

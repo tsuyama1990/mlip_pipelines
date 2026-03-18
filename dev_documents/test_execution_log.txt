@@ -4,7 +4,7 @@ rootdir: /app
 configfile: pyproject.toml
 testpaths: tests
 plugins: cov-7.0.0, anyio-4.12.1
-collected 205 items
+collected 206 items
 
 tests/e2e/test_skeleton.py s.                                            [  0%]
 tests/uat/test_cycle03_oracle.py ...                                     [  2%]
@@ -12,14 +12,14 @@ tests/uat/test_cycle04_trainer.py ...                                    [  3%]
 tests/uat/test_cycle05_dynamics.py ...                                   [  5%]
 tests/uat/test_cycle06_validator.py ...                                  [  6%]
 tests/uat/test_tutorial.py s....                                         [  9%]
-tests/unit/test_ace_trainer.py ....................                      [ 19%]
+tests/unit/test_ace_trainer.py ....................                      [ 18%]
 tests/unit/test_adaptive_policy.py .......                               [ 22%]
 tests/unit/test_checkpoint.py .....                                      [ 24%]
 tests/unit/test_config.py ........................                       [ 36%]
-tests/unit/test_defect_builder.py ...                                    [ 38%]
+tests/unit/test_defect_builder.py ...                                    [ 37%]
 tests/unit/test_dft_oracle.py ...............                            [ 45%]
 tests/unit/test_domain_models.py .                                       [ 45%]
-tests/unit/test_dynamics_engine.py ...........................           [ 59%]
+tests/unit/test_dynamics_engine.py ............................          [ 59%]
 tests/unit/test_eon_driver.py .............                              [ 65%]
 tests/unit/test_eon_wrapper.py .................                         [ 73%]
 tests/unit/test_finetune_manager.py ....                                 [ 75%]
@@ -46,7 +46,7 @@ src/domain_models/__init__.py               3      0   100%
 src/domain_models/config.py               461    113    75%   35-36, 46-47, 49-50, 56-57, 60-61, 71-72, 154, 182-183, 203-217, 221, 224, 264-265, 270-275, 391-394, 410-412, 459-462, 467-470, 524-529, 545-546, 554-555, 557-558, 566-567, 578, 582-591, 725-751, 760-761, 763-764, 782-783, 785-786, 792-793, 796-797, 805-806, 813-814, 818-819
 src/domain_models/dtos.py                  50      4    92%   41-44
 src/dynamics/__init__.py                    0      0   100%
-src/dynamics/dynamics_engine.py           261     65    75%   35-36, 43-44, 47-48, 51-52, 55-56, 60-61, 65-66, 97-98, 104-105, 113-114, 129-130, 136-137, 140-141, 144-145, 148-149, 152-153, 157-158, 162-163, 201, 210-211, 220-221, 236-237, 243-244, 246-247, 263-266, 290-292, 319-321, 341-342, 348-349, 353-354, 358-359, 415
+src/dynamics/dynamics_engine.py           261     62    76%   35-36, 43-44, 47-48, 51-52, 55-56, 60-61, 65-66, 97-98, 104-105, 113-114, 129-130, 136-137, 140-141, 144-145, 148-149, 152-153, 157-158, 162-163, 201, 210-211, 220-221, 236-237, 243-244, 246-247, 290-292, 319-321, 341-342, 348-349, 353-354, 358-359, 415
 src/dynamics/eon_driver.py                167     51    69%   13-14, 28-29, 42-51, 81-84, 88-89, 94-95, 121-124, 135-136, 138-139, 152-154, 157-158, 166-173, 177-179, 187-189, 192-193, 235
 src/dynamics/eon_wrapper.py               213     39    82%   43-44, 66-67, 78-79, 82-83, 167-168, 170-171, 182-183, 193-194, 199-211, 218, 231, 241-242, 245-246, 265, 269, 294-295, 330-331
 src/dynamics/security_utils.py            110     26    76%   17-18, 26-32, 47-48, 78, 101-102, 110-111, 121-122, 133-134, 137-138, 141-142, 162-163
@@ -68,7 +68,7 @@ src/validators/reporter.py                  7      0   100%
 src/validators/stability_tests.py         119      5    96%   51, 59-60, 63-66
 src/validators/validator.py                90     11    88%   20-22, 28-30, 34-36, 80, 94-95
 ---------------------------------------------------------------------
-TOTAL                                    2813    682    76%
-======================== 203 passed, 2 skipped in 7.13s ========================
+TOTAL                                    2813    679    76%
+======================== 204 passed, 2 skipped in 7.15s ========================
 /app/.venv/lib/python3.12/site-packages/coverage/inorout.py:561: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.4/messages.html#warning-module-not-imported
   self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")
