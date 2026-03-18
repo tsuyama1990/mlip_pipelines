@@ -583,7 +583,7 @@ def _validate_env_value(val: str) -> None:
     if len(val) > 256:
         msg = "Environment variable value exceeds maximum length of 256 characters"
         raise ValueError(msg)
-    if not re.match(r"^[a-zA-Z0-9_.:/=+-]*$", val):
+    if not re.match(r"^[a-zA-Z0-9_.:/+-]*$", val):
         msg = "Invalid characters detected in .env variable value."
         raise ValueError(msg)
 
@@ -683,7 +683,7 @@ def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
                 if len(val) > 256:
                     msg = "Value in .env file exceeds maximum length of 256 characters"
                     raise ValueError(msg)
-                if not re.match(r"^[a-zA-Z0-9_.:/=+-]*$", val):
+                if not re.match(r"^[a-zA-Z0-9_.:/+-]*$", val):
                     msg = f"Invalid characters or traversal sequences in .env file content: {val}"
                     raise ValueError(msg)
 
