@@ -168,25 +168,45 @@ class Orchestrator:
                 raise ValueError(msg)
             return strat
 
-        try:
-            strategy = self.policy_engine.decide_policy(features)
-            return _validate_strategy(strategy)
-        except (ValueError, TypeError, KeyError) as e:
-            logging.warning(
-                f"Policy engine parameter calculation failed ({e}). Falling back to default MD strategy."
-            )
-            fallback = ExplorationStrategy(
-                md_mc_ratio=0.0,
-                t_max=300.0,
-                n_defects=0.0,
-                strain_range=0.0,
-                policy_name="Fallback Standard",
-            )
-            return _validate_strategy(fallback)
-        except RuntimeError as e:
-            msg = "Critical infrastructure failure in policy engine execution."
-            logging.exception(msg)
-            raise RuntimeError(msg) from e
+        import time
+
+        max_retries = 3
+        backoff_factor = 2.0
+
+        for attempt in range(max_retries):
+            try:
+                strategy = self.policy_engine.decide_policy(features)
+                return _validate_strategy(strategy)
+            except (ValueError, TypeError, KeyError) as e:
+                # Configuration or type issues, won't be fixed by retrying
+                logging.warning(
+                    f"Policy engine parameter calculation failed ({e}). Falling back to default MD strategy.",
+                    exc_info=True
+                )
+                fallback = ExplorationStrategy(
+                    md_mc_ratio=0.0,
+                    t_max=300.0,
+                    n_defects=0.0,
+                    strain_range=0.0,
+                    policy_name="Fallback Standard",
+                )
+                return _validate_strategy(fallback)
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    sleep_time = backoff_factor ** attempt
+                    logging.warning(
+                        f"Transient failure in policy engine execution: {e}. Retrying in {sleep_time}s... (Attempt {attempt + 1}/{max_retries})",
+                        exc_info=True
+                    )
+                    time.sleep(sleep_time)
+                else:
+                    msg = "Critical infrastructure failure in policy engine execution after multiple retries."
+                    logging.exception(msg)
+                    raise RuntimeError(msg) from e
+
+        # Unreachable but satisfy mypy
+        unreachable_msg = "Unreachable"
+        raise RuntimeError(unreachable_msg)
 
     def _execute_exploration(
         self, strategy: ExplorationStrategy, current_pot: Path | None, tmp_work_dir: Path
@@ -344,29 +364,30 @@ class Orchestrator:
             msg = f"Source potential file exceeds maximum allowed size ({max_size} bytes)"
             raise ValueError(msg)
 
-        # Hash source
-        sha256 = hashlib.sha256()
-        with Path.open(resolved_src, "rb") as f:
-            for chunk in iter(lambda: f.read(4096), b""):
-                sha256.update(chunk)
-        expected_hash = sha256.hexdigest()
-
-        # Secure cross-filesystem atomic copy
+        # Secure cross-filesystem atomic copy with streaming hash
         try:
             fd, tmp_path_str = tempfile.mkstemp(dir=str(resolved_pot_dir), prefix=".tmp_pot_")
             tmp_path = Path(tmp_path_str)
             try:
-                import shutil
+                sha256_src = hashlib.sha256()
+                sha256_dest = hashlib.sha256()
 
-                # We copy into the temporary file in the target directory
+                # We copy into the temporary file in the target directory and hash the source
                 with os.fdopen(fd, "wb") as f_out, Path.open(resolved_src, "rb") as f_in:
-                    shutil.copyfileobj(f_in, f_out)
+                    while True:
+                        chunk = f_in.read(8192)
+                        if not chunk:
+                            break
+                        sha256_src.update(chunk)
+                        f_out.write(chunk)
+
+                expected_hash = sha256_src.hexdigest()
 
                 # Hash destination to verify integrity
-                sha256_dest = hashlib.sha256()
                 with Path.open(tmp_path, "rb") as f:
-                    for chunk in iter(lambda: f.read(4096), b""):
+                    for chunk in iter(lambda: f.read(8192), b""):
                         sha256_dest.update(chunk)
+
                 if sha256_dest.hexdigest() != expected_hash:
                     msg = "File integrity check failed after copying."
                     raise RuntimeError(msg)

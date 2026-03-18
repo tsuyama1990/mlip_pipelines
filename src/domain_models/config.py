@@ -19,14 +19,22 @@ class InterfaceTarget(BaseModel):
 def _check_allowed_base_dirs(resolved_str: str, path_str: str) -> None:
     import tempfile
 
+    if ".." in path_str:
+        msg = f"Path traversal sequences (..) are not allowed: {path_str}"
+        raise ValueError(msg)
+
+    # Use realpath to resolve all symlinks and strictly match canonical bounds
+    canonical_str = os.path.realpath(resolved_str)
+
     # Use resolve(strict=True) on allowed bases
     home_dir = str(Path.home().resolve(strict=True))
     tmp_dir = str(Path(tempfile.gettempdir()).resolve(strict=True))
+    app_dir = str(Path("/app").resolve(strict=False)) if Path("/app").exists() else ""
 
     is_safe = False
-    for safe_base in [home_dir, tmp_dir]:
+    for safe_base in filter(None, [home_dir, tmp_dir, app_dir]):
         try:
-            if os.path.commonpath([safe_base, resolved_str]) == safe_base:
+            if os.path.commonpath([safe_base, canonical_str]) == safe_base:
                 is_safe = True
                 break
         except ValueError:
@@ -549,10 +557,31 @@ def _validate_env_key(key: str) -> None:
 
 
 def _validate_env_value(val: str) -> None:
-    if not re.match(r"^[a-zA-Z0-9_-]{1,1024}$", val):
+    if len(val) > 256:
+        msg = "Environment variable value exceeds maximum length of 256 characters"
+        raise ValueError(msg)
+    if not re.match(r"^[-a-zA-Z0-9_.:/=,+?&#@%]*$", val):
         msg = "Invalid characters detected in .env variable value."
         raise ValueError(msg)
 
+
+def _validate_env_permissions_and_size(resolved_env: Path) -> None:
+    import os
+
+    st = os.lstat(resolved_env)
+
+    if st.st_size > 1024:
+        msg = ".env file is too large (max 1KB)."
+        raise ValueError(msg)
+
+    current_uid = os.getuid()
+    if st.st_uid != current_uid:
+        msg = ".env file is not owned by the current user."
+        raise ValueError(msg)
+
+    if bool(st.st_mode & stat.S_IRWXO) or bool(st.st_mode & stat.S_IRWXG):
+        msg = ".env file has insecure permissions. It must not be group or world readable/writable."
+        raise ValueError(msg)
 
 def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
     expected_base_resolved = expected_base.resolve(strict=True)
@@ -588,20 +617,7 @@ def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
             msg = f".env file cannot be a system directory/file: {restricted}"
             raise ValueError(msg)
 
-    st = os.lstat(resolved_env)
-
-    if st.st_size > 1024:
-        msg = ".env file is too large (max 1KB)."
-        raise ValueError(msg)
-
-    current_uid = os.getuid()
-    if st.st_uid != current_uid:
-        msg = ".env file is not owned by the current user."
-        raise ValueError(msg)
-
-    if bool(st.st_mode & stat.S_IRWXO) or bool(st.st_mode & stat.S_IRWXG):
-        msg = ".env file has insecure permissions. It must not be group or world readable/writable."
-        raise ValueError(msg)
+    _validate_env_permissions_and_size(resolved_env)
 
     # Content validation for malicious patterns before parsing
     with Path.open(resolved_env, "r", encoding="utf-8") as f:
@@ -619,7 +635,10 @@ def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
                     raise ValueError(msg)
 
                 val = val.strip()
-                if not re.match(r"^[a-zA-Z0-9_-]{1,1024}$", val):
+                if len(val) > 256:
+                    msg = "Value in .env file exceeds maximum length of 256 characters"
+                    raise ValueError(msg)
+                if not re.match(r"^[-a-zA-Z0-9_.:/=,+?&#@%]*$", val):
                     msg = f"Invalid characters or traversal sequences in .env file content: {val}"
                     raise ValueError(msg)
 
