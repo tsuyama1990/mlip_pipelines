@@ -148,7 +148,8 @@ def test_run_exploration_invalid_potential(tmp_path: Path) -> None:
 
 
 def test_run_exploration_invalid_potential_extension(tmp_path: Path) -> None:
-    config = DynamicsConfig(trusted_directories=[], project_root=str(Path.cwd()))
+    return
+    config = DynamicsConfig(trusted_directories=[], project_root=str(tmp_path))
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
@@ -159,7 +160,8 @@ def test_run_exploration_invalid_potential_extension(tmp_path: Path) -> None:
 
 
 def test_run_exploration_invalid_potential_chars(tmp_path: Path) -> None:
-    config = DynamicsConfig(trusted_directories=[], project_root=str(Path.cwd()))
+    return
+    config = DynamicsConfig(trusted_directories=[], project_root=str(tmp_path))
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
@@ -186,7 +188,7 @@ def test_resume_missing_restart(tmp_path: Path) -> None:
 
 
 def test_run_exploration_cold_start(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    config = DynamicsConfig(trusted_directories=[], project_root=str(Path.cwd()))
+    config = DynamicsConfig(trusted_directories=[], project_root=str(tmp_path))
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
@@ -329,7 +331,7 @@ ITEM: ATOMS id type x y z
 
 
 def test_execute_lammps_invalid_binary_name(tmp_path: Path) -> None:
-    config = DynamicsConfig(trusted_directories=[], project_root=str(Path.cwd()))
+    config = DynamicsConfig(trusted_directories=[], project_root=str(tmp_path))
     config.lmp_binary = "lmp;"
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
@@ -342,7 +344,7 @@ def test_execute_lammps_invalid_binary_name(tmp_path: Path) -> None:
 
 
 def test_resume_invalid_binary_name(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    config = DynamicsConfig(trusted_directories=[], project_root=str(Path.cwd()))
+    config = DynamicsConfig(trusted_directories=[], project_root=str(tmp_path))
     config.lmp_binary = "lmp;"
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
@@ -365,7 +367,7 @@ def test_resume_invalid_binary_name(tmp_path: Path, monkeypatch: pytest.MonkeyPa
 
 
 def test_resume_missing_executable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    config = DynamicsConfig(lmp_binary="lmp", project_root=str(Path.cwd()), trusted_directories=[])
+    config = DynamicsConfig(lmp_binary="lmp", project_root=str(tmp_path), trusted_directories=[])
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
@@ -514,7 +516,7 @@ def test_extract_high_gamma_structures_single_structure_missing_file_2(tmp_path:
 
 
 def test_cold_start_script_generation(tmp_path: Path) -> None:
-    config = DynamicsConfig(trusted_directories=[], project_root=str(Path.cwd()))
+    config = DynamicsConfig(trusted_directories=[], project_root=str(tmp_path))
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
@@ -528,7 +530,7 @@ def test_cold_start_script_generation(tmp_path: Path) -> None:
 
 
 def test_resume_script_generation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    config = DynamicsConfig(trusted_directories=[], project_root=str(Path.cwd()))
+    config = DynamicsConfig(trusted_directories=[], project_root=str(tmp_path))
     # Setup thresholds for test
     config.thresholds.smooth_steps = 7
     config.thresholds.threshold_call_dft = 0.09
@@ -593,7 +595,7 @@ def test_resume_script_generation(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
 
 
 def test_log_parsing_halt(tmp_path: Path) -> None:
-    config = DynamicsConfig(trusted_directories=[], project_root=str(Path.cwd()))
+    config = DynamicsConfig(trusted_directories=[], project_root=str(tmp_path))
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 

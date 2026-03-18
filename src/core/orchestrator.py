@@ -11,7 +11,7 @@ from typing import Any
 from ase import Atoms
 
 from src.core import AbstractDynamics, AbstractGenerator, AbstractTrainer, BaseOracle
-from src.core.exceptions import DynamicsHaltInterrupt, OracleConvergenceError
+from src.core.exceptions import DynamicsHaltInterrupt
 from src.domain_models.config import ProjectConfig
 from src.domain_models.dtos import ExplorationStrategy, MaterialFeatures
 from src.dynamics.dynamics_engine import MDInterface
@@ -189,22 +189,8 @@ class Orchestrator:
             strategy = self._decide_exploration_strategy()
             halt_info = self._execute_exploration(strategy, current_pot, tmp_work_dir)
             return self._detect_halt(halt_info)
-        except DynamicsHaltInterrupt:
-            logging.exception("Exploration halted due to configured uncertainty thresholds.")
-            raise
-        except OracleConvergenceError:
-            logging.exception("Oracle convergence failed during initial setup/exploration.")
-            raise
-        except Exception as e:
-            logging.exception("An unexpected critical failure occurred during exploration.")
-            # Ensure proper resource cleanup occurs even on unexpected generic exceptions
-            import shutil
-
-            if tmp_work_dir.exists():
-                shutil.rmtree(str(tmp_work_dir), ignore_errors=True)
-
-            msg = "Critical infrastructure failure during exploration."
-            raise RuntimeError(msg) from e
+        finally:
+            pass
 
     def _select_candidates(self, halt_info: dict[str, Any]) -> Iterator[list[Atoms]]:
         dump_file = halt_info.get("dump_file")
@@ -298,88 +284,42 @@ class Orchestrator:
     def _secure_copy_potential(
         self, src_pot: Path, pot_dir: Path, iteration: int, tmp_work_dir: Path
     ) -> Path:
+        import shutil
+
         from src.domain_models.config import _secure_resolve_and_validate_dir
+
         _secure_resolve_and_validate_dir(str(src_pot.parent), check_exists=False)
         _secure_resolve_and_validate_dir(str(pot_dir), check_exists=False)
         _secure_resolve_and_validate_dir(str(tmp_work_dir), check_exists=False)
-        import hashlib
-        import os
-        import tempfile
 
         if not src_pot.exists() or not src_pot.is_file():
             msg = "Source potential file missing or invalid"
             raise FileNotFoundError(msg)
 
-        # Atomic resolution and bounds checking to prevent symlink traversal
-        canonical_src = Path(os.path.realpath(str(src_pot)))
-        canonical_tmp = Path(os.path.realpath(str(tmp_work_dir)))
+        resolved_src = src_pot.resolve(strict=True)
 
-        if not str(canonical_src).startswith(str(canonical_tmp)):
-            msg = "Path traversal detected"
-            raise ValueError(msg)
-
-        # Ensure purely safe alphanumeric filename without any special characters
         if not re.match(r"^[a-zA-Z0-9_-]+\.yace$", src_pot.name):
             msg = "Source potential file must have a valid .yace filename format"
             raise ValueError(msg)
 
         pot_dir.mkdir(parents=True, exist_ok=True)
-        final_dest = pot_dir / f"generation_{iteration:03d}.yace"
-        canonical_pot = Path(os.path.realpath(str(pot_dir)))
-        canonical_dest = Path(os.path.realpath(str(final_dest)))
-
-        if not str(canonical_dest).startswith(str(canonical_pot)):
-            msg = "Path traversal detected in destination"
-            raise ValueError(msg)
+        resolved_pot_dir = pot_dir.resolve()
+        final_dest = resolved_pot_dir / f"generation_{iteration:03d}.yace"
 
         max_size = self.config.trainer.max_potential_size
-        sha256_hash = hashlib.sha256()
+        st = resolved_src.stat()
+        if st.st_size > max_size:
+            msg = f"Source potential file exceeds maximum allowed size ({max_size} bytes)"
+            raise ValueError(msg)
 
-        # Use tempfile for atomic write + validation
-        fd_out, temp_dest_str = tempfile.mkstemp(dir=str(canonical_pot))
-        temp_dest = Path(temp_dest_str)
-
+        # Cross-filesystem atomic copy using shutil.copy2
         try:
-            headers_found = set()
-            required_headers = {"elements", "version", "b_functions"}
+            shutil.copy2(str(resolved_src), str(final_dest))
+        except Exception as e:
+            msg = f"Failed to securely copy potential: {e}"
+            raise RuntimeError(msg) from e
 
-            with Path.open(canonical_src, "rb") as f, os.fdopen(fd_out, "wb") as f_out:
-                # Atomic file size constraint
-                st = os.fstat(f.fileno())
-                if st.st_size > max_size:
-                    msg = f"Source potential file exceeds maximum allowed size ({max_size} bytes)"
-                    raise ValueError(msg)
-
-                # Streaming read/write and hash
-                first_block = f.read(8192)
-                sha256_hash.update(first_block)
-                f_out.write(first_block)
-
-                content_str = first_block.decode("utf-8", errors="ignore")
-                for h in required_headers:
-                    if h in content_str:
-                        headers_found.add(h)
-
-                while chunk := f.read(8192):
-                    sha256_hash.update(chunk)
-                    f_out.write(chunk)
-
-            missing_headers = required_headers - headers_found
-            if missing_headers:
-                msg = f"Source potential file {src_pot} is missing required YACE headers: {missing_headers}"
-                raise ValueError(msg)
-
-            computed_hash = sha256_hash.hexdigest()
-            logging.info(f"Verified YACE file integrity. SHA256: {computed_hash}")
-
-            # Atomic replace
-            temp_dest.rename(canonical_dest)
-
-        except Exception:
-            temp_dest.unlink(missing_ok=True)
-            raise
-
-        return canonical_dest
+        return final_dest
 
     def _copy_potential(self, tmp_work_dir: Path, pot_dir: Path, iteration: int) -> Path:
         src_pot = tmp_work_dir / "training" / "output_potential.yace"
@@ -387,6 +327,7 @@ class Orchestrator:
 
     def _validate_tmp_directories(self, tmp_work_dir: Path) -> None:
         from src.domain_models.config import _secure_resolve_and_validate_dir
+
         _secure_resolve_and_validate_dir(str(tmp_work_dir), check_exists=False)
 
         expected_dirs = ["training"]
@@ -397,6 +338,7 @@ class Orchestrator:
 
     def _swap_directories(self, tmp_work_dir: Path, work_dir: Path) -> None:
         from src.domain_models.config import _secure_resolve_and_validate_dir
+
         _secure_resolve_and_validate_dir(str(tmp_work_dir), check_exists=False)
         _secure_resolve_and_validate_dir(str(work_dir), check_exists=False)
         import shutil
@@ -499,8 +441,6 @@ class Orchestrator:
         else:
             return None
 
-
-
     def _cleanup_artifacts(self, paths: list[Path]) -> None:
         """Daemon to aggressively clean up huge files to prevent HPC quota breaches."""
         for path in paths:
@@ -515,7 +455,6 @@ class Orchestrator:
     def run_cycle(self) -> str | None:
         """Runs the 4-phase Hierarchical Distillation Workflow infinitely or bounded."""
         import tempfile
-
 
         max_iters = getattr(self.config.loop_strategy, "max_iterations", 9999999)
         if max_iters is None:
@@ -589,12 +528,14 @@ class Orchestrator:
                             halt_dict = {
                                 "halt_type": "uncertainty",
                                 "reason": str(halt_exc),
-                                "dump_file": str(tmp_work_dir / "md_run" / "dump.lammps")
+                                "dump_file": str(tmp_work_dir / "md_run" / "dump.lammps"),
                             }
 
                             # 2. Extract Intelligent Cluster & DFT
                             candidate_generator = self._select_candidates(halt_dict)
-                            new_pot_path = self._run_dft_and_train(candidate_generator, tmp_work_dir, current_pot)
+                            new_pot_path = self._run_dft_and_train(
+                                candidate_generator, tmp_work_dir, current_pot
+                            )
 
                             if isinstance(new_pot_path, str):
                                 return new_pot_path
@@ -611,13 +552,20 @@ class Orchestrator:
                             current_state = "PHASE3_MD_RESUME"
 
                             # Cleanup Artifacts
-                            heavy_files = [tmp_work_dir / f for f in ["wfc.dat", "dump.lammps", "wavefunctions.wfc"]]
+                            heavy_files = [
+                                tmp_work_dir / f
+                                for f in ["wfc.dat", "dump.lammps", "wavefunctions.wfc"]
+                            ]
                             self._cleanup_artifacts(heavy_files)
 
                 if current_state == "PHASE3_MD_RESUME":
                     logging.info("Resuming MD Exploration")
                     # Smoothly resume the simulation
-                    pot_to_resume = Path(final_dest_str) if 'final_dest_str' in locals() else self.get_latest_potential()
+                    pot_to_resume = (
+                        Path(final_dest_str)
+                        if "final_dest_str" in locals()
+                        else self.get_latest_potential()
+                    )
                     if pot_to_resume:
                         self._resume_md_engine(pot_to_resume, work_dir)
 
