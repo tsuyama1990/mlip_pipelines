@@ -153,7 +153,7 @@ def test_project_config_env_file_security(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError):
         _validate_env_file_security(env, base)
 
-    # Test symlink (symlinks are now allowed, so this should pass if permissions are secure)
+    # Test symlink (symlinks are NOT allowed, so this should raise ValueError)
     target = base / "target.txt"
     target.write_text("test")
     env.symlink_to(target)
@@ -164,8 +164,8 @@ def test_project_config_env_file_security(tmp_path: Path) -> None:
 
     Path(target).chmod(stat.S_IRUSR | stat.S_IWUSR)
 
-    # This should pass without raising
-    _validate_env_file_security(env, base)
+    with pytest.raises(ValueError, match="symlink for security reasons"):
+        _validate_env_file_security(env, base)
 
     env.unlink()
 

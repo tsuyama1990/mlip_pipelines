@@ -215,33 +215,6 @@ class Orchestrator:
     def _decide_exploration_strategy(self) -> ExplorationStrategy:
         features = MaterialFeatures(elements=self.config.system.elements)
 
-        def _validate_strategy(strat: ExplorationStrategy) -> ExplorationStrategy:
-            # Enforce physical bounds and allowed policies
-            allowed_policies = {
-                "Standard",
-                "Cautious Exploration",
-                "High-MC Policy",
-                "Defect-Driven Policy",
-                "Strain-Heavy Policy",
-                "Fallback Standard",
-            }
-            if strat.policy_name not in allowed_policies:
-                msg = f"Invalid policy name selected: {strat.policy_name}"
-                raise ValueError(msg)
-            if not (0.0 <= strat.t_max <= 5000.0):
-                msg = f"Invalid temperature schedule max value: {strat.t_max}"
-                raise ValueError(msg)
-            if not (0.0 <= strat.md_mc_ratio <= 1000.0):
-                msg = f"Invalid MD/MC ratio: {strat.md_mc_ratio}"
-                raise ValueError(msg)
-            if not (0.0 <= strat.strain_range <= 0.5):
-                msg = f"Invalid strain range: {strat.strain_range}"
-                raise ValueError(msg)
-            if not (0.0 <= strat.n_defects <= 0.5):
-                msg = f"Invalid defect concentration: {strat.n_defects}"
-                raise ValueError(msg)
-            return strat
-
         fallback = ExplorationStrategy(
             md_mc_ratio=0.0,
             t_max=300.0,
@@ -258,22 +231,25 @@ class Orchestrator:
 
         try:
             strategy = retry_manager.execute_with_retry(self.policy_engine.decide_policy, features)
-            return _validate_strategy(strategy)
         except RuntimeError:
             # Reached when transient retries are exhausted or breaker is open
             logging.exception("Policy engine failed to execute. Falling back to default.")
-            return _validate_strategy(fallback)
+            return fallback
         except (ValueError, TypeError, KeyError) as e:
             # Reached when the operation yields a permanent schema/validation error internally
             logging.warning(
                 f"Permanent failure in policy engine parameter calculation ({e}). Falling back to default MD strategy.",
                 exc_info=True,
             )
-            return _validate_strategy(fallback)
+            return fallback
         except Exception as e:
             msg = f"Critical unexpected infrastructure failure in policy engine execution: {e}"
             logging.exception(msg)
             raise RuntimeError(msg) from e
+        else:
+            if isinstance(strategy, ExplorationStrategy):
+                return strategy
+            return fallback
 
     def _execute_exploration(
         self, strategy: ExplorationStrategy, current_pot: Path | None, tmp_work_dir: Path
@@ -425,7 +401,12 @@ class Orchestrator:
         # to prevent complex symlink/traversal attacks where a file named 'valid.yace'
         # points to a restricted target path outside the active learning bounds
         allowed_src_dir = tmp_work_dir.resolve(strict=True)
-        if not str(resolved_src).startswith(str(allowed_src_dir)):
+        try:
+            is_valid_path = os.path.commonpath([str(allowed_src_dir), str(resolved_src)]) == str(allowed_src_dir)
+        except ValueError:
+            is_valid_path = False
+
+        if not is_valid_path:
             msg = f"Security Violation: Resolved source potential {resolved_src} lies outside the trusted directory {allowed_src_dir}"
             raise ValueError(msg)
 
@@ -509,7 +490,8 @@ class Orchestrator:
         # onto a temporary resolved destination, then perform an atomic rename.
         final_dest = work_dir.resolve(strict=False)
 
-        lock_file = final_dest.parent / ".swap.lock"
+        lock_name = getattr(self.config.loop_strategy, "swap_lock_file", ".swap.lock")
+        lock_file = final_dest.parent / lock_name
         with Path.open(lock_file, "w") as f_lock:
             try:
                 fcntl.flock(f_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -647,7 +629,8 @@ class Orchestrator:
         active_learning_dir_str = str(
             (self.config.project_root / "active_learning").resolve(strict=False)
         )
-        allowed_extensions = {".dat", ".wfc", ".lammps", ".yace"}
+        allowed_extensions = getattr(self.config.loop_strategy, "allowed_cleanup_extensions", {".dat", ".wfc", ".lammps", ".yace"})
+        size_threshold = getattr(self.config.loop_strategy, "cleanup_size_threshold", 10240)
 
         for path in paths:
             try:
@@ -683,7 +666,7 @@ class Orchestrator:
                     continue
 
                 # Protect against accidental deletion of small configuration/metadata files
-                if st.st_size < 1024 * 10:  # Less than 10KB
+                if st.st_size < size_threshold:
                     logging.warning(
                         f"Validation Error: File too small for aggressive cleanup: {canonical_str}"
                     )

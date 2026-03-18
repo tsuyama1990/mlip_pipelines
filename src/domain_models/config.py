@@ -574,7 +574,7 @@ def _validate_env_key(key: str) -> None:
     if len(key) > 64:
         msg = "Environment variable key exceeds maximum length"
         raise ValueError(msg)
-    if not re.match(r"^[A-Z0-9_]+$", key):
+    if not re.match(r"^MLIP_[A-Z0-9]+$", key):
         msg = f"Invalid characters in .env variable key: {key}"
         raise ValueError(msg)
 
@@ -591,6 +591,10 @@ def _validate_env_value(val: str) -> None:
 def _validate_env_permissions_and_size(resolved_env: Path) -> None:
     import os
     import stat
+
+    if resolved_env.is_symlink():
+        msg = ".env file cannot be a symlink for security reasons"
+        raise ValueError(msg)
 
     st = os.lstat(resolved_env)
 
@@ -611,10 +615,14 @@ def _validate_env_permissions_and_size(resolved_env: Path) -> None:
 def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
     import os
 
+    if env_file.is_symlink():
+        msg = ".env file cannot be a symlink for security reasons"
+        raise ValueError(msg)
+
     expected_base_resolved = expected_base.resolve(strict=True)
     canonical_base = os.path.realpath(str(expected_base_resolved))
 
-    # Allow symlinks, but they must securely resolve within expected_base
+    # Symlinks are blocked above, this just resolves relative paths
     resolved_env = env_file.resolve(strict=True)
     canonical_env = os.path.realpath(str(resolved_env))
 
@@ -787,6 +795,16 @@ class LoopStrategyConfig(BaseModel):
     )
     timeout_seconds: int = Field(
         ..., description="Maximum wall-clock timeout in seconds for a complete loop iteration"
+    )
+    allowed_cleanup_extensions: set[str] = Field(
+        default_factory=lambda: {".dat", ".wfc", ".lammps", ".yace"},
+        description="Allowed file extensions for artifact cleanup daemon"
+    )
+    cleanup_size_threshold: int = Field(
+        default=10240, description="Minimum file size in bytes to trigger cleanup"
+    )
+    swap_lock_file: str = Field(
+        default=".swap.lock", description="Filename for directory swap advisory locking"
     )
 
     @model_validator(mode="after")
