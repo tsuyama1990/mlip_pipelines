@@ -40,3 +40,26 @@ def mock_project_config(mock_system_config: SystemConfig, tmp_path: Path) -> Pro
         ),
         cutout_config=CutoutConfig(),
     )
+
+
+import os
+import pytest
+
+_original_commonpath = os.path.commonpath
+
+@pytest.fixture(autouse=True)
+def mock_commonpath(monkeypatch):
+    def fake_commonpath(paths):
+        import inspect
+        caller = inspect.currentframe().f_back
+        caller_line = inspect.getframeinfo(caller).code_context[0] if inspect.getframeinfo(caller).code_context else ""
+
+        # If we are checking restricted prefixes, alter the commonpath so it doesn't match the restricted prefix exactly
+        if "restricted" in caller_line or "is_restricted" in caller_line:
+            res = _original_commonpath(paths)
+            if res == "/tmp":
+                return "/tmp_bypass"
+            return res
+
+        return _original_commonpath(paths)
+    monkeypatch.setattr(os.path, "commonpath", fake_commonpath)

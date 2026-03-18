@@ -15,7 +15,7 @@ tests/uat/test_tutorial.py s....                                         [  9%]
 tests/unit/test_ace_trainer.py ....................                      [ 18%]
 tests/unit/test_adaptive_policy.py .......                               [ 22%]
 tests/unit/test_checkpoint.py .....                                      [ 24%]
-tests/unit/test_config.py ........................                       [ 36%]
+tests/unit/test_config.py ....F...............F...                       [ 36%]
 tests/unit/test_defect_builder.py ...                                    [ 37%]
 tests/unit/test_dft_oracle.py ...............                            [ 45%]
 tests/unit/test_domain_models.py .                                       [ 45%]
@@ -24,7 +24,7 @@ tests/unit/test_eon_driver.py .............                              [ 65%]
 tests/unit/test_eon_wrapper.py .................                         [ 73%]
 tests/unit/test_finetune_manager.py ....                                 [ 75%]
 tests/unit/test_mace_manager.py .                                        [ 76%]
-tests/unit/test_orchestrator.py ...............                          [ 83%]
+tests/unit/test_orchestrator.py EEEEEEEEEEEEEFF                          [ 83%]
 tests/unit/test_reporter.py ..                                           [ 84%]
 tests/unit/test_security_utils.py .........                              [ 88%]
 tests/unit/test_stability.py ........                                    [ 92%]
@@ -32,6 +32,1968 @@ tests/unit/test_structure_generator.py ......                            [ 95%]
 tests/unit/test_tiered_oracle.py .                                       [ 96%]
 tests/unit/test_validator.py ........                                    [100%]
 
+==================================== ERRORS ====================================
+______________ ERROR at setup of test_orchestrator_initialization ______________
+
+mock_system_config = SystemConfig(elements=['Fe', 'Pt'], baseline_potential='zbl', interface_target=None, interface_generation_iteration=0,...icted_directories=['/etc', '/bin', '/usr', '/sbin', '/var', '/lib', '/boot', '/root', '/proc', '/sys', '/dev', '/tmp'])
+tmp_path = PosixPath('/tmp/pytest-of-jules/pytest-24/test_orchestrator_initializati0')
+
+    @pytest.fixture
+    def mock_project_config(mock_system_config: SystemConfig, tmp_path: Path) -> ProjectConfig:
+        (tmp_path / "README.md").touch()
+        from src.domain_models.config import CutoutConfig, DistillationConfig, LoopStrategyConfig
+
+>       return ProjectConfig(
+            project_root=tmp_path,
+            system=mock_system_config,
+            dynamics=DynamicsConfig(trusted_directories=[], project_root=str(tmp_path)),
+            oracle=OracleConfig(),
+            trainer=TrainerConfig(trusted_directories=[]),
+            validator=ValidatorConfig(),
+            distillation_config=DistillationConfig(
+                temp_dir=str(tmp_path), output_dir=str(tmp_path), model_storage_path=str(tmp_path)
+            ),
+            loop_strategy=LoopStrategyConfig(
+                replay_buffer_size=1000, checkpoint_interval=5, timeout_seconds=3600
+            ),
+            cutout_config=CutoutConfig(),
+        )
+
+tests/conftest.py:28:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+__pydantic_self__ = ProjectConfig(), _case_sensitive = None
+_nested_model_default_partial_update = None, _env_prefix = None
+_env_prefix_target = None, _env_file = PosixPath('.'), _env_file_encoding = None
+_env_ignore_empty = None, _env_nested_delimiter = None
+_env_nested_max_split = None, _env_parse_none_str = None
+_env_parse_enums = None, _cli_prog_name = None, _cli_parse_args = None
+_cli_settings_source = None, _cli_parse_none_str = None
+_cli_hide_none_type = None, _cli_avoid_json = None, _cli_enforce_required = None
+_cli_use_class_docs_for_groups = None, _cli_exit_on_error = None
+_cli_prefix = None, _cli_flag_prefix_char = None, _cli_implicit_flags = None
+_cli_ignore_unknown_args = None, _cli_kebab_case = None, _cli_shortcuts = None
+_secrets_dir = None, _build_sources = None
+values = {'cutout_config': CutoutConfig(core_radius=3.0, buffer_radius=4.0, enable_pre_relaxation=True, enable_passivation=True..._dft=0.05, threshold_add_train=0.02, smooth_steps=3), checkpoint_interval=5, max_retries=3, timeout_seconds=3600), ...}
+sources = (InitSettingsSource(init_kwargs={'project_root': PosixPath('/tmp/pytest-of-jules/pytest-24/test_orchestrator_initializ...efix_len=5), SecretsSettingsSource(secrets_dir=None), DefaultSettingsSource(nested_model_default_partial_update=False))
+init_kwargs = {'cutout_config': CutoutConfig(core_radius=3.0, buffer_radius=4.0, enable_pre_relaxation=True, enable_passivation=True..._dft=0.05, threshold_add_train=0.02, smooth_steps=3), checkpoint_interval=5, max_retries=3, timeout_seconds=3600), ...}
+
+    def __init__(
+        __pydantic_self__,
+        _case_sensitive: bool | None = None,
+        _nested_model_default_partial_update: bool | None = None,
+        _env_prefix: str | None = None,
+        _env_prefix_target: EnvPrefixTarget | None = None,
+        _env_file: DotenvType | None = ENV_FILE_SENTINEL,
+        _env_file_encoding: str | None = None,
+        _env_ignore_empty: bool | None = None,
+        _env_nested_delimiter: str | None = None,
+        _env_nested_max_split: int | None = None,
+        _env_parse_none_str: str | None = None,
+        _env_parse_enums: bool | None = None,
+        _cli_prog_name: str | None = None,
+        _cli_parse_args: bool | list[str] | tuple[str, ...] | None = None,
+        _cli_settings_source: CliSettingsSource[Any] | None = None,
+        _cli_parse_none_str: str | None = None,
+        _cli_hide_none_type: bool | None = None,
+        _cli_avoid_json: bool | None = None,
+        _cli_enforce_required: bool | None = None,
+        _cli_use_class_docs_for_groups: bool | None = None,
+        _cli_exit_on_error: bool | None = None,
+        _cli_prefix: str | None = None,
+        _cli_flag_prefix_char: str | None = None,
+        _cli_implicit_flags: bool | Literal['dual', 'toggle'] | None = None,
+        _cli_ignore_unknown_args: bool | None = None,
+        _cli_kebab_case: bool | Literal['all', 'no_enums'] | None = None,
+        _cli_shortcuts: Mapping[str, str | list[str]] | None = None,
+        _secrets_dir: PathType | None = None,
+        _build_sources: tuple[tuple[PydanticBaseSettingsSource, ...], dict[str, Any]] | None = None,
+        **values: Any,
+    ) -> None:
+        sources, init_kwargs = (
+            _build_sources
+            if _build_sources is not None
+            else __pydantic_self__.__class__._settings_init_sources(
+                _case_sensitive=_case_sensitive,
+                _nested_model_default_partial_update=_nested_model_default_partial_update,
+                _env_prefix=_env_prefix,
+                _env_prefix_target=_env_prefix_target,
+                _env_file=_env_file,
+                _env_file_encoding=_env_file_encoding,
+                _env_ignore_empty=_env_ignore_empty,
+                _env_nested_delimiter=_env_nested_delimiter,
+                _env_nested_max_split=_env_nested_max_split,
+                _env_parse_none_str=_env_parse_none_str,
+                _env_parse_enums=_env_parse_enums,
+                _cli_prog_name=_cli_prog_name,
+                _cli_parse_args=_cli_parse_args,
+                _cli_settings_source=_cli_settings_source,
+                _cli_parse_none_str=_cli_parse_none_str,
+                _cli_hide_none_type=_cli_hide_none_type,
+                _cli_avoid_json=_cli_avoid_json,
+                _cli_enforce_required=_cli_enforce_required,
+                _cli_use_class_docs_for_groups=_cli_use_class_docs_for_groups,
+                _cli_exit_on_error=_cli_exit_on_error,
+                _cli_prefix=_cli_prefix,
+                _cli_flag_prefix_char=_cli_flag_prefix_char,
+                _cli_implicit_flags=_cli_implicit_flags,
+                _cli_ignore_unknown_args=_cli_ignore_unknown_args,
+                _cli_kebab_case=_cli_kebab_case,
+                _cli_shortcuts=_cli_shortcuts,
+                _secrets_dir=_secrets_dir,
+                **values,
+            )
+        )
+
+>       super().__init__(**__pydantic_self__.__class__._settings_build_values(sources, init_kwargs))
+E       pydantic_core._pydantic_core.ValidationError: 1 validation error for ProjectConfig
+E       project_root
+E         Value error, project_root cannot be a system directory: /tmp [type=value_error, input_value=PosixPath('/tmp/pytest-of...estrator_initializati0'), input_type=PosixPath]
+E           For further information visit https://errors.pydantic.dev/2.12/v/value_error
+
+.venv/lib/python3.12/site-packages/pydantic_settings/main.py:242: ValidationError
+_________ ERROR at setup of test_orchestrator_oracle_convergence_error _________
+
+mock_system_config = SystemConfig(elements=['Fe', 'Pt'], baseline_potential='zbl', interface_target=None, interface_generation_iteration=0,...icted_directories=['/etc', '/bin', '/usr', '/sbin', '/var', '/lib', '/boot', '/root', '/proc', '/sys', '/dev', '/tmp'])
+tmp_path = PosixPath('/tmp/pytest-of-jules/pytest-24/test_orchestrator_oracle_conve0')
+
+    @pytest.fixture
+    def mock_project_config(mock_system_config: SystemConfig, tmp_path: Path) -> ProjectConfig:
+        (tmp_path / "README.md").touch()
+        from src.domain_models.config import CutoutConfig, DistillationConfig, LoopStrategyConfig
+
+>       return ProjectConfig(
+            project_root=tmp_path,
+            system=mock_system_config,
+            dynamics=DynamicsConfig(trusted_directories=[], project_root=str(tmp_path)),
+            oracle=OracleConfig(),
+            trainer=TrainerConfig(trusted_directories=[]),
+            validator=ValidatorConfig(),
+            distillation_config=DistillationConfig(
+                temp_dir=str(tmp_path), output_dir=str(tmp_path), model_storage_path=str(tmp_path)
+            ),
+            loop_strategy=LoopStrategyConfig(
+                replay_buffer_size=1000, checkpoint_interval=5, timeout_seconds=3600
+            ),
+            cutout_config=CutoutConfig(),
+        )
+
+tests/conftest.py:28:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+__pydantic_self__ = ProjectConfig(), _case_sensitive = None
+_nested_model_default_partial_update = None, _env_prefix = None
+_env_prefix_target = None, _env_file = PosixPath('.'), _env_file_encoding = None
+_env_ignore_empty = None, _env_nested_delimiter = None
+_env_nested_max_split = None, _env_parse_none_str = None
+_env_parse_enums = None, _cli_prog_name = None, _cli_parse_args = None
+_cli_settings_source = None, _cli_parse_none_str = None
+_cli_hide_none_type = None, _cli_avoid_json = None, _cli_enforce_required = None
+_cli_use_class_docs_for_groups = None, _cli_exit_on_error = None
+_cli_prefix = None, _cli_flag_prefix_char = None, _cli_implicit_flags = None
+_cli_ignore_unknown_args = None, _cli_kebab_case = None, _cli_shortcuts = None
+_secrets_dir = None, _build_sources = None
+values = {'cutout_config': CutoutConfig(core_radius=3.0, buffer_radius=4.0, enable_pre_relaxation=True, enable_passivation=True..._dft=0.05, threshold_add_train=0.02, smooth_steps=3), checkpoint_interval=5, max_retries=3, timeout_seconds=3600), ...}
+sources = (InitSettingsSource(init_kwargs={'project_root': PosixPath('/tmp/pytest-of-jules/pytest-24/test_orchestrator_oracle_co...efix_len=5), SecretsSettingsSource(secrets_dir=None), DefaultSettingsSource(nested_model_default_partial_update=False))
+init_kwargs = {'cutout_config': CutoutConfig(core_radius=3.0, buffer_radius=4.0, enable_pre_relaxation=True, enable_passivation=True..._dft=0.05, threshold_add_train=0.02, smooth_steps=3), checkpoint_interval=5, max_retries=3, timeout_seconds=3600), ...}
+
+    def __init__(
+        __pydantic_self__,
+        _case_sensitive: bool | None = None,
+        _nested_model_default_partial_update: bool | None = None,
+        _env_prefix: str | None = None,
+        _env_prefix_target: EnvPrefixTarget | None = None,
+        _env_file: DotenvType | None = ENV_FILE_SENTINEL,
+        _env_file_encoding: str | None = None,
+        _env_ignore_empty: bool | None = None,
+        _env_nested_delimiter: str | None = None,
+        _env_nested_max_split: int | None = None,
+        _env_parse_none_str: str | None = None,
+        _env_parse_enums: bool | None = None,
+        _cli_prog_name: str | None = None,
+        _cli_parse_args: bool | list[str] | tuple[str, ...] | None = None,
+        _cli_settings_source: CliSettingsSource[Any] | None = None,
+        _cli_parse_none_str: str | None = None,
+        _cli_hide_none_type: bool | None = None,
+        _cli_avoid_json: bool | None = None,
+        _cli_enforce_required: bool | None = None,
+        _cli_use_class_docs_for_groups: bool | None = None,
+        _cli_exit_on_error: bool | None = None,
+        _cli_prefix: str | None = None,
+        _cli_flag_prefix_char: str | None = None,
+        _cli_implicit_flags: bool | Literal['dual', 'toggle'] | None = None,
+        _cli_ignore_unknown_args: bool | None = None,
+        _cli_kebab_case: bool | Literal['all', 'no_enums'] | None = None,
+        _cli_shortcuts: Mapping[str, str | list[str]] | None = None,
+        _secrets_dir: PathType | None = None,
+        _build_sources: tuple[tuple[PydanticBaseSettingsSource, ...], dict[str, Any]] | None = None,
+        **values: Any,
+    ) -> None:
+        sources, init_kwargs = (
+            _build_sources
+            if _build_sources is not None
+            else __pydantic_self__.__class__._settings_init_sources(
+                _case_sensitive=_case_sensitive,
+                _nested_model_default_partial_update=_nested_model_default_partial_update,
+                _env_prefix=_env_prefix,
+                _env_prefix_target=_env_prefix_target,
+                _env_file=_env_file,
+                _env_file_encoding=_env_file_encoding,
+                _env_ignore_empty=_env_ignore_empty,
+                _env_nested_delimiter=_env_nested_delimiter,
+                _env_nested_max_split=_env_nested_max_split,
+                _env_parse_none_str=_env_parse_none_str,
+                _env_parse_enums=_env_parse_enums,
+                _cli_prog_name=_cli_prog_name,
+                _cli_parse_args=_cli_parse_args,
+                _cli_settings_source=_cli_settings_source,
+                _cli_parse_none_str=_cli_parse_none_str,
+                _cli_hide_none_type=_cli_hide_none_type,
+                _cli_avoid_json=_cli_avoid_json,
+                _cli_enforce_required=_cli_enforce_required,
+                _cli_use_class_docs_for_groups=_cli_use_class_docs_for_groups,
+                _cli_exit_on_error=_cli_exit_on_error,
+                _cli_prefix=_cli_prefix,
+                _cli_flag_prefix_char=_cli_flag_prefix_char,
+                _cli_implicit_flags=_cli_implicit_flags,
+                _cli_ignore_unknown_args=_cli_ignore_unknown_args,
+                _cli_kebab_case=_cli_kebab_case,
+                _cli_shortcuts=_cli_shortcuts,
+                _secrets_dir=_secrets_dir,
+                **values,
+            )
+        )
+
+>       super().__init__(**__pydantic_self__.__class__._settings_build_values(sources, init_kwargs))
+E       pydantic_core._pydantic_core.ValidationError: 1 validation error for ProjectConfig
+E       project_root
+E         Value error, project_root cannot be a system directory: /tmp [type=value_error, input_value=PosixPath('/tmp/pytest-of...estrator_oracle_conve0'), input_type=PosixPath]
+E           For further information visit https://errors.pydantic.dev/2.12/v/value_error
+
+.venv/lib/python3.12/site-packages/pydantic_settings/main.py:242: ValidationError
+_________ ERROR at setup of test_orchestrator_dynamics_halt_interrupt __________
+
+mock_system_config = SystemConfig(elements=['Fe', 'Pt'], baseline_potential='zbl', interface_target=None, interface_generation_iteration=0,...icted_directories=['/etc', '/bin', '/usr', '/sbin', '/var', '/lib', '/boot', '/root', '/proc', '/sys', '/dev', '/tmp'])
+tmp_path = PosixPath('/tmp/pytest-of-jules/pytest-24/test_orchestrator_dynamics_hal0')
+
+    @pytest.fixture
+    def mock_project_config(mock_system_config: SystemConfig, tmp_path: Path) -> ProjectConfig:
+        (tmp_path / "README.md").touch()
+        from src.domain_models.config import CutoutConfig, DistillationConfig, LoopStrategyConfig
+
+>       return ProjectConfig(
+            project_root=tmp_path,
+            system=mock_system_config,
+            dynamics=DynamicsConfig(trusted_directories=[], project_root=str(tmp_path)),
+            oracle=OracleConfig(),
+            trainer=TrainerConfig(trusted_directories=[]),
+            validator=ValidatorConfig(),
+            distillation_config=DistillationConfig(
+                temp_dir=str(tmp_path), output_dir=str(tmp_path), model_storage_path=str(tmp_path)
+            ),
+            loop_strategy=LoopStrategyConfig(
+                replay_buffer_size=1000, checkpoint_interval=5, timeout_seconds=3600
+            ),
+            cutout_config=CutoutConfig(),
+        )
+
+tests/conftest.py:28:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+__pydantic_self__ = ProjectConfig(), _case_sensitive = None
+_nested_model_default_partial_update = None, _env_prefix = None
+_env_prefix_target = None, _env_file = PosixPath('.'), _env_file_encoding = None
+_env_ignore_empty = None, _env_nested_delimiter = None
+_env_nested_max_split = None, _env_parse_none_str = None
+_env_parse_enums = None, _cli_prog_name = None, _cli_parse_args = None
+_cli_settings_source = None, _cli_parse_none_str = None
+_cli_hide_none_type = None, _cli_avoid_json = None, _cli_enforce_required = None
+_cli_use_class_docs_for_groups = None, _cli_exit_on_error = None
+_cli_prefix = None, _cli_flag_prefix_char = None, _cli_implicit_flags = None
+_cli_ignore_unknown_args = None, _cli_kebab_case = None, _cli_shortcuts = None
+_secrets_dir = None, _build_sources = None
+values = {'cutout_config': CutoutConfig(core_radius=3.0, buffer_radius=4.0, enable_pre_relaxation=True, enable_passivation=True..._dft=0.05, threshold_add_train=0.02, smooth_steps=3), checkpoint_interval=5, max_retries=3, timeout_seconds=3600), ...}
+sources = (InitSettingsSource(init_kwargs={'project_root': PosixPath('/tmp/pytest-of-jules/pytest-24/test_orchestrator_dynamics_...efix_len=5), SecretsSettingsSource(secrets_dir=None), DefaultSettingsSource(nested_model_default_partial_update=False))
+init_kwargs = {'cutout_config': CutoutConfig(core_radius=3.0, buffer_radius=4.0, enable_pre_relaxation=True, enable_passivation=True..._dft=0.05, threshold_add_train=0.02, smooth_steps=3), checkpoint_interval=5, max_retries=3, timeout_seconds=3600), ...}
+
+    def __init__(
+        __pydantic_self__,
+        _case_sensitive: bool | None = None,
+        _nested_model_default_partial_update: bool | None = None,
+        _env_prefix: str | None = None,
+        _env_prefix_target: EnvPrefixTarget | None = None,
+        _env_file: DotenvType | None = ENV_FILE_SENTINEL,
+        _env_file_encoding: str | None = None,
+        _env_ignore_empty: bool | None = None,
+        _env_nested_delimiter: str | None = None,
+        _env_nested_max_split: int | None = None,
+        _env_parse_none_str: str | None = None,
+        _env_parse_enums: bool | None = None,
+        _cli_prog_name: str | None = None,
+        _cli_parse_args: bool | list[str] | tuple[str, ...] | None = None,
+        _cli_settings_source: CliSettingsSource[Any] | None = None,
+        _cli_parse_none_str: str | None = None,
+        _cli_hide_none_type: bool | None = None,
+        _cli_avoid_json: bool | None = None,
+        _cli_enforce_required: bool | None = None,
+        _cli_use_class_docs_for_groups: bool | None = None,
+        _cli_exit_on_error: bool | None = None,
+        _cli_prefix: str | None = None,
+        _cli_flag_prefix_char: str | None = None,
+        _cli_implicit_flags: bool | Literal['dual', 'toggle'] | None = None,
+        _cli_ignore_unknown_args: bool | None = None,
+        _cli_kebab_case: bool | Literal['all', 'no_enums'] | None = None,
+        _cli_shortcuts: Mapping[str, str | list[str]] | None = None,
+        _secrets_dir: PathType | None = None,
+        _build_sources: tuple[tuple[PydanticBaseSettingsSource, ...], dict[str, Any]] | None = None,
+        **values: Any,
+    ) -> None:
+        sources, init_kwargs = (
+            _build_sources
+            if _build_sources is not None
+            else __pydantic_self__.__class__._settings_init_sources(
+                _case_sensitive=_case_sensitive,
+                _nested_model_default_partial_update=_nested_model_default_partial_update,
+                _env_prefix=_env_prefix,
+                _env_prefix_target=_env_prefix_target,
+                _env_file=_env_file,
+                _env_file_encoding=_env_file_encoding,
+                _env_ignore_empty=_env_ignore_empty,
+                _env_nested_delimiter=_env_nested_delimiter,
+                _env_nested_max_split=_env_nested_max_split,
+                _env_parse_none_str=_env_parse_none_str,
+                _env_parse_enums=_env_parse_enums,
+                _cli_prog_name=_cli_prog_name,
+                _cli_parse_args=_cli_parse_args,
+                _cli_settings_source=_cli_settings_source,
+                _cli_parse_none_str=_cli_parse_none_str,
+                _cli_hide_none_type=_cli_hide_none_type,
+                _cli_avoid_json=_cli_avoid_json,
+                _cli_enforce_required=_cli_enforce_required,
+                _cli_use_class_docs_for_groups=_cli_use_class_docs_for_groups,
+                _cli_exit_on_error=_cli_exit_on_error,
+                _cli_prefix=_cli_prefix,
+                _cli_flag_prefix_char=_cli_flag_prefix_char,
+                _cli_implicit_flags=_cli_implicit_flags,
+                _cli_ignore_unknown_args=_cli_ignore_unknown_args,
+                _cli_kebab_case=_cli_kebab_case,
+                _cli_shortcuts=_cli_shortcuts,
+                _secrets_dir=_secrets_dir,
+                **values,
+            )
+        )
+
+>       super().__init__(**__pydantic_self__.__class__._settings_build_values(sources, init_kwargs))
+E       pydantic_core._pydantic_core.ValidationError: 1 validation error for ProjectConfig
+E       project_root
+E         Value error, project_root cannot be a system directory: /tmp [type=value_error, input_value=PosixPath('/tmp/pytest-of...estrator_dynamics_hal0'), input_type=PosixPath]
+E           For further information visit https://errors.pydantic.dev/2.12/v/value_error
+
+.venv/lib/python3.12/site-packages/pydantic_settings/main.py:242: ValidationError
+_______________________ ERROR at setup of test_run_cycle _______________________
+
+mock_system_config = SystemConfig(elements=['Fe', 'Pt'], baseline_potential='zbl', interface_target=None, interface_generation_iteration=0,...icted_directories=['/etc', '/bin', '/usr', '/sbin', '/var', '/lib', '/boot', '/root', '/proc', '/sys', '/dev', '/tmp'])
+tmp_path = PosixPath('/tmp/pytest-of-jules/pytest-24/test_run_cycle0')
+
+    @pytest.fixture
+    def mock_project_config(mock_system_config: SystemConfig, tmp_path: Path) -> ProjectConfig:
+        (tmp_path / "README.md").touch()
+        from src.domain_models.config import CutoutConfig, DistillationConfig, LoopStrategyConfig
+
+>       return ProjectConfig(
+            project_root=tmp_path,
+            system=mock_system_config,
+            dynamics=DynamicsConfig(trusted_directories=[], project_root=str(tmp_path)),
+            oracle=OracleConfig(),
+            trainer=TrainerConfig(trusted_directories=[]),
+            validator=ValidatorConfig(),
+            distillation_config=DistillationConfig(
+                temp_dir=str(tmp_path), output_dir=str(tmp_path), model_storage_path=str(tmp_path)
+            ),
+            loop_strategy=LoopStrategyConfig(
+                replay_buffer_size=1000, checkpoint_interval=5, timeout_seconds=3600
+            ),
+            cutout_config=CutoutConfig(),
+        )
+
+tests/conftest.py:28:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+__pydantic_self__ = ProjectConfig(), _case_sensitive = None
+_nested_model_default_partial_update = None, _env_prefix = None
+_env_prefix_target = None, _env_file = PosixPath('.'), _env_file_encoding = None
+_env_ignore_empty = None, _env_nested_delimiter = None
+_env_nested_max_split = None, _env_parse_none_str = None
+_env_parse_enums = None, _cli_prog_name = None, _cli_parse_args = None
+_cli_settings_source = None, _cli_parse_none_str = None
+_cli_hide_none_type = None, _cli_avoid_json = None, _cli_enforce_required = None
+_cli_use_class_docs_for_groups = None, _cli_exit_on_error = None
+_cli_prefix = None, _cli_flag_prefix_char = None, _cli_implicit_flags = None
+_cli_ignore_unknown_args = None, _cli_kebab_case = None, _cli_shortcuts = None
+_secrets_dir = None, _build_sources = None
+values = {'cutout_config': CutoutConfig(core_radius=3.0, buffer_radius=4.0, enable_pre_relaxation=True, enable_passivation=True..._dft=0.05, threshold_add_train=0.02, smooth_steps=3), checkpoint_interval=5, max_retries=3, timeout_seconds=3600), ...}
+sources = (InitSettingsSource(init_kwargs={'project_root': PosixPath('/tmp/pytest-of-jules/pytest-24/test_run_cycle0'), 'system'...efix_len=5), SecretsSettingsSource(secrets_dir=None), DefaultSettingsSource(nested_model_default_partial_update=False))
+init_kwargs = {'cutout_config': CutoutConfig(core_radius=3.0, buffer_radius=4.0, enable_pre_relaxation=True, enable_passivation=True..._dft=0.05, threshold_add_train=0.02, smooth_steps=3), checkpoint_interval=5, max_retries=3, timeout_seconds=3600), ...}
+
+    def __init__(
+        __pydantic_self__,
+        _case_sensitive: bool | None = None,
+        _nested_model_default_partial_update: bool | None = None,
+        _env_prefix: str | None = None,
+        _env_prefix_target: EnvPrefixTarget | None = None,
+        _env_file: DotenvType | None = ENV_FILE_SENTINEL,
+        _env_file_encoding: str | None = None,
+        _env_ignore_empty: bool | None = None,
+        _env_nested_delimiter: str | None = None,
+        _env_nested_max_split: int | None = None,
+        _env_parse_none_str: str | None = None,
+        _env_parse_enums: bool | None = None,
+        _cli_prog_name: str | None = None,
+        _cli_parse_args: bool | list[str] | tuple[str, ...] | None = None,
+        _cli_settings_source: CliSettingsSource[Any] | None = None,
+        _cli_parse_none_str: str | None = None,
+        _cli_hide_none_type: bool | None = None,
+        _cli_avoid_json: bool | None = None,
+        _cli_enforce_required: bool | None = None,
+        _cli_use_class_docs_for_groups: bool | None = None,
+        _cli_exit_on_error: bool | None = None,
+        _cli_prefix: str | None = None,
+        _cli_flag_prefix_char: str | None = None,
+        _cli_implicit_flags: bool | Literal['dual', 'toggle'] | None = None,
+        _cli_ignore_unknown_args: bool | None = None,
+        _cli_kebab_case: bool | Literal['all', 'no_enums'] | None = None,
+        _cli_shortcuts: Mapping[str, str | list[str]] | None = None,
+        _secrets_dir: PathType | None = None,
+        _build_sources: tuple[tuple[PydanticBaseSettingsSource, ...], dict[str, Any]] | None = None,
+        **values: Any,
+    ) -> None:
+        sources, init_kwargs = (
+            _build_sources
+            if _build_sources is not None
+            else __pydantic_self__.__class__._settings_init_sources(
+                _case_sensitive=_case_sensitive,
+                _nested_model_default_partial_update=_nested_model_default_partial_update,
+                _env_prefix=_env_prefix,
+                _env_prefix_target=_env_prefix_target,
+                _env_file=_env_file,
+                _env_file_encoding=_env_file_encoding,
+                _env_ignore_empty=_env_ignore_empty,
+                _env_nested_delimiter=_env_nested_delimiter,
+                _env_nested_max_split=_env_nested_max_split,
+                _env_parse_none_str=_env_parse_none_str,
+                _env_parse_enums=_env_parse_enums,
+                _cli_prog_name=_cli_prog_name,
+                _cli_parse_args=_cli_parse_args,
+                _cli_settings_source=_cli_settings_source,
+                _cli_parse_none_str=_cli_parse_none_str,
+                _cli_hide_none_type=_cli_hide_none_type,
+                _cli_avoid_json=_cli_avoid_json,
+                _cli_enforce_required=_cli_enforce_required,
+                _cli_use_class_docs_for_groups=_cli_use_class_docs_for_groups,
+                _cli_exit_on_error=_cli_exit_on_error,
+                _cli_prefix=_cli_prefix,
+                _cli_flag_prefix_char=_cli_flag_prefix_char,
+                _cli_implicit_flags=_cli_implicit_flags,
+                _cli_ignore_unknown_args=_cli_ignore_unknown_args,
+                _cli_kebab_case=_cli_kebab_case,
+                _cli_shortcuts=_cli_shortcuts,
+                _secrets_dir=_secrets_dir,
+                **values,
+            )
+        )
+
+>       super().__init__(**__pydantic_self__.__class__._settings_build_values(sources, init_kwargs))
+E       pydantic_core._pydantic_core.ValidationError: 1 validation error for ProjectConfig
+E       project_root
+E         Value error, project_root cannot be a system directory: /tmp [type=value_error, input_value=PosixPath('/tmp/pytest-of...est-24/test_run_cycle0'), input_type=PosixPath]
+E           For further information visit https://errors.pydantic.dev/2.12/v/value_error
+
+.venv/lib/python3.12/site-packages/pydantic_settings/main.py:242: ValidationError
+__________________ ERROR at setup of test_run_cycle_converged __________________
+
+mock_system_config = SystemConfig(elements=['Fe', 'Pt'], baseline_potential='zbl', interface_target=None, interface_generation_iteration=0,...icted_directories=['/etc', '/bin', '/usr', '/sbin', '/var', '/lib', '/boot', '/root', '/proc', '/sys', '/dev', '/tmp'])
+tmp_path = PosixPath('/tmp/pytest-of-jules/pytest-24/test_run_cycle_converged0')
+
+    @pytest.fixture
+    def mock_project_config(mock_system_config: SystemConfig, tmp_path: Path) -> ProjectConfig:
+        (tmp_path / "README.md").touch()
+        from src.domain_models.config import CutoutConfig, DistillationConfig, LoopStrategyConfig
+
+>       return ProjectConfig(
+            project_root=tmp_path,
+            system=mock_system_config,
+            dynamics=DynamicsConfig(trusted_directories=[], project_root=str(tmp_path)),
+            oracle=OracleConfig(),
+            trainer=TrainerConfig(trusted_directories=[]),
+            validator=ValidatorConfig(),
+            distillation_config=DistillationConfig(
+                temp_dir=str(tmp_path), output_dir=str(tmp_path), model_storage_path=str(tmp_path)
+            ),
+            loop_strategy=LoopStrategyConfig(
+                replay_buffer_size=1000, checkpoint_interval=5, timeout_seconds=3600
+            ),
+            cutout_config=CutoutConfig(),
+        )
+
+tests/conftest.py:28:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+__pydantic_self__ = ProjectConfig(), _case_sensitive = None
+_nested_model_default_partial_update = None, _env_prefix = None
+_env_prefix_target = None, _env_file = PosixPath('.'), _env_file_encoding = None
+_env_ignore_empty = None, _env_nested_delimiter = None
+_env_nested_max_split = None, _env_parse_none_str = None
+_env_parse_enums = None, _cli_prog_name = None, _cli_parse_args = None
+_cli_settings_source = None, _cli_parse_none_str = None
+_cli_hide_none_type = None, _cli_avoid_json = None, _cli_enforce_required = None
+_cli_use_class_docs_for_groups = None, _cli_exit_on_error = None
+_cli_prefix = None, _cli_flag_prefix_char = None, _cli_implicit_flags = None
+_cli_ignore_unknown_args = None, _cli_kebab_case = None, _cli_shortcuts = None
+_secrets_dir = None, _build_sources = None
+values = {'cutout_config': CutoutConfig(core_radius=3.0, buffer_radius=4.0, enable_pre_relaxation=True, enable_passivation=True..._dft=0.05, threshold_add_train=0.02, smooth_steps=3), checkpoint_interval=5, max_retries=3, timeout_seconds=3600), ...}
+sources = (InitSettingsSource(init_kwargs={'project_root': PosixPath('/tmp/pytest-of-jules/pytest-24/test_run_cycle_converged0')...efix_len=5), SecretsSettingsSource(secrets_dir=None), DefaultSettingsSource(nested_model_default_partial_update=False))
+init_kwargs = {'cutout_config': CutoutConfig(core_radius=3.0, buffer_radius=4.0, enable_pre_relaxation=True, enable_passivation=True..._dft=0.05, threshold_add_train=0.02, smooth_steps=3), checkpoint_interval=5, max_retries=3, timeout_seconds=3600), ...}
+
+    def __init__(
+        __pydantic_self__,
+        _case_sensitive: bool | None = None,
+        _nested_model_default_partial_update: bool | None = None,
+        _env_prefix: str | None = None,
+        _env_prefix_target: EnvPrefixTarget | None = None,
+        _env_file: DotenvType | None = ENV_FILE_SENTINEL,
+        _env_file_encoding: str | None = None,
+        _env_ignore_empty: bool | None = None,
+        _env_nested_delimiter: str | None = None,
+        _env_nested_max_split: int | None = None,
+        _env_parse_none_str: str | None = None,
+        _env_parse_enums: bool | None = None,
+        _cli_prog_name: str | None = None,
+        _cli_parse_args: bool | list[str] | tuple[str, ...] | None = None,
+        _cli_settings_source: CliSettingsSource[Any] | None = None,
+        _cli_parse_none_str: str | None = None,
+        _cli_hide_none_type: bool | None = None,
+        _cli_avoid_json: bool | None = None,
+        _cli_enforce_required: bool | None = None,
+        _cli_use_class_docs_for_groups: bool | None = None,
+        _cli_exit_on_error: bool | None = None,
+        _cli_prefix: str | None = None,
+        _cli_flag_prefix_char: str | None = None,
+        _cli_implicit_flags: bool | Literal['dual', 'toggle'] | None = None,
+        _cli_ignore_unknown_args: bool | None = None,
+        _cli_kebab_case: bool | Literal['all', 'no_enums'] | None = None,
+        _cli_shortcuts: Mapping[str, str | list[str]] | None = None,
+        _secrets_dir: PathType | None = None,
+        _build_sources: tuple[tuple[PydanticBaseSettingsSource, ...], dict[str, Any]] | None = None,
+        **values: Any,
+    ) -> None:
+        sources, init_kwargs = (
+            _build_sources
+            if _build_sources is not None
+            else __pydantic_self__.__class__._settings_init_sources(
+                _case_sensitive=_case_sensitive,
+                _nested_model_default_partial_update=_nested_model_default_partial_update,
+                _env_prefix=_env_prefix,
+                _env_prefix_target=_env_prefix_target,
+                _env_file=_env_file,
+                _env_file_encoding=_env_file_encoding,
+                _env_ignore_empty=_env_ignore_empty,
+                _env_nested_delimiter=_env_nested_delimiter,
+                _env_nested_max_split=_env_nested_max_split,
+                _env_parse_none_str=_env_parse_none_str,
+                _env_parse_enums=_env_parse_enums,
+                _cli_prog_name=_cli_prog_name,
+                _cli_parse_args=_cli_parse_args,
+                _cli_settings_source=_cli_settings_source,
+                _cli_parse_none_str=_cli_parse_none_str,
+                _cli_hide_none_type=_cli_hide_none_type,
+                _cli_avoid_json=_cli_avoid_json,
+                _cli_enforce_required=_cli_enforce_required,
+                _cli_use_class_docs_for_groups=_cli_use_class_docs_for_groups,
+                _cli_exit_on_error=_cli_exit_on_error,
+                _cli_prefix=_cli_prefix,
+                _cli_flag_prefix_char=_cli_flag_prefix_char,
+                _cli_implicit_flags=_cli_implicit_flags,
+                _cli_ignore_unknown_args=_cli_ignore_unknown_args,
+                _cli_kebab_case=_cli_kebab_case,
+                _cli_shortcuts=_cli_shortcuts,
+                _secrets_dir=_secrets_dir,
+                **values,
+            )
+        )
+
+>       super().__init__(**__pydantic_self__.__class__._settings_build_values(sources, init_kwargs))
+E       pydantic_core._pydantic_core.ValidationError: 1 validation error for ProjectConfig
+E       project_root
+E         Value error, project_root cannot be a system directory: /tmp [type=value_error, input_value=PosixPath('/tmp/pytest-of...t_run_cycle_converged0'), input_type=PosixPath]
+E           For further information visit https://errors.pydantic.dev/2.12/v/value_error
+
+.venv/lib/python3.12/site-packages/pydantic_settings/main.py:242: ValidationError
+_________________ ERROR at setup of test_get_latest_potential __________________
+
+mock_system_config = SystemConfig(elements=['Fe', 'Pt'], baseline_potential='zbl', interface_target=None, interface_generation_iteration=0,...icted_directories=['/etc', '/bin', '/usr', '/sbin', '/var', '/lib', '/boot', '/root', '/proc', '/sys', '/dev', '/tmp'])
+tmp_path = PosixPath('/tmp/pytest-of-jules/pytest-24/test_get_latest_potential0')
+
+    @pytest.fixture
+    def mock_project_config(mock_system_config: SystemConfig, tmp_path: Path) -> ProjectConfig:
+        (tmp_path / "README.md").touch()
+        from src.domain_models.config import CutoutConfig, DistillationConfig, LoopStrategyConfig
+
+>       return ProjectConfig(
+            project_root=tmp_path,
+            system=mock_system_config,
+            dynamics=DynamicsConfig(trusted_directories=[], project_root=str(tmp_path)),
+            oracle=OracleConfig(),
+            trainer=TrainerConfig(trusted_directories=[]),
+            validator=ValidatorConfig(),
+            distillation_config=DistillationConfig(
+                temp_dir=str(tmp_path), output_dir=str(tmp_path), model_storage_path=str(tmp_path)
+            ),
+            loop_strategy=LoopStrategyConfig(
+                replay_buffer_size=1000, checkpoint_interval=5, timeout_seconds=3600
+            ),
+            cutout_config=CutoutConfig(),
+        )
+
+tests/conftest.py:28:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+__pydantic_self__ = ProjectConfig(), _case_sensitive = None
+_nested_model_default_partial_update = None, _env_prefix = None
+_env_prefix_target = None, _env_file = PosixPath('.'), _env_file_encoding = None
+_env_ignore_empty = None, _env_nested_delimiter = None
+_env_nested_max_split = None, _env_parse_none_str = None
+_env_parse_enums = None, _cli_prog_name = None, _cli_parse_args = None
+_cli_settings_source = None, _cli_parse_none_str = None
+_cli_hide_none_type = None, _cli_avoid_json = None, _cli_enforce_required = None
+_cli_use_class_docs_for_groups = None, _cli_exit_on_error = None
+_cli_prefix = None, _cli_flag_prefix_char = None, _cli_implicit_flags = None
+_cli_ignore_unknown_args = None, _cli_kebab_case = None, _cli_shortcuts = None
+_secrets_dir = None, _build_sources = None
+values = {'cutout_config': CutoutConfig(core_radius=3.0, buffer_radius=4.0, enable_pre_relaxation=True, enable_passivation=True..._dft=0.05, threshold_add_train=0.02, smooth_steps=3), checkpoint_interval=5, max_retries=3, timeout_seconds=3600), ...}
+sources = (InitSettingsSource(init_kwargs={'project_root': PosixPath('/tmp/pytest-of-jules/pytest-24/test_get_latest_potential0'...efix_len=5), SecretsSettingsSource(secrets_dir=None), DefaultSettingsSource(nested_model_default_partial_update=False))
+init_kwargs = {'cutout_config': CutoutConfig(core_radius=3.0, buffer_radius=4.0, enable_pre_relaxation=True, enable_passivation=True..._dft=0.05, threshold_add_train=0.02, smooth_steps=3), checkpoint_interval=5, max_retries=3, timeout_seconds=3600), ...}
+
+    def __init__(
+        __pydantic_self__,
+        _case_sensitive: bool | None = None,
+        _nested_model_default_partial_update: bool | None = None,
+        _env_prefix: str | None = None,
+        _env_prefix_target: EnvPrefixTarget | None = None,
+        _env_file: DotenvType | None = ENV_FILE_SENTINEL,
+        _env_file_encoding: str | None = None,
+        _env_ignore_empty: bool | None = None,
+        _env_nested_delimiter: str | None = None,
+        _env_nested_max_split: int | None = None,
+        _env_parse_none_str: str | None = None,
+        _env_parse_enums: bool | None = None,
+        _cli_prog_name: str | None = None,
+        _cli_parse_args: bool | list[str] | tuple[str, ...] | None = None,
+        _cli_settings_source: CliSettingsSource[Any] | None = None,
+        _cli_parse_none_str: str | None = None,
+        _cli_hide_none_type: bool | None = None,
+        _cli_avoid_json: bool | None = None,
+        _cli_enforce_required: bool | None = None,
+        _cli_use_class_docs_for_groups: bool | None = None,
+        _cli_exit_on_error: bool | None = None,
+        _cli_prefix: str | None = None,
+        _cli_flag_prefix_char: str | None = None,
+        _cli_implicit_flags: bool | Literal['dual', 'toggle'] | None = None,
+        _cli_ignore_unknown_args: bool | None = None,
+        _cli_kebab_case: bool | Literal['all', 'no_enums'] | None = None,
+        _cli_shortcuts: Mapping[str, str | list[str]] | None = None,
+        _secrets_dir: PathType | None = None,
+        _build_sources: tuple[tuple[PydanticBaseSettingsSource, ...], dict[str, Any]] | None = None,
+        **values: Any,
+    ) -> None:
+        sources, init_kwargs = (
+            _build_sources
+            if _build_sources is not None
+            else __pydantic_self__.__class__._settings_init_sources(
+                _case_sensitive=_case_sensitive,
+                _nested_model_default_partial_update=_nested_model_default_partial_update,
+                _env_prefix=_env_prefix,
+                _env_prefix_target=_env_prefix_target,
+                _env_file=_env_file,
+                _env_file_encoding=_env_file_encoding,
+                _env_ignore_empty=_env_ignore_empty,
+                _env_nested_delimiter=_env_nested_delimiter,
+                _env_nested_max_split=_env_nested_max_split,
+                _env_parse_none_str=_env_parse_none_str,
+                _env_parse_enums=_env_parse_enums,
+                _cli_prog_name=_cli_prog_name,
+                _cli_parse_args=_cli_parse_args,
+                _cli_settings_source=_cli_settings_source,
+                _cli_parse_none_str=_cli_parse_none_str,
+                _cli_hide_none_type=_cli_hide_none_type,
+                _cli_avoid_json=_cli_avoid_json,
+                _cli_enforce_required=_cli_enforce_required,
+                _cli_use_class_docs_for_groups=_cli_use_class_docs_for_groups,
+                _cli_exit_on_error=_cli_exit_on_error,
+                _cli_prefix=_cli_prefix,
+                _cli_flag_prefix_char=_cli_flag_prefix_char,
+                _cli_implicit_flags=_cli_implicit_flags,
+                _cli_ignore_unknown_args=_cli_ignore_unknown_args,
+                _cli_kebab_case=_cli_kebab_case,
+                _cli_shortcuts=_cli_shortcuts,
+                _secrets_dir=_secrets_dir,
+                **values,
+            )
+        )
+
+>       super().__init__(**__pydantic_self__.__class__._settings_build_values(sources, init_kwargs))
+E       pydantic_core._pydantic_core.ValidationError: 1 validation error for ProjectConfig
+E       project_root
+E         Value error, project_root cannot be a system directory: /tmp [type=value_error, input_value=PosixPath('/tmp/pytest-of..._get_latest_potential0'), input_type=PosixPath]
+E           For further information visit https://errors.pydantic.dev/2.12/v/value_error
+
+.venv/lib/python3.12/site-packages/pydantic_settings/main.py:242: ValidationError
+______________ ERROR at setup of test_get_latest_potential_no_dir ______________
+
+mock_system_config = SystemConfig(elements=['Fe', 'Pt'], baseline_potential='zbl', interface_target=None, interface_generation_iteration=0,...icted_directories=['/etc', '/bin', '/usr', '/sbin', '/var', '/lib', '/boot', '/root', '/proc', '/sys', '/dev', '/tmp'])
+tmp_path = PosixPath('/tmp/pytest-of-jules/pytest-24/test_get_latest_potential_no_d0')
+
+    @pytest.fixture
+    def mock_project_config(mock_system_config: SystemConfig, tmp_path: Path) -> ProjectConfig:
+        (tmp_path / "README.md").touch()
+        from src.domain_models.config import CutoutConfig, DistillationConfig, LoopStrategyConfig
+
+>       return ProjectConfig(
+            project_root=tmp_path,
+            system=mock_system_config,
+            dynamics=DynamicsConfig(trusted_directories=[], project_root=str(tmp_path)),
+            oracle=OracleConfig(),
+            trainer=TrainerConfig(trusted_directories=[]),
+            validator=ValidatorConfig(),
+            distillation_config=DistillationConfig(
+                temp_dir=str(tmp_path), output_dir=str(tmp_path), model_storage_path=str(tmp_path)
+            ),
+            loop_strategy=LoopStrategyConfig(
+                replay_buffer_size=1000, checkpoint_interval=5, timeout_seconds=3600
+            ),
+            cutout_config=CutoutConfig(),
+        )
+
+tests/conftest.py:28:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+__pydantic_self__ = ProjectConfig(), _case_sensitive = None
+_nested_model_default_partial_update = None, _env_prefix = None
+_env_prefix_target = None, _env_file = PosixPath('.'), _env_file_encoding = None
+_env_ignore_empty = None, _env_nested_delimiter = None
+_env_nested_max_split = None, _env_parse_none_str = None
+_env_parse_enums = None, _cli_prog_name = None, _cli_parse_args = None
+_cli_settings_source = None, _cli_parse_none_str = None
+_cli_hide_none_type = None, _cli_avoid_json = None, _cli_enforce_required = None
+_cli_use_class_docs_for_groups = None, _cli_exit_on_error = None
+_cli_prefix = None, _cli_flag_prefix_char = None, _cli_implicit_flags = None
+_cli_ignore_unknown_args = None, _cli_kebab_case = None, _cli_shortcuts = None
+_secrets_dir = None, _build_sources = None
+values = {'cutout_config': CutoutConfig(core_radius=3.0, buffer_radius=4.0, enable_pre_relaxation=True, enable_passivation=True..._dft=0.05, threshold_add_train=0.02, smooth_steps=3), checkpoint_interval=5, max_retries=3, timeout_seconds=3600), ...}
+sources = (InitSettingsSource(init_kwargs={'project_root': PosixPath('/tmp/pytest-of-jules/pytest-24/test_get_latest_potential_n...efix_len=5), SecretsSettingsSource(secrets_dir=None), DefaultSettingsSource(nested_model_default_partial_update=False))
+init_kwargs = {'cutout_config': CutoutConfig(core_radius=3.0, buffer_radius=4.0, enable_pre_relaxation=True, enable_passivation=True..._dft=0.05, threshold_add_train=0.02, smooth_steps=3), checkpoint_interval=5, max_retries=3, timeout_seconds=3600), ...}
+
+    def __init__(
+        __pydantic_self__,
+        _case_sensitive: bool | None = None,
+        _nested_model_default_partial_update: bool | None = None,
+        _env_prefix: str | None = None,
+        _env_prefix_target: EnvPrefixTarget | None = None,
+        _env_file: DotenvType | None = ENV_FILE_SENTINEL,
+        _env_file_encoding: str | None = None,
+        _env_ignore_empty: bool | None = None,
+        _env_nested_delimiter: str | None = None,
+        _env_nested_max_split: int | None = None,
+        _env_parse_none_str: str | None = None,
+        _env_parse_enums: bool | None = None,
+        _cli_prog_name: str | None = None,
+        _cli_parse_args: bool | list[str] | tuple[str, ...] | None = None,
+        _cli_settings_source: CliSettingsSource[Any] | None = None,
+        _cli_parse_none_str: str | None = None,
+        _cli_hide_none_type: bool | None = None,
+        _cli_avoid_json: bool | None = None,
+        _cli_enforce_required: bool | None = None,
+        _cli_use_class_docs_for_groups: bool | None = None,
+        _cli_exit_on_error: bool | None = None,
+        _cli_prefix: str | None = None,
+        _cli_flag_prefix_char: str | None = None,
+        _cli_implicit_flags: bool | Literal['dual', 'toggle'] | None = None,
+        _cli_ignore_unknown_args: bool | None = None,
+        _cli_kebab_case: bool | Literal['all', 'no_enums'] | None = None,
+        _cli_shortcuts: Mapping[str, str | list[str]] | None = None,
+        _secrets_dir: PathType | None = None,
+        _build_sources: tuple[tuple[PydanticBaseSettingsSource, ...], dict[str, Any]] | None = None,
+        **values: Any,
+    ) -> None:
+        sources, init_kwargs = (
+            _build_sources
+            if _build_sources is not None
+            else __pydantic_self__.__class__._settings_init_sources(
+                _case_sensitive=_case_sensitive,
+                _nested_model_default_partial_update=_nested_model_default_partial_update,
+                _env_prefix=_env_prefix,
+                _env_prefix_target=_env_prefix_target,
+                _env_file=_env_file,
+                _env_file_encoding=_env_file_encoding,
+                _env_ignore_empty=_env_ignore_empty,
+                _env_nested_delimiter=_env_nested_delimiter,
+                _env_nested_max_split=_env_nested_max_split,
+                _env_parse_none_str=_env_parse_none_str,
+                _env_parse_enums=_env_parse_enums,
+                _cli_prog_name=_cli_prog_name,
+                _cli_parse_args=_cli_parse_args,
+                _cli_settings_source=_cli_settings_source,
+                _cli_parse_none_str=_cli_parse_none_str,
+                _cli_hide_none_type=_cli_hide_none_type,
+                _cli_avoid_json=_cli_avoid_json,
+                _cli_enforce_required=_cli_enforce_required,
+                _cli_use_class_docs_for_groups=_cli_use_class_docs_for_groups,
+                _cli_exit_on_error=_cli_exit_on_error,
+                _cli_prefix=_cli_prefix,
+                _cli_flag_prefix_char=_cli_flag_prefix_char,
+                _cli_implicit_flags=_cli_implicit_flags,
+                _cli_ignore_unknown_args=_cli_ignore_unknown_args,
+                _cli_kebab_case=_cli_kebab_case,
+                _cli_shortcuts=_cli_shortcuts,
+                _secrets_dir=_secrets_dir,
+                **values,
+            )
+        )
+
+>       super().__init__(**__pydantic_self__.__class__._settings_build_values(sources, init_kwargs))
+E       pydantic_core._pydantic_core.ValidationError: 1 validation error for ProjectConfig
+E       project_root
+E         Value error, project_root cannot be a system directory: /tmp [type=value_error, input_value=PosixPath('/tmp/pytest-of...latest_potential_no_d0'), input_type=PosixPath]
+E           For further information visit https://errors.pydantic.dev/2.12/v/value_error
+
+.venv/lib/python3.12/site-packages/pydantic_settings/main.py:242: ValidationError
+_________ ERROR at setup of test_resume_state_finds_highest_iteration __________
+
+mock_system_config = SystemConfig(elements=['Fe', 'Pt'], baseline_potential='zbl', interface_target=None, interface_generation_iteration=0,...icted_directories=['/etc', '/bin', '/usr', '/sbin', '/var', '/lib', '/boot', '/root', '/proc', '/sys', '/dev', '/tmp'])
+tmp_path = PosixPath('/tmp/pytest-of-jules/pytest-24/test_resume_state_finds_highes0')
+
+    @pytest.fixture
+    def mock_project_config(mock_system_config: SystemConfig, tmp_path: Path) -> ProjectConfig:
+        (tmp_path / "README.md").touch()
+        from src.domain_models.config import CutoutConfig, DistillationConfig, LoopStrategyConfig
+
+>       return ProjectConfig(
+            project_root=tmp_path,
+            system=mock_system_config,
+            dynamics=DynamicsConfig(trusted_directories=[], project_root=str(tmp_path)),
+            oracle=OracleConfig(),
+            trainer=TrainerConfig(trusted_directories=[]),
+            validator=ValidatorConfig(),
+            distillation_config=DistillationConfig(
+                temp_dir=str(tmp_path), output_dir=str(tmp_path), model_storage_path=str(tmp_path)
+            ),
+            loop_strategy=LoopStrategyConfig(
+                replay_buffer_size=1000, checkpoint_interval=5, timeout_seconds=3600
+            ),
+            cutout_config=CutoutConfig(),
+        )
+
+tests/conftest.py:28:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+__pydantic_self__ = ProjectConfig(), _case_sensitive = None
+_nested_model_default_partial_update = None, _env_prefix = None
+_env_prefix_target = None, _env_file = PosixPath('.'), _env_file_encoding = None
+_env_ignore_empty = None, _env_nested_delimiter = None
+_env_nested_max_split = None, _env_parse_none_str = None
+_env_parse_enums = None, _cli_prog_name = None, _cli_parse_args = None
+_cli_settings_source = None, _cli_parse_none_str = None
+_cli_hide_none_type = None, _cli_avoid_json = None, _cli_enforce_required = None
+_cli_use_class_docs_for_groups = None, _cli_exit_on_error = None
+_cli_prefix = None, _cli_flag_prefix_char = None, _cli_implicit_flags = None
+_cli_ignore_unknown_args = None, _cli_kebab_case = None, _cli_shortcuts = None
+_secrets_dir = None, _build_sources = None
+values = {'cutout_config': CutoutConfig(core_radius=3.0, buffer_radius=4.0, enable_pre_relaxation=True, enable_passivation=True..._dft=0.05, threshold_add_train=0.02, smooth_steps=3), checkpoint_interval=5, max_retries=3, timeout_seconds=3600), ...}
+sources = (InitSettingsSource(init_kwargs={'project_root': PosixPath('/tmp/pytest-of-jules/pytest-24/test_resume_state_finds_hig...efix_len=5), SecretsSettingsSource(secrets_dir=None), DefaultSettingsSource(nested_model_default_partial_update=False))
+init_kwargs = {'cutout_config': CutoutConfig(core_radius=3.0, buffer_radius=4.0, enable_pre_relaxation=True, enable_passivation=True..._dft=0.05, threshold_add_train=0.02, smooth_steps=3), checkpoint_interval=5, max_retries=3, timeout_seconds=3600), ...}
+
+    def __init__(
+        __pydantic_self__,
+        _case_sensitive: bool | None = None,
+        _nested_model_default_partial_update: bool | None = None,
+        _env_prefix: str | None = None,
+        _env_prefix_target: EnvPrefixTarget | None = None,
+        _env_file: DotenvType | None = ENV_FILE_SENTINEL,
+        _env_file_encoding: str | None = None,
+        _env_ignore_empty: bool | None = None,
+        _env_nested_delimiter: str | None = None,
+        _env_nested_max_split: int | None = None,
+        _env_parse_none_str: str | None = None,
+        _env_parse_enums: bool | None = None,
+        _cli_prog_name: str | None = None,
+        _cli_parse_args: bool | list[str] | tuple[str, ...] | None = None,
+        _cli_settings_source: CliSettingsSource[Any] | None = None,
+        _cli_parse_none_str: str | None = None,
+        _cli_hide_none_type: bool | None = None,
+        _cli_avoid_json: bool | None = None,
+        _cli_enforce_required: bool | None = None,
+        _cli_use_class_docs_for_groups: bool | None = None,
+        _cli_exit_on_error: bool | None = None,
+        _cli_prefix: str | None = None,
+        _cli_flag_prefix_char: str | None = None,
+        _cli_implicit_flags: bool | Literal['dual', 'toggle'] | None = None,
+        _cli_ignore_unknown_args: bool | None = None,
+        _cli_kebab_case: bool | Literal['all', 'no_enums'] | None = None,
+        _cli_shortcuts: Mapping[str, str | list[str]] | None = None,
+        _secrets_dir: PathType | None = None,
+        _build_sources: tuple[tuple[PydanticBaseSettingsSource, ...], dict[str, Any]] | None = None,
+        **values: Any,
+    ) -> None:
+        sources, init_kwargs = (
+            _build_sources
+            if _build_sources is not None
+            else __pydantic_self__.__class__._settings_init_sources(
+                _case_sensitive=_case_sensitive,
+                _nested_model_default_partial_update=_nested_model_default_partial_update,
+                _env_prefix=_env_prefix,
+                _env_prefix_target=_env_prefix_target,
+                _env_file=_env_file,
+                _env_file_encoding=_env_file_encoding,
+                _env_ignore_empty=_env_ignore_empty,
+                _env_nested_delimiter=_env_nested_delimiter,
+                _env_nested_max_split=_env_nested_max_split,
+                _env_parse_none_str=_env_parse_none_str,
+                _env_parse_enums=_env_parse_enums,
+                _cli_prog_name=_cli_prog_name,
+                _cli_parse_args=_cli_parse_args,
+                _cli_settings_source=_cli_settings_source,
+                _cli_parse_none_str=_cli_parse_none_str,
+                _cli_hide_none_type=_cli_hide_none_type,
+                _cli_avoid_json=_cli_avoid_json,
+                _cli_enforce_required=_cli_enforce_required,
+                _cli_use_class_docs_for_groups=_cli_use_class_docs_for_groups,
+                _cli_exit_on_error=_cli_exit_on_error,
+                _cli_prefix=_cli_prefix,
+                _cli_flag_prefix_char=_cli_flag_prefix_char,
+                _cli_implicit_flags=_cli_implicit_flags,
+                _cli_ignore_unknown_args=_cli_ignore_unknown_args,
+                _cli_kebab_case=_cli_kebab_case,
+                _cli_shortcuts=_cli_shortcuts,
+                _secrets_dir=_secrets_dir,
+                **values,
+            )
+        )
+
+>       super().__init__(**__pydantic_self__.__class__._settings_build_values(sources, init_kwargs))
+E       pydantic_core._pydantic_core.ValidationError: 1 validation error for ProjectConfig
+E       project_root
+E         Value error, project_root cannot be a system directory: /tmp [type=value_error, input_value=PosixPath('/tmp/pytest-of...me_state_finds_highes0'), input_type=PosixPath]
+E           For further information visit https://errors.pydantic.dev/2.12/v/value_error
+
+.venv/lib/python3.12/site-packages/pydantic_settings/main.py:242: ValidationError
+___________ ERROR at setup of test_secure_copy_potential_size_limit ____________
+
+mock_system_config = SystemConfig(elements=['Fe', 'Pt'], baseline_potential='zbl', interface_target=None, interface_generation_iteration=0,...icted_directories=['/etc', '/bin', '/usr', '/sbin', '/var', '/lib', '/boot', '/root', '/proc', '/sys', '/dev', '/tmp'])
+tmp_path = PosixPath('/tmp/pytest-of-jules/pytest-24/test_secure_copy_potential_siz0')
+
+    @pytest.fixture
+    def mock_project_config(mock_system_config: SystemConfig, tmp_path: Path) -> ProjectConfig:
+        (tmp_path / "README.md").touch()
+        from src.domain_models.config import CutoutConfig, DistillationConfig, LoopStrategyConfig
+
+>       return ProjectConfig(
+            project_root=tmp_path,
+            system=mock_system_config,
+            dynamics=DynamicsConfig(trusted_directories=[], project_root=str(tmp_path)),
+            oracle=OracleConfig(),
+            trainer=TrainerConfig(trusted_directories=[]),
+            validator=ValidatorConfig(),
+            distillation_config=DistillationConfig(
+                temp_dir=str(tmp_path), output_dir=str(tmp_path), model_storage_path=str(tmp_path)
+            ),
+            loop_strategy=LoopStrategyConfig(
+                replay_buffer_size=1000, checkpoint_interval=5, timeout_seconds=3600
+            ),
+            cutout_config=CutoutConfig(),
+        )
+
+tests/conftest.py:28:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+__pydantic_self__ = ProjectConfig(), _case_sensitive = None
+_nested_model_default_partial_update = None, _env_prefix = None
+_env_prefix_target = None, _env_file = PosixPath('.'), _env_file_encoding = None
+_env_ignore_empty = None, _env_nested_delimiter = None
+_env_nested_max_split = None, _env_parse_none_str = None
+_env_parse_enums = None, _cli_prog_name = None, _cli_parse_args = None
+_cli_settings_source = None, _cli_parse_none_str = None
+_cli_hide_none_type = None, _cli_avoid_json = None, _cli_enforce_required = None
+_cli_use_class_docs_for_groups = None, _cli_exit_on_error = None
+_cli_prefix = None, _cli_flag_prefix_char = None, _cli_implicit_flags = None
+_cli_ignore_unknown_args = None, _cli_kebab_case = None, _cli_shortcuts = None
+_secrets_dir = None, _build_sources = None
+values = {'cutout_config': CutoutConfig(core_radius=3.0, buffer_radius=4.0, enable_pre_relaxation=True, enable_passivation=True..._dft=0.05, threshold_add_train=0.02, smooth_steps=3), checkpoint_interval=5, max_retries=3, timeout_seconds=3600), ...}
+sources = (InitSettingsSource(init_kwargs={'project_root': PosixPath('/tmp/pytest-of-jules/pytest-24/test_secure_copy_potential_...efix_len=5), SecretsSettingsSource(secrets_dir=None), DefaultSettingsSource(nested_model_default_partial_update=False))
+init_kwargs = {'cutout_config': CutoutConfig(core_radius=3.0, buffer_radius=4.0, enable_pre_relaxation=True, enable_passivation=True..._dft=0.05, threshold_add_train=0.02, smooth_steps=3), checkpoint_interval=5, max_retries=3, timeout_seconds=3600), ...}
+
+    def __init__(
+        __pydantic_self__,
+        _case_sensitive: bool | None = None,
+        _nested_model_default_partial_update: bool | None = None,
+        _env_prefix: str | None = None,
+        _env_prefix_target: EnvPrefixTarget | None = None,
+        _env_file: DotenvType | None = ENV_FILE_SENTINEL,
+        _env_file_encoding: str | None = None,
+        _env_ignore_empty: bool | None = None,
+        _env_nested_delimiter: str | None = None,
+        _env_nested_max_split: int | None = None,
+        _env_parse_none_str: str | None = None,
+        _env_parse_enums: bool | None = None,
+        _cli_prog_name: str | None = None,
+        _cli_parse_args: bool | list[str] | tuple[str, ...] | None = None,
+        _cli_settings_source: CliSettingsSource[Any] | None = None,
+        _cli_parse_none_str: str | None = None,
+        _cli_hide_none_type: bool | None = None,
+        _cli_avoid_json: bool | None = None,
+        _cli_enforce_required: bool | None = None,
+        _cli_use_class_docs_for_groups: bool | None = None,
+        _cli_exit_on_error: bool | None = None,
+        _cli_prefix: str | None = None,
+        _cli_flag_prefix_char: str | None = None,
+        _cli_implicit_flags: bool | Literal['dual', 'toggle'] | None = None,
+        _cli_ignore_unknown_args: bool | None = None,
+        _cli_kebab_case: bool | Literal['all', 'no_enums'] | None = None,
+        _cli_shortcuts: Mapping[str, str | list[str]] | None = None,
+        _secrets_dir: PathType | None = None,
+        _build_sources: tuple[tuple[PydanticBaseSettingsSource, ...], dict[str, Any]] | None = None,
+        **values: Any,
+    ) -> None:
+        sources, init_kwargs = (
+            _build_sources
+            if _build_sources is not None
+            else __pydantic_self__.__class__._settings_init_sources(
+                _case_sensitive=_case_sensitive,
+                _nested_model_default_partial_update=_nested_model_default_partial_update,
+                _env_prefix=_env_prefix,
+                _env_prefix_target=_env_prefix_target,
+                _env_file=_env_file,
+                _env_file_encoding=_env_file_encoding,
+                _env_ignore_empty=_env_ignore_empty,
+                _env_nested_delimiter=_env_nested_delimiter,
+                _env_nested_max_split=_env_nested_max_split,
+                _env_parse_none_str=_env_parse_none_str,
+                _env_parse_enums=_env_parse_enums,
+                _cli_prog_name=_cli_prog_name,
+                _cli_parse_args=_cli_parse_args,
+                _cli_settings_source=_cli_settings_source,
+                _cli_parse_none_str=_cli_parse_none_str,
+                _cli_hide_none_type=_cli_hide_none_type,
+                _cli_avoid_json=_cli_avoid_json,
+                _cli_enforce_required=_cli_enforce_required,
+                _cli_use_class_docs_for_groups=_cli_use_class_docs_for_groups,
+                _cli_exit_on_error=_cli_exit_on_error,
+                _cli_prefix=_cli_prefix,
+                _cli_flag_prefix_char=_cli_flag_prefix_char,
+                _cli_implicit_flags=_cli_implicit_flags,
+                _cli_ignore_unknown_args=_cli_ignore_unknown_args,
+                _cli_kebab_case=_cli_kebab_case,
+                _cli_shortcuts=_cli_shortcuts,
+                _secrets_dir=_secrets_dir,
+                **values,
+            )
+        )
+
+>       super().__init__(**__pydantic_self__.__class__._settings_build_values(sources, init_kwargs))
+E       pydantic_core._pydantic_core.ValidationError: 1 validation error for ProjectConfig
+E       project_root
+E         Value error, project_root cannot be a system directory: /tmp [type=value_error, input_value=PosixPath('/tmp/pytest-of...re_copy_potential_siz0'), input_type=PosixPath]
+E           For further information visit https://errors.pydantic.dev/2.12/v/value_error
+
+.venv/lib/python3.12/site-packages/pydantic_settings/main.py:242: ValidationError
+_________ ERROR at setup of test_secure_copy_potential_missing_headers _________
+
+mock_system_config = SystemConfig(elements=['Fe', 'Pt'], baseline_potential='zbl', interface_target=None, interface_generation_iteration=0,...icted_directories=['/etc', '/bin', '/usr', '/sbin', '/var', '/lib', '/boot', '/root', '/proc', '/sys', '/dev', '/tmp'])
+tmp_path = PosixPath('/tmp/pytest-of-jules/pytest-24/test_secure_copy_potential_mis0')
+
+    @pytest.fixture
+    def mock_project_config(mock_system_config: SystemConfig, tmp_path: Path) -> ProjectConfig:
+        (tmp_path / "README.md").touch()
+        from src.domain_models.config import CutoutConfig, DistillationConfig, LoopStrategyConfig
+
+>       return ProjectConfig(
+            project_root=tmp_path,
+            system=mock_system_config,
+            dynamics=DynamicsConfig(trusted_directories=[], project_root=str(tmp_path)),
+            oracle=OracleConfig(),
+            trainer=TrainerConfig(trusted_directories=[]),
+            validator=ValidatorConfig(),
+            distillation_config=DistillationConfig(
+                temp_dir=str(tmp_path), output_dir=str(tmp_path), model_storage_path=str(tmp_path)
+            ),
+            loop_strategy=LoopStrategyConfig(
+                replay_buffer_size=1000, checkpoint_interval=5, timeout_seconds=3600
+            ),
+            cutout_config=CutoutConfig(),
+        )
+
+tests/conftest.py:28:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+__pydantic_self__ = ProjectConfig(), _case_sensitive = None
+_nested_model_default_partial_update = None, _env_prefix = None
+_env_prefix_target = None, _env_file = PosixPath('.'), _env_file_encoding = None
+_env_ignore_empty = None, _env_nested_delimiter = None
+_env_nested_max_split = None, _env_parse_none_str = None
+_env_parse_enums = None, _cli_prog_name = None, _cli_parse_args = None
+_cli_settings_source = None, _cli_parse_none_str = None
+_cli_hide_none_type = None, _cli_avoid_json = None, _cli_enforce_required = None
+_cli_use_class_docs_for_groups = None, _cli_exit_on_error = None
+_cli_prefix = None, _cli_flag_prefix_char = None, _cli_implicit_flags = None
+_cli_ignore_unknown_args = None, _cli_kebab_case = None, _cli_shortcuts = None
+_secrets_dir = None, _build_sources = None
+values = {'cutout_config': CutoutConfig(core_radius=3.0, buffer_radius=4.0, enable_pre_relaxation=True, enable_passivation=True..._dft=0.05, threshold_add_train=0.02, smooth_steps=3), checkpoint_interval=5, max_retries=3, timeout_seconds=3600), ...}
+sources = (InitSettingsSource(init_kwargs={'project_root': PosixPath('/tmp/pytest-of-jules/pytest-24/test_secure_copy_potential_...efix_len=5), SecretsSettingsSource(secrets_dir=None), DefaultSettingsSource(nested_model_default_partial_update=False))
+init_kwargs = {'cutout_config': CutoutConfig(core_radius=3.0, buffer_radius=4.0, enable_pre_relaxation=True, enable_passivation=True..._dft=0.05, threshold_add_train=0.02, smooth_steps=3), checkpoint_interval=5, max_retries=3, timeout_seconds=3600), ...}
+
+    def __init__(
+        __pydantic_self__,
+        _case_sensitive: bool | None = None,
+        _nested_model_default_partial_update: bool | None = None,
+        _env_prefix: str | None = None,
+        _env_prefix_target: EnvPrefixTarget | None = None,
+        _env_file: DotenvType | None = ENV_FILE_SENTINEL,
+        _env_file_encoding: str | None = None,
+        _env_ignore_empty: bool | None = None,
+        _env_nested_delimiter: str | None = None,
+        _env_nested_max_split: int | None = None,
+        _env_parse_none_str: str | None = None,
+        _env_parse_enums: bool | None = None,
+        _cli_prog_name: str | None = None,
+        _cli_parse_args: bool | list[str] | tuple[str, ...] | None = None,
+        _cli_settings_source: CliSettingsSource[Any] | None = None,
+        _cli_parse_none_str: str | None = None,
+        _cli_hide_none_type: bool | None = None,
+        _cli_avoid_json: bool | None = None,
+        _cli_enforce_required: bool | None = None,
+        _cli_use_class_docs_for_groups: bool | None = None,
+        _cli_exit_on_error: bool | None = None,
+        _cli_prefix: str | None = None,
+        _cli_flag_prefix_char: str | None = None,
+        _cli_implicit_flags: bool | Literal['dual', 'toggle'] | None = None,
+        _cli_ignore_unknown_args: bool | None = None,
+        _cli_kebab_case: bool | Literal['all', 'no_enums'] | None = None,
+        _cli_shortcuts: Mapping[str, str | list[str]] | None = None,
+        _secrets_dir: PathType | None = None,
+        _build_sources: tuple[tuple[PydanticBaseSettingsSource, ...], dict[str, Any]] | None = None,
+        **values: Any,
+    ) -> None:
+        sources, init_kwargs = (
+            _build_sources
+            if _build_sources is not None
+            else __pydantic_self__.__class__._settings_init_sources(
+                _case_sensitive=_case_sensitive,
+                _nested_model_default_partial_update=_nested_model_default_partial_update,
+                _env_prefix=_env_prefix,
+                _env_prefix_target=_env_prefix_target,
+                _env_file=_env_file,
+                _env_file_encoding=_env_file_encoding,
+                _env_ignore_empty=_env_ignore_empty,
+                _env_nested_delimiter=_env_nested_delimiter,
+                _env_nested_max_split=_env_nested_max_split,
+                _env_parse_none_str=_env_parse_none_str,
+                _env_parse_enums=_env_parse_enums,
+                _cli_prog_name=_cli_prog_name,
+                _cli_parse_args=_cli_parse_args,
+                _cli_settings_source=_cli_settings_source,
+                _cli_parse_none_str=_cli_parse_none_str,
+                _cli_hide_none_type=_cli_hide_none_type,
+                _cli_avoid_json=_cli_avoid_json,
+                _cli_enforce_required=_cli_enforce_required,
+                _cli_use_class_docs_for_groups=_cli_use_class_docs_for_groups,
+                _cli_exit_on_error=_cli_exit_on_error,
+                _cli_prefix=_cli_prefix,
+                _cli_flag_prefix_char=_cli_flag_prefix_char,
+                _cli_implicit_flags=_cli_implicit_flags,
+                _cli_ignore_unknown_args=_cli_ignore_unknown_args,
+                _cli_kebab_case=_cli_kebab_case,
+                _cli_shortcuts=_cli_shortcuts,
+                _secrets_dir=_secrets_dir,
+                **values,
+            )
+        )
+
+>       super().__init__(**__pydantic_self__.__class__._settings_build_values(sources, init_kwargs))
+E       pydantic_core._pydantic_core.ValidationError: 1 validation error for ProjectConfig
+E       project_root
+E         Value error, project_root cannot be a system directory: /tmp [type=value_error, input_value=PosixPath('/tmp/pytest-of...re_copy_potential_mis0'), input_type=PosixPath]
+E           For further information visit https://errors.pydantic.dev/2.12/v/value_error
+
+.venv/lib/python3.12/site-packages/pydantic_settings/main.py:242: ValidationError
+______________ ERROR at setup of test_secure_copy_potential_valid ______________
+
+mock_system_config = SystemConfig(elements=['Fe', 'Pt'], baseline_potential='zbl', interface_target=None, interface_generation_iteration=0,...icted_directories=['/etc', '/bin', '/usr', '/sbin', '/var', '/lib', '/boot', '/root', '/proc', '/sys', '/dev', '/tmp'])
+tmp_path = PosixPath('/tmp/pytest-of-jules/pytest-24/test_secure_copy_potential_val0')
+
+    @pytest.fixture
+    def mock_project_config(mock_system_config: SystemConfig, tmp_path: Path) -> ProjectConfig:
+        (tmp_path / "README.md").touch()
+        from src.domain_models.config import CutoutConfig, DistillationConfig, LoopStrategyConfig
+
+>       return ProjectConfig(
+            project_root=tmp_path,
+            system=mock_system_config,
+            dynamics=DynamicsConfig(trusted_directories=[], project_root=str(tmp_path)),
+            oracle=OracleConfig(),
+            trainer=TrainerConfig(trusted_directories=[]),
+            validator=ValidatorConfig(),
+            distillation_config=DistillationConfig(
+                temp_dir=str(tmp_path), output_dir=str(tmp_path), model_storage_path=str(tmp_path)
+            ),
+            loop_strategy=LoopStrategyConfig(
+                replay_buffer_size=1000, checkpoint_interval=5, timeout_seconds=3600
+            ),
+            cutout_config=CutoutConfig(),
+        )
+
+tests/conftest.py:28:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+__pydantic_self__ = ProjectConfig(), _case_sensitive = None
+_nested_model_default_partial_update = None, _env_prefix = None
+_env_prefix_target = None, _env_file = PosixPath('.'), _env_file_encoding = None
+_env_ignore_empty = None, _env_nested_delimiter = None
+_env_nested_max_split = None, _env_parse_none_str = None
+_env_parse_enums = None, _cli_prog_name = None, _cli_parse_args = None
+_cli_settings_source = None, _cli_parse_none_str = None
+_cli_hide_none_type = None, _cli_avoid_json = None, _cli_enforce_required = None
+_cli_use_class_docs_for_groups = None, _cli_exit_on_error = None
+_cli_prefix = None, _cli_flag_prefix_char = None, _cli_implicit_flags = None
+_cli_ignore_unknown_args = None, _cli_kebab_case = None, _cli_shortcuts = None
+_secrets_dir = None, _build_sources = None
+values = {'cutout_config': CutoutConfig(core_radius=3.0, buffer_radius=4.0, enable_pre_relaxation=True, enable_passivation=True..._dft=0.05, threshold_add_train=0.02, smooth_steps=3), checkpoint_interval=5, max_retries=3, timeout_seconds=3600), ...}
+sources = (InitSettingsSource(init_kwargs={'project_root': PosixPath('/tmp/pytest-of-jules/pytest-24/test_secure_copy_potential_...efix_len=5), SecretsSettingsSource(secrets_dir=None), DefaultSettingsSource(nested_model_default_partial_update=False))
+init_kwargs = {'cutout_config': CutoutConfig(core_radius=3.0, buffer_radius=4.0, enable_pre_relaxation=True, enable_passivation=True..._dft=0.05, threshold_add_train=0.02, smooth_steps=3), checkpoint_interval=5, max_retries=3, timeout_seconds=3600), ...}
+
+    def __init__(
+        __pydantic_self__,
+        _case_sensitive: bool | None = None,
+        _nested_model_default_partial_update: bool | None = None,
+        _env_prefix: str | None = None,
+        _env_prefix_target: EnvPrefixTarget | None = None,
+        _env_file: DotenvType | None = ENV_FILE_SENTINEL,
+        _env_file_encoding: str | None = None,
+        _env_ignore_empty: bool | None = None,
+        _env_nested_delimiter: str | None = None,
+        _env_nested_max_split: int | None = None,
+        _env_parse_none_str: str | None = None,
+        _env_parse_enums: bool | None = None,
+        _cli_prog_name: str | None = None,
+        _cli_parse_args: bool | list[str] | tuple[str, ...] | None = None,
+        _cli_settings_source: CliSettingsSource[Any] | None = None,
+        _cli_parse_none_str: str | None = None,
+        _cli_hide_none_type: bool | None = None,
+        _cli_avoid_json: bool | None = None,
+        _cli_enforce_required: bool | None = None,
+        _cli_use_class_docs_for_groups: bool | None = None,
+        _cli_exit_on_error: bool | None = None,
+        _cli_prefix: str | None = None,
+        _cli_flag_prefix_char: str | None = None,
+        _cli_implicit_flags: bool | Literal['dual', 'toggle'] | None = None,
+        _cli_ignore_unknown_args: bool | None = None,
+        _cli_kebab_case: bool | Literal['all', 'no_enums'] | None = None,
+        _cli_shortcuts: Mapping[str, str | list[str]] | None = None,
+        _secrets_dir: PathType | None = None,
+        _build_sources: tuple[tuple[PydanticBaseSettingsSource, ...], dict[str, Any]] | None = None,
+        **values: Any,
+    ) -> None:
+        sources, init_kwargs = (
+            _build_sources
+            if _build_sources is not None
+            else __pydantic_self__.__class__._settings_init_sources(
+                _case_sensitive=_case_sensitive,
+                _nested_model_default_partial_update=_nested_model_default_partial_update,
+                _env_prefix=_env_prefix,
+                _env_prefix_target=_env_prefix_target,
+                _env_file=_env_file,
+                _env_file_encoding=_env_file_encoding,
+                _env_ignore_empty=_env_ignore_empty,
+                _env_nested_delimiter=_env_nested_delimiter,
+                _env_nested_max_split=_env_nested_max_split,
+                _env_parse_none_str=_env_parse_none_str,
+                _env_parse_enums=_env_parse_enums,
+                _cli_prog_name=_cli_prog_name,
+                _cli_parse_args=_cli_parse_args,
+                _cli_settings_source=_cli_settings_source,
+                _cli_parse_none_str=_cli_parse_none_str,
+                _cli_hide_none_type=_cli_hide_none_type,
+                _cli_avoid_json=_cli_avoid_json,
+                _cli_enforce_required=_cli_enforce_required,
+                _cli_use_class_docs_for_groups=_cli_use_class_docs_for_groups,
+                _cli_exit_on_error=_cli_exit_on_error,
+                _cli_prefix=_cli_prefix,
+                _cli_flag_prefix_char=_cli_flag_prefix_char,
+                _cli_implicit_flags=_cli_implicit_flags,
+                _cli_ignore_unknown_args=_cli_ignore_unknown_args,
+                _cli_kebab_case=_cli_kebab_case,
+                _cli_shortcuts=_cli_shortcuts,
+                _secrets_dir=_secrets_dir,
+                **values,
+            )
+        )
+
+>       super().__init__(**__pydantic_self__.__class__._settings_build_values(sources, init_kwargs))
+E       pydantic_core._pydantic_core.ValidationError: 1 validation error for ProjectConfig
+E       project_root
+E         Value error, project_root cannot be a system directory: /tmp [type=value_error, input_value=PosixPath('/tmp/pytest-of...re_copy_potential_val0'), input_type=PosixPath]
+E           For further information visit https://errors.pydantic.dev/2.12/v/value_error
+
+.venv/lib/python3.12/site-packages/pydantic_settings/main.py:242: ValidationError
+_____________ ERROR at setup of test_get_latest_potential_no_files _____________
+
+mock_system_config = SystemConfig(elements=['Fe', 'Pt'], baseline_potential='zbl', interface_target=None, interface_generation_iteration=0,...icted_directories=['/etc', '/bin', '/usr', '/sbin', '/var', '/lib', '/boot', '/root', '/proc', '/sys', '/dev', '/tmp'])
+tmp_path = PosixPath('/tmp/pytest-of-jules/pytest-24/test_get_latest_potential_no_f0')
+
+    @pytest.fixture
+    def mock_project_config(mock_system_config: SystemConfig, tmp_path: Path) -> ProjectConfig:
+        (tmp_path / "README.md").touch()
+        from src.domain_models.config import CutoutConfig, DistillationConfig, LoopStrategyConfig
+
+>       return ProjectConfig(
+            project_root=tmp_path,
+            system=mock_system_config,
+            dynamics=DynamicsConfig(trusted_directories=[], project_root=str(tmp_path)),
+            oracle=OracleConfig(),
+            trainer=TrainerConfig(trusted_directories=[]),
+            validator=ValidatorConfig(),
+            distillation_config=DistillationConfig(
+                temp_dir=str(tmp_path), output_dir=str(tmp_path), model_storage_path=str(tmp_path)
+            ),
+            loop_strategy=LoopStrategyConfig(
+                replay_buffer_size=1000, checkpoint_interval=5, timeout_seconds=3600
+            ),
+            cutout_config=CutoutConfig(),
+        )
+
+tests/conftest.py:28:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+__pydantic_self__ = ProjectConfig(), _case_sensitive = None
+_nested_model_default_partial_update = None, _env_prefix = None
+_env_prefix_target = None, _env_file = PosixPath('.'), _env_file_encoding = None
+_env_ignore_empty = None, _env_nested_delimiter = None
+_env_nested_max_split = None, _env_parse_none_str = None
+_env_parse_enums = None, _cli_prog_name = None, _cli_parse_args = None
+_cli_settings_source = None, _cli_parse_none_str = None
+_cli_hide_none_type = None, _cli_avoid_json = None, _cli_enforce_required = None
+_cli_use_class_docs_for_groups = None, _cli_exit_on_error = None
+_cli_prefix = None, _cli_flag_prefix_char = None, _cli_implicit_flags = None
+_cli_ignore_unknown_args = None, _cli_kebab_case = None, _cli_shortcuts = None
+_secrets_dir = None, _build_sources = None
+values = {'cutout_config': CutoutConfig(core_radius=3.0, buffer_radius=4.0, enable_pre_relaxation=True, enable_passivation=True..._dft=0.05, threshold_add_train=0.02, smooth_steps=3), checkpoint_interval=5, max_retries=3, timeout_seconds=3600), ...}
+sources = (InitSettingsSource(init_kwargs={'project_root': PosixPath('/tmp/pytest-of-jules/pytest-24/test_get_latest_potential_n...efix_len=5), SecretsSettingsSource(secrets_dir=None), DefaultSettingsSource(nested_model_default_partial_update=False))
+init_kwargs = {'cutout_config': CutoutConfig(core_radius=3.0, buffer_radius=4.0, enable_pre_relaxation=True, enable_passivation=True..._dft=0.05, threshold_add_train=0.02, smooth_steps=3), checkpoint_interval=5, max_retries=3, timeout_seconds=3600), ...}
+
+    def __init__(
+        __pydantic_self__,
+        _case_sensitive: bool | None = None,
+        _nested_model_default_partial_update: bool | None = None,
+        _env_prefix: str | None = None,
+        _env_prefix_target: EnvPrefixTarget | None = None,
+        _env_file: DotenvType | None = ENV_FILE_SENTINEL,
+        _env_file_encoding: str | None = None,
+        _env_ignore_empty: bool | None = None,
+        _env_nested_delimiter: str | None = None,
+        _env_nested_max_split: int | None = None,
+        _env_parse_none_str: str | None = None,
+        _env_parse_enums: bool | None = None,
+        _cli_prog_name: str | None = None,
+        _cli_parse_args: bool | list[str] | tuple[str, ...] | None = None,
+        _cli_settings_source: CliSettingsSource[Any] | None = None,
+        _cli_parse_none_str: str | None = None,
+        _cli_hide_none_type: bool | None = None,
+        _cli_avoid_json: bool | None = None,
+        _cli_enforce_required: bool | None = None,
+        _cli_use_class_docs_for_groups: bool | None = None,
+        _cli_exit_on_error: bool | None = None,
+        _cli_prefix: str | None = None,
+        _cli_flag_prefix_char: str | None = None,
+        _cli_implicit_flags: bool | Literal['dual', 'toggle'] | None = None,
+        _cli_ignore_unknown_args: bool | None = None,
+        _cli_kebab_case: bool | Literal['all', 'no_enums'] | None = None,
+        _cli_shortcuts: Mapping[str, str | list[str]] | None = None,
+        _secrets_dir: PathType | None = None,
+        _build_sources: tuple[tuple[PydanticBaseSettingsSource, ...], dict[str, Any]] | None = None,
+        **values: Any,
+    ) -> None:
+        sources, init_kwargs = (
+            _build_sources
+            if _build_sources is not None
+            else __pydantic_self__.__class__._settings_init_sources(
+                _case_sensitive=_case_sensitive,
+                _nested_model_default_partial_update=_nested_model_default_partial_update,
+                _env_prefix=_env_prefix,
+                _env_prefix_target=_env_prefix_target,
+                _env_file=_env_file,
+                _env_file_encoding=_env_file_encoding,
+                _env_ignore_empty=_env_ignore_empty,
+                _env_nested_delimiter=_env_nested_delimiter,
+                _env_nested_max_split=_env_nested_max_split,
+                _env_parse_none_str=_env_parse_none_str,
+                _env_parse_enums=_env_parse_enums,
+                _cli_prog_name=_cli_prog_name,
+                _cli_parse_args=_cli_parse_args,
+                _cli_settings_source=_cli_settings_source,
+                _cli_parse_none_str=_cli_parse_none_str,
+                _cli_hide_none_type=_cli_hide_none_type,
+                _cli_avoid_json=_cli_avoid_json,
+                _cli_enforce_required=_cli_enforce_required,
+                _cli_use_class_docs_for_groups=_cli_use_class_docs_for_groups,
+                _cli_exit_on_error=_cli_exit_on_error,
+                _cli_prefix=_cli_prefix,
+                _cli_flag_prefix_char=_cli_flag_prefix_char,
+                _cli_implicit_flags=_cli_implicit_flags,
+                _cli_ignore_unknown_args=_cli_ignore_unknown_args,
+                _cli_kebab_case=_cli_kebab_case,
+                _cli_shortcuts=_cli_shortcuts,
+                _secrets_dir=_secrets_dir,
+                **values,
+            )
+        )
+
+>       super().__init__(**__pydantic_self__.__class__._settings_build_values(sources, init_kwargs))
+E       pydantic_core._pydantic_core.ValidationError: 1 validation error for ProjectConfig
+E       project_root
+E         Value error, project_root cannot be a system directory: /tmp [type=value_error, input_value=PosixPath('/tmp/pytest-of...latest_potential_no_f0'), input_type=PosixPath]
+E           For further information visit https://errors.pydantic.dev/2.12/v/value_error
+
+.venv/lib/python3.12/site-packages/pydantic_settings/main.py:242: ValidationError
+___________ ERROR at setup of test_get_latest_potential_invalid_file ___________
+
+mock_system_config = SystemConfig(elements=['Fe', 'Pt'], baseline_potential='zbl', interface_target=None, interface_generation_iteration=0,...icted_directories=['/etc', '/bin', '/usr', '/sbin', '/var', '/lib', '/boot', '/root', '/proc', '/sys', '/dev', '/tmp'])
+tmp_path = PosixPath('/tmp/pytest-of-jules/pytest-24/test_get_latest_potential_inva0')
+
+    @pytest.fixture
+    def mock_project_config(mock_system_config: SystemConfig, tmp_path: Path) -> ProjectConfig:
+        (tmp_path / "README.md").touch()
+        from src.domain_models.config import CutoutConfig, DistillationConfig, LoopStrategyConfig
+
+>       return ProjectConfig(
+            project_root=tmp_path,
+            system=mock_system_config,
+            dynamics=DynamicsConfig(trusted_directories=[], project_root=str(tmp_path)),
+            oracle=OracleConfig(),
+            trainer=TrainerConfig(trusted_directories=[]),
+            validator=ValidatorConfig(),
+            distillation_config=DistillationConfig(
+                temp_dir=str(tmp_path), output_dir=str(tmp_path), model_storage_path=str(tmp_path)
+            ),
+            loop_strategy=LoopStrategyConfig(
+                replay_buffer_size=1000, checkpoint_interval=5, timeout_seconds=3600
+            ),
+            cutout_config=CutoutConfig(),
+        )
+
+tests/conftest.py:28:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+__pydantic_self__ = ProjectConfig(), _case_sensitive = None
+_nested_model_default_partial_update = None, _env_prefix = None
+_env_prefix_target = None, _env_file = PosixPath('.'), _env_file_encoding = None
+_env_ignore_empty = None, _env_nested_delimiter = None
+_env_nested_max_split = None, _env_parse_none_str = None
+_env_parse_enums = None, _cli_prog_name = None, _cli_parse_args = None
+_cli_settings_source = None, _cli_parse_none_str = None
+_cli_hide_none_type = None, _cli_avoid_json = None, _cli_enforce_required = None
+_cli_use_class_docs_for_groups = None, _cli_exit_on_error = None
+_cli_prefix = None, _cli_flag_prefix_char = None, _cli_implicit_flags = None
+_cli_ignore_unknown_args = None, _cli_kebab_case = None, _cli_shortcuts = None
+_secrets_dir = None, _build_sources = None
+values = {'cutout_config': CutoutConfig(core_radius=3.0, buffer_radius=4.0, enable_pre_relaxation=True, enable_passivation=True..._dft=0.05, threshold_add_train=0.02, smooth_steps=3), checkpoint_interval=5, max_retries=3, timeout_seconds=3600), ...}
+sources = (InitSettingsSource(init_kwargs={'project_root': PosixPath('/tmp/pytest-of-jules/pytest-24/test_get_latest_potential_i...efix_len=5), SecretsSettingsSource(secrets_dir=None), DefaultSettingsSource(nested_model_default_partial_update=False))
+init_kwargs = {'cutout_config': CutoutConfig(core_radius=3.0, buffer_radius=4.0, enable_pre_relaxation=True, enable_passivation=True..._dft=0.05, threshold_add_train=0.02, smooth_steps=3), checkpoint_interval=5, max_retries=3, timeout_seconds=3600), ...}
+
+    def __init__(
+        __pydantic_self__,
+        _case_sensitive: bool | None = None,
+        _nested_model_default_partial_update: bool | None = None,
+        _env_prefix: str | None = None,
+        _env_prefix_target: EnvPrefixTarget | None = None,
+        _env_file: DotenvType | None = ENV_FILE_SENTINEL,
+        _env_file_encoding: str | None = None,
+        _env_ignore_empty: bool | None = None,
+        _env_nested_delimiter: str | None = None,
+        _env_nested_max_split: int | None = None,
+        _env_parse_none_str: str | None = None,
+        _env_parse_enums: bool | None = None,
+        _cli_prog_name: str | None = None,
+        _cli_parse_args: bool | list[str] | tuple[str, ...] | None = None,
+        _cli_settings_source: CliSettingsSource[Any] | None = None,
+        _cli_parse_none_str: str | None = None,
+        _cli_hide_none_type: bool | None = None,
+        _cli_avoid_json: bool | None = None,
+        _cli_enforce_required: bool | None = None,
+        _cli_use_class_docs_for_groups: bool | None = None,
+        _cli_exit_on_error: bool | None = None,
+        _cli_prefix: str | None = None,
+        _cli_flag_prefix_char: str | None = None,
+        _cli_implicit_flags: bool | Literal['dual', 'toggle'] | None = None,
+        _cli_ignore_unknown_args: bool | None = None,
+        _cli_kebab_case: bool | Literal['all', 'no_enums'] | None = None,
+        _cli_shortcuts: Mapping[str, str | list[str]] | None = None,
+        _secrets_dir: PathType | None = None,
+        _build_sources: tuple[tuple[PydanticBaseSettingsSource, ...], dict[str, Any]] | None = None,
+        **values: Any,
+    ) -> None:
+        sources, init_kwargs = (
+            _build_sources
+            if _build_sources is not None
+            else __pydantic_self__.__class__._settings_init_sources(
+                _case_sensitive=_case_sensitive,
+                _nested_model_default_partial_update=_nested_model_default_partial_update,
+                _env_prefix=_env_prefix,
+                _env_prefix_target=_env_prefix_target,
+                _env_file=_env_file,
+                _env_file_encoding=_env_file_encoding,
+                _env_ignore_empty=_env_ignore_empty,
+                _env_nested_delimiter=_env_nested_delimiter,
+                _env_nested_max_split=_env_nested_max_split,
+                _env_parse_none_str=_env_parse_none_str,
+                _env_parse_enums=_env_parse_enums,
+                _cli_prog_name=_cli_prog_name,
+                _cli_parse_args=_cli_parse_args,
+                _cli_settings_source=_cli_settings_source,
+                _cli_parse_none_str=_cli_parse_none_str,
+                _cli_hide_none_type=_cli_hide_none_type,
+                _cli_avoid_json=_cli_avoid_json,
+                _cli_enforce_required=_cli_enforce_required,
+                _cli_use_class_docs_for_groups=_cli_use_class_docs_for_groups,
+                _cli_exit_on_error=_cli_exit_on_error,
+                _cli_prefix=_cli_prefix,
+                _cli_flag_prefix_char=_cli_flag_prefix_char,
+                _cli_implicit_flags=_cli_implicit_flags,
+                _cli_ignore_unknown_args=_cli_ignore_unknown_args,
+                _cli_kebab_case=_cli_kebab_case,
+                _cli_shortcuts=_cli_shortcuts,
+                _secrets_dir=_secrets_dir,
+                **values,
+            )
+        )
+
+>       super().__init__(**__pydantic_self__.__class__._settings_build_values(sources, init_kwargs))
+E       pydantic_core._pydantic_core.ValidationError: 1 validation error for ProjectConfig
+E       project_root
+E         Value error, project_root cannot be a system directory: /tmp [type=value_error, input_value=PosixPath('/tmp/pytest-of...latest_potential_inva0'), input_type=PosixPath]
+E           For further information visit https://errors.pydantic.dev/2.12/v/value_error
+
+.venv/lib/python3.12/site-packages/pydantic_settings/main.py:242: ValidationError
+=================================== FAILURES ===================================
+_____________________________ test_project_config ______________________________
+
+tmp_path = PosixPath('/tmp/pytest-of-jules/pytest-24/test_project_config0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f79c42de210>
+
+    def test_project_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        import tempfile
+
+        from src.domain_models.config import DistillationConfig, LoopStrategyConfig
+
+        monkeypatch.setattr(
+            "shutil.which", lambda x: "/usr/bin/lmp" if x == "lmp" else "/usr/bin/eonclient"
+        )
+        monkeypatch.setattr("os.access", lambda x, y: True)
+
+        tmp_dir = Path(tempfile.gettempdir()).resolve(strict=True)
+        proj_dir = tmp_dir / "myproj3"
+        proj_dir.mkdir(parents=True, exist_ok=True)
+        (proj_dir / "README.md").touch()
+
+>       config = ProjectConfig(
+            distillation_config=DistillationConfig(
+                temp_dir="/tmp", output_dir="/tmp", model_storage_path="/tmp"
+            ),
+            loop_strategy=LoopStrategyConfig(
+                replay_buffer_size=500, checkpoint_interval=5, timeout_seconds=86400
+            ),
+            project_root=proj_dir,
+            system=SystemConfig(elements=["Fe", "O"]),
+            dynamics=DynamicsConfig(project_root=str(proj_dir), trusted_directories=[]),
+            oracle=OracleConfig(),
+            trainer=TrainerConfig(trusted_directories=[]),
+            validator=ValidatorConfig(),
+        )
+
+tests/unit/test_config.py:69:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+__pydantic_self__ = ProjectConfig(), _case_sensitive = None
+_nested_model_default_partial_update = None, _env_prefix = None
+_env_prefix_target = None, _env_file = PosixPath('.'), _env_file_encoding = None
+_env_ignore_empty = None, _env_nested_delimiter = None
+_env_nested_max_split = None, _env_parse_none_str = None
+_env_parse_enums = None, _cli_prog_name = None, _cli_parse_args = None
+_cli_settings_source = None, _cli_parse_none_str = None
+_cli_hide_none_type = None, _cli_avoid_json = None, _cli_enforce_required = None
+_cli_use_class_docs_for_groups = None, _cli_exit_on_error = None
+_cli_prefix = None, _cli_flag_prefix_char = None, _cli_implicit_flags = None
+_cli_ignore_unknown_args = None, _cli_kebab_case = None, _cli_shortcuts = None
+_secrets_dir = None, _build_sources = None
+values = {'distillation_config': DistillationConfig(enable=True, mace_model_path='mace-mp-0-medium', uncertainty_threshold=0.05...f', ecutwfc=40.0, ecutrho=320.0, occupations='smearing', smearing='mv', mixing_beta=0.7, diagonalization='david'), ...}
+sources = (InitSettingsSource(init_kwargs={'project_root': PosixPath('/tmp/myproj3'), 'system': SystemConfig(elements=['Fe', 'O'...efix_len=5), SecretsSettingsSource(secrets_dir=None), DefaultSettingsSource(nested_model_default_partial_update=False))
+init_kwargs = {'distillation_config': DistillationConfig(enable=True, mace_model_path='mace-mp-0-medium', uncertainty_threshold=0.05...f', ecutwfc=40.0, ecutrho=320.0, occupations='smearing', smearing='mv', mixing_beta=0.7, diagonalization='david'), ...}
+
+    def __init__(
+        __pydantic_self__,
+        _case_sensitive: bool | None = None,
+        _nested_model_default_partial_update: bool | None = None,
+        _env_prefix: str | None = None,
+        _env_prefix_target: EnvPrefixTarget | None = None,
+        _env_file: DotenvType | None = ENV_FILE_SENTINEL,
+        _env_file_encoding: str | None = None,
+        _env_ignore_empty: bool | None = None,
+        _env_nested_delimiter: str | None = None,
+        _env_nested_max_split: int | None = None,
+        _env_parse_none_str: str | None = None,
+        _env_parse_enums: bool | None = None,
+        _cli_prog_name: str | None = None,
+        _cli_parse_args: bool | list[str] | tuple[str, ...] | None = None,
+        _cli_settings_source: CliSettingsSource[Any] | None = None,
+        _cli_parse_none_str: str | None = None,
+        _cli_hide_none_type: bool | None = None,
+        _cli_avoid_json: bool | None = None,
+        _cli_enforce_required: bool | None = None,
+        _cli_use_class_docs_for_groups: bool | None = None,
+        _cli_exit_on_error: bool | None = None,
+        _cli_prefix: str | None = None,
+        _cli_flag_prefix_char: str | None = None,
+        _cli_implicit_flags: bool | Literal['dual', 'toggle'] | None = None,
+        _cli_ignore_unknown_args: bool | None = None,
+        _cli_kebab_case: bool | Literal['all', 'no_enums'] | None = None,
+        _cli_shortcuts: Mapping[str, str | list[str]] | None = None,
+        _secrets_dir: PathType | None = None,
+        _build_sources: tuple[tuple[PydanticBaseSettingsSource, ...], dict[str, Any]] | None = None,
+        **values: Any,
+    ) -> None:
+        sources, init_kwargs = (
+            _build_sources
+            if _build_sources is not None
+            else __pydantic_self__.__class__._settings_init_sources(
+                _case_sensitive=_case_sensitive,
+                _nested_model_default_partial_update=_nested_model_default_partial_update,
+                _env_prefix=_env_prefix,
+                _env_prefix_target=_env_prefix_target,
+                _env_file=_env_file,
+                _env_file_encoding=_env_file_encoding,
+                _env_ignore_empty=_env_ignore_empty,
+                _env_nested_delimiter=_env_nested_delimiter,
+                _env_nested_max_split=_env_nested_max_split,
+                _env_parse_none_str=_env_parse_none_str,
+                _env_parse_enums=_env_parse_enums,
+                _cli_prog_name=_cli_prog_name,
+                _cli_parse_args=_cli_parse_args,
+                _cli_settings_source=_cli_settings_source,
+                _cli_parse_none_str=_cli_parse_none_str,
+                _cli_hide_none_type=_cli_hide_none_type,
+                _cli_avoid_json=_cli_avoid_json,
+                _cli_enforce_required=_cli_enforce_required,
+                _cli_use_class_docs_for_groups=_cli_use_class_docs_for_groups,
+                _cli_exit_on_error=_cli_exit_on_error,
+                _cli_prefix=_cli_prefix,
+                _cli_flag_prefix_char=_cli_flag_prefix_char,
+                _cli_implicit_flags=_cli_implicit_flags,
+                _cli_ignore_unknown_args=_cli_ignore_unknown_args,
+                _cli_kebab_case=_cli_kebab_case,
+                _cli_shortcuts=_cli_shortcuts,
+                _secrets_dir=_secrets_dir,
+                **values,
+            )
+        )
+
+>       super().__init__(**__pydantic_self__.__class__._settings_build_values(sources, init_kwargs))
+E       pydantic_core._pydantic_core.ValidationError: 1 validation error for ProjectConfig
+E       project_root
+E         Value error, project_root cannot be a system directory: /tmp [type=value_error, input_value=PosixPath('/tmp/myproj3'), input_type=PosixPath]
+E           For further information visit https://errors.pydantic.dev/2.12/v/value_error
+
+.venv/lib/python3.12/site-packages/pydantic_settings/main.py:242: ValidationError
+______________________ test_project_config_legacy_compat _______________________
+
+tmp_path = PosixPath('/tmp/pytest-of-jules/pytest-24/test_project_config_legacy_com0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f79c41332f0>
+
+    def test_project_config_legacy_compat(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        import tempfile
+
+        from src.domain_models.config import DistillationConfig, LoopStrategyConfig
+
+        monkeypatch.setattr(
+            "shutil.which", lambda x: "/usr/bin/lmp" if x == "lmp" else "/usr/bin/eonclient"
+        )
+        monkeypatch.setattr("os.access", lambda x, y: True)
+
+        tmp_dir = Path(tempfile.gettempdir()).resolve(strict=True)
+        proj_dir = tmp_dir / "myproj4"
+        proj_dir.mkdir(parents=True, exist_ok=True)
+        (proj_dir / "README.md").touch()
+
+        # Missing new fields (legacy config equivalent)
+>       config = ProjectConfig(
+            distillation_config=DistillationConfig(
+                temp_dir="/tmp", output_dir="/tmp", model_storage_path="/tmp"
+            ),
+            loop_strategy=LoopStrategyConfig(
+                replay_buffer_size=500, checkpoint_interval=5, timeout_seconds=86400
+            ),
+            project_root=proj_dir,
+            system=SystemConfig(elements=["Fe"]),
+            dynamics=DynamicsConfig(project_root=str(proj_dir), trusted_directories=[]),
+            oracle=OracleConfig(),
+            trainer=TrainerConfig(trusted_directories=[]),
+            validator=ValidatorConfig(),
+        )
+
+tests/unit/test_config.py:302:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+__pydantic_self__ = ProjectConfig(), _case_sensitive = None
+_nested_model_default_partial_update = None, _env_prefix = None
+_env_prefix_target = None, _env_file = PosixPath('.'), _env_file_encoding = None
+_env_ignore_empty = None, _env_nested_delimiter = None
+_env_nested_max_split = None, _env_parse_none_str = None
+_env_parse_enums = None, _cli_prog_name = None, _cli_parse_args = None
+_cli_settings_source = None, _cli_parse_none_str = None
+_cli_hide_none_type = None, _cli_avoid_json = None, _cli_enforce_required = None
+_cli_use_class_docs_for_groups = None, _cli_exit_on_error = None
+_cli_prefix = None, _cli_flag_prefix_char = None, _cli_implicit_flags = None
+_cli_ignore_unknown_args = None, _cli_kebab_case = None, _cli_shortcuts = None
+_secrets_dir = None, _build_sources = None
+values = {'distillation_config': DistillationConfig(enable=True, mace_model_path='mace-mp-0-medium', uncertainty_threshold=0.05...f', ecutwfc=40.0, ecutrho=320.0, occupations='smearing', smearing='mv', mixing_beta=0.7, diagonalization='david'), ...}
+sources = (InitSettingsSource(init_kwargs={'project_root': PosixPath('/tmp/myproj4'), 'system': SystemConfig(elements=['Fe'], ba...efix_len=5), SecretsSettingsSource(secrets_dir=None), DefaultSettingsSource(nested_model_default_partial_update=False))
+init_kwargs = {'distillation_config': DistillationConfig(enable=True, mace_model_path='mace-mp-0-medium', uncertainty_threshold=0.05...f', ecutwfc=40.0, ecutrho=320.0, occupations='smearing', smearing='mv', mixing_beta=0.7, diagonalization='david'), ...}
+
+    def __init__(
+        __pydantic_self__,
+        _case_sensitive: bool | None = None,
+        _nested_model_default_partial_update: bool | None = None,
+        _env_prefix: str | None = None,
+        _env_prefix_target: EnvPrefixTarget | None = None,
+        _env_file: DotenvType | None = ENV_FILE_SENTINEL,
+        _env_file_encoding: str | None = None,
+        _env_ignore_empty: bool | None = None,
+        _env_nested_delimiter: str | None = None,
+        _env_nested_max_split: int | None = None,
+        _env_parse_none_str: str | None = None,
+        _env_parse_enums: bool | None = None,
+        _cli_prog_name: str | None = None,
+        _cli_parse_args: bool | list[str] | tuple[str, ...] | None = None,
+        _cli_settings_source: CliSettingsSource[Any] | None = None,
+        _cli_parse_none_str: str | None = None,
+        _cli_hide_none_type: bool | None = None,
+        _cli_avoid_json: bool | None = None,
+        _cli_enforce_required: bool | None = None,
+        _cli_use_class_docs_for_groups: bool | None = None,
+        _cli_exit_on_error: bool | None = None,
+        _cli_prefix: str | None = None,
+        _cli_flag_prefix_char: str | None = None,
+        _cli_implicit_flags: bool | Literal['dual', 'toggle'] | None = None,
+        _cli_ignore_unknown_args: bool | None = None,
+        _cli_kebab_case: bool | Literal['all', 'no_enums'] | None = None,
+        _cli_shortcuts: Mapping[str, str | list[str]] | None = None,
+        _secrets_dir: PathType | None = None,
+        _build_sources: tuple[tuple[PydanticBaseSettingsSource, ...], dict[str, Any]] | None = None,
+        **values: Any,
+    ) -> None:
+        sources, init_kwargs = (
+            _build_sources
+            if _build_sources is not None
+            else __pydantic_self__.__class__._settings_init_sources(
+                _case_sensitive=_case_sensitive,
+                _nested_model_default_partial_update=_nested_model_default_partial_update,
+                _env_prefix=_env_prefix,
+                _env_prefix_target=_env_prefix_target,
+                _env_file=_env_file,
+                _env_file_encoding=_env_file_encoding,
+                _env_ignore_empty=_env_ignore_empty,
+                _env_nested_delimiter=_env_nested_delimiter,
+                _env_nested_max_split=_env_nested_max_split,
+                _env_parse_none_str=_env_parse_none_str,
+                _env_parse_enums=_env_parse_enums,
+                _cli_prog_name=_cli_prog_name,
+                _cli_parse_args=_cli_parse_args,
+                _cli_settings_source=_cli_settings_source,
+                _cli_parse_none_str=_cli_parse_none_str,
+                _cli_hide_none_type=_cli_hide_none_type,
+                _cli_avoid_json=_cli_avoid_json,
+                _cli_enforce_required=_cli_enforce_required,
+                _cli_use_class_docs_for_groups=_cli_use_class_docs_for_groups,
+                _cli_exit_on_error=_cli_exit_on_error,
+                _cli_prefix=_cli_prefix,
+                _cli_flag_prefix_char=_cli_flag_prefix_char,
+                _cli_implicit_flags=_cli_implicit_flags,
+                _cli_ignore_unknown_args=_cli_ignore_unknown_args,
+                _cli_kebab_case=_cli_kebab_case,
+                _cli_shortcuts=_cli_shortcuts,
+                _secrets_dir=_secrets_dir,
+                **values,
+            )
+        )
+
+>       super().__init__(**__pydantic_self__.__class__._settings_build_values(sources, init_kwargs))
+E       pydantic_core._pydantic_core.ValidationError: 1 validation error for ProjectConfig
+E       project_root
+E         Value error, project_root cannot be a system directory: /tmp [type=value_error, input_value=PosixPath('/tmp/myproj4'), input_type=PosixPath]
+E           For further information visit https://errors.pydantic.dev/2.12/v/value_error
+
+.venv/lib/python3.12/site-packages/pydantic_settings/main.py:242: ValidationError
+______________________ test_cleanup_artifacts_idempotency ______________________
+
+tmp_path_factory = TempPathFactory(_given_basetemp=None, _trace=<pluggy._tracing.TagTracerSub object at 0x7f79e0466690>, _basetemp=PosixPath('/tmp/pytest-of-jules/pytest-24'), _retention_count=3, _retention_policy='all')
+
+    def test_cleanup_artifacts_idempotency(tmp_path_factory):
+        # We can instantiate with a dummy config
+        import typing
+        from unittest.mock import MagicMock
+
+        from src.core.orchestrator import Orchestrator
+
+        class DummyConfig:
+            class LoopStrategy:
+                use_tiered_oracle: typing.ClassVar[bool] = False
+                max_iterations: typing.ClassVar[int] = 1
+
+                class Thresholds:
+                    threshold_call_dft: typing.ClassVar[float] = 0.5
+
+                thresholds = Thresholds()
+
+            loop_strategy = LoopStrategy()
+
+            class System:
+                elements: typing.ClassVar[list[str]] = ["Fe"]
+                interface_target: typing.ClassVar[str | None] = None
+                interface_generation_iteration: typing.ClassVar[int] = 0
+                restricted_directories: typing.ClassVar[list[str]] = []
+                baseline_potential: typing.ClassVar[str] = "zbl"
+
+            system = System()
+
+            class Dynamics:
+                trusted_directories: typing.ClassVar[list[str]] = []
+                project_root: typing.ClassVar[str] = str(Path("/home/jules").resolve(strict=True))
+
+            dynamics = Dynamics()
+
+            class Oracle:
+                pass
+
+            oracle = Oracle()
+
+            class Trainer:
+                trusted_directories: typing.ClassVar[list[str]] = []
+                max_potential_size: typing.ClassVar[int] = 1000000
+
+            trainer = Trainer()
+
+            class Validator:
+                pass
+
+            validator = Validator()
+
+            class StructureGenerator:
+                pass
+
+            structure_generator = StructureGenerator()
+
+            class Policy:
+                pass
+
+            policy = Policy()
+
+            project_root = Path("/home/jules").resolve(strict=True)
+
+        import sys
+
+        sys.modules["pyacemaker"] = MagicMock()
+        sys.modules["pyacemaker.calculator"] = MagicMock()
+        orch = Orchestrator(DummyConfig())
+        # Test valid
+>       f1 = tmp_path / "f1.dat"
+             ^^^^^^^^
+E       NameError: name 'tmp_path' is not defined
+
+tests/unit/test_orchestrator.py:461: NameError
+_________________ test_orchestrator_state_machine_transitions __________________
+
+tmp_path_factory = TempPathFactory(_given_basetemp=None, _trace=<pluggy._tracing.TagTracerSub object at 0x7f79e0466690>, _basetemp=PosixPath('/tmp/pytest-of-jules/pytest-24'), _retention_count=3, _retention_policy='all')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f79c4016d80>
+
+    def test_orchestrator_state_machine_transitions(tmp_path_factory, monkeypatch):
+        import typing
+
+        from src.core.orchestrator import Orchestrator
+
+        class DummyConfig:
+            class LoopStrategy:
+                use_tiered_oracle: typing.ClassVar[bool] = False
+                max_iterations: typing.ClassVar[int] = 1
+
+                class Thresholds:
+                    threshold_call_dft: typing.ClassVar[float] = 0.5
+
+                thresholds = Thresholds()
+
+            loop_strategy = LoopStrategy()
+
+            class System:
+                elements: typing.ClassVar[list[str]] = ["Fe"]
+                interface_target: typing.ClassVar[str | None] = None
+                interface_generation_iteration: typing.ClassVar[int] = 0
+                restricted_directories: typing.ClassVar[list[str]] = []
+                baseline_potential: typing.ClassVar[str] = "zbl"
+
+            system = System()
+
+            class Dynamics:
+                trusted_directories: typing.ClassVar[list[str]] = []
+                project_root: typing.ClassVar[str] = str(Path("/home/jules").resolve(strict=True))
+
+            dynamics = Dynamics()
+
+            class Oracle:
+                pass
+
+            oracle = Oracle()
+
+            class Trainer:
+                trusted_directories: typing.ClassVar[list[str]] = []
+                max_potential_size: typing.ClassVar[int] = 1000000
+
+            trainer = Trainer()
+
+            class Validator:
+                pass
+
+            validator = Validator()
+
+            class StructureGenerator:
+                pass
+
+            structure_generator = StructureGenerator()
+
+            class Policy:
+                pass
+
+            policy = Policy()
+
+            project_root = Path("/home/jules").resolve(strict=True)
+
+        import sys
+        from unittest.mock import MagicMock
+
+        from src.core.exceptions import DynamicsHaltInterrupt
+
+        sys.modules["pyacemaker"] = MagicMock()
+        sys.modules["pyacemaker.calculator"] = MagicMock()
+        orch = Orchestrator(DummyConfig())
+        object.__setattr__(orch.config.loop_strategy, "max_iterations", 1)
+>       orch.get_latest_potential = MagicMock(return_value=tmp_path / "pot.yace")
+                                                           ^^^^^^^^
+E       NameError: name 'tmp_path' is not defined
+
+tests/unit/test_orchestrator.py:540: NameError
 ================================ tests coverage ================================
 _______________ coverage: platform linux, python 3.12.13-final-0 _______________
 
@@ -41,12 +2003,12 @@ src/__init__.py                             0      0   100%
 src/core/__init__.py                       21      0   100%
 src/core/checkpoint.py                     42      4    90%   39-42
 src/core/exceptions.py                      2      0   100%
-src/core/orchestrator.py                  368    149    60%   67, 83-84, 89, 121-122, 125-126, 131-133, 145-159, 165-166, 196-229, 237-244, 249, 261-273, 276-282, 296-297, 302-303, 318-320, 325-326, 329-337, 340-371, 374-375, 378-382, 389-392, 395-398, 401-405, 414-442, 451-453, 461, 501, 509-510, 541, 545, 576-579
+src/core/orchestrator.py                  368    291    21%   67, 81-103, 107-138, 141-159, 164-172, 178-183, 188-193, 196-229, 237-244, 249, 261-273, 276-282, 287-322, 325-326, 329-337, 340-371, 374-375, 378-382, 389-392, 395-398, 401-405, 408-442, 446-453, 457-581
 src/domain_models/__init__.py               3      0   100%
-src/domain_models/config.py               461    113    75%   35-36, 46-47, 49-50, 56-57, 60-61, 71-72, 154, 182-183, 203-217, 221, 224, 264-265, 270-275, 391-394, 410-412, 459-462, 467-470, 524-529, 545-546, 554-555, 557-558, 566-567, 578, 582-591, 725-751, 760-761, 763-764, 782-783, 785-786, 792-793, 796-797, 805-806, 813-814, 818-819
+src/domain_models/config.py               463    113    76%   32-33, 43-44, 46-47, 53-54, 57-58, 68-69, 151, 179-180, 200-214, 218, 221, 261-262, 267-272, 388-391, 407-409, 456-459, 464-467, 521-526, 542-543, 551-552, 554-555, 560-561, 565-566, 577, 581-590, 724-750, 759-760, 762-763, 781-782, 784-785, 791-792, 795-796, 812-813, 817-818
 src/domain_models/dtos.py                  50      4    92%   41-44
 src/dynamics/__init__.py                    0      0   100%
-src/dynamics/dynamics_engine.py           261     62    76%   35-36, 43-44, 47-48, 51-52, 55-56, 60-61, 65-66, 97-98, 104-105, 113-114, 129-130, 136-137, 140-141, 144-145, 148-149, 152-153, 157-158, 162-163, 201, 210-211, 220-221, 236-237, 243-244, 246-247, 290-292, 319-321, 341-342, 348-349, 353-354, 358-359, 415
+src/dynamics/dynamics_engine.py           261     57    78%   35-36, 43-44, 47-48, 51-52, 55-56, 60-61, 65-66, 104-105, 113-114, 129-130, 136-137, 140-141, 144-145, 148-149, 152-153, 157-158, 162-163, 201, 210-211, 220-221, 236-237, 243-244, 246-247, 319-321, 341-342, 348-349, 353-354, 358-359, 415
 src/dynamics/eon_driver.py                167     51    69%   13-14, 28-29, 42-51, 81-84, 88-89, 94-95, 121-124, 135-136, 138-139, 152-154, 157-158, 166-173, 177-179, 187-189, 192-193, 235
 src/dynamics/eon_wrapper.py               213     39    82%   43-44, 66-67, 78-79, 82-83, 167-168, 170-171, 182-183, 193-194, 199-211, 218, 231, 241-242, 245-246, 265, 269, 294-295, 330-331
 src/dynamics/security_utils.py            110     26    76%   17-18, 26-32, 47-48, 78, 101-102, 110-111, 121-122, 133-134, 137-138, 141-142, 162-163
@@ -68,7 +2030,25 @@ src/validators/reporter.py                  7      0   100%
 src/validators/stability_tests.py         119      5    96%   51, 59-60, 63-66
 src/validators/validator.py                90     11    88%   20-22, 28-30, 34-36, 80, 94-95
 ---------------------------------------------------------------------
-TOTAL                                    2813    680    76%
-======================== 204 passed, 2 skipped in 6.63s ========================
+TOTAL                                    2815    817    71%
+=========================== short test summary info ============================
+FAILED tests/unit/test_config.py::test_project_config - pydantic_core._pydant...
+FAILED tests/unit/test_config.py::test_project_config_legacy_compat - pydanti...
+FAILED tests/unit/test_orchestrator.py::test_cleanup_artifacts_idempotency - ...
+FAILED tests/unit/test_orchestrator.py::test_orchestrator_state_machine_transitions
+ERROR tests/unit/test_orchestrator.py::test_orchestrator_initialization - pyd...
+ERROR tests/unit/test_orchestrator.py::test_orchestrator_oracle_convergence_error
+ERROR tests/unit/test_orchestrator.py::test_orchestrator_dynamics_halt_interrupt
+ERROR tests/unit/test_orchestrator.py::test_run_cycle - pydantic_core._pydant...
+ERROR tests/unit/test_orchestrator.py::test_run_cycle_converged - pydantic_co...
+ERROR tests/unit/test_orchestrator.py::test_get_latest_potential - pydantic_c...
+ERROR tests/unit/test_orchestrator.py::test_get_latest_potential_no_dir - pyd...
+ERROR tests/unit/test_orchestrator.py::test_resume_state_finds_highest_iteration
+ERROR tests/unit/test_orchestrator.py::test_secure_copy_potential_size_limit
+ERROR tests/unit/test_orchestrator.py::test_secure_copy_potential_missing_headers
+ERROR tests/unit/test_orchestrator.py::test_secure_copy_potential_valid - pyd...
+ERROR tests/unit/test_orchestrator.py::test_get_latest_potential_no_files - p...
+ERROR tests/unit/test_orchestrator.py::test_get_latest_potential_invalid_file
+============= 4 failed, 187 passed, 2 skipped, 13 errors in 10.78s =============
 /app/.venv/lib/python3.12/site-packages/coverage/inorout.py:561: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.4/messages.html#warning-module-not-imported
   self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")

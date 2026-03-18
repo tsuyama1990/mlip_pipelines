@@ -57,35 +57,34 @@ def test_scenario_01(
     print("Executing UAT-C02-01: End-to-End Dynamics Engine and LAMMPS Integration")
     print("Verifying autonomous execution, hybrid potential enforcement, and extrapolation halt logic")
 
-    with tempfile.TemporaryDirectory() as _td:
-        _tmp_path = Path(_td)
+    _tmp_path = Path("/home/jules/tmp_test_dir")
+    if _tmp_path.exists(): shutil.rmtree(_tmp_path)
+    _tmp_path.mkdir(parents=True)
 
-        # GIVEN: A valid YAML-equivalent configuration defining materials and thresholds
-        import os as _os
-        _os.environ["MLIP_DYNAMICS__TRUSTED_DIRECTORIES"] = '["' + str(_tmp_path) + '"]'
-        _os.environ["MLIP_PROJECT_ROOT"] = str(_tmp_path)
-        _os.environ["MLIP_DYNAMICS__PROJECT_ROOT"] = str(_tmp_path)
-        _os.environ["MLIP_DYNAMICS__MD_STEPS"] = "1000"
-        _os.environ["MLIP_DYNAMICS__TEMPERATURE"] = "300.0"
-        _os.environ["MLIP_DYNAMICS__THRESHOLDS__THRESHOLD_CALL_DFT"] = "5.0"
-        _os.environ["MLIP_DYNAMICS__THRESHOLDS__SMOOTH_STEPS"] = "3"
-        _os.environ["MLIP_SYSTEM__ELEMENTS"] = '["Fe", "Pt"]'
-        _os.environ["MLIP_SYSTEM__BASELINE_POTENTIAL"] = "zbl"
+    # GIVEN: A valid YAML-equivalent configuration defining materials and thresholds
+    import os as _os
+    from src.domain_models.config import ProjectConfig as _ProjectConfig
+    from unittest.mock import patch as _patch
 
-        # Instantiate from base config which reads env
-        from src.domain_models.config import ProjectConfig as _ProjectConfig
 
-        # Provide minimal required config for missing fields so instantiation succeeds
-        _os.environ["MLIP_LOOP_STRATEGY__REPLAY_BUFFER_SIZE"] = "500"
-        _os.environ["MLIP_LOOP_STRATEGY__CHECKPOINT_INTERVAL"] = "5"
-        _os.environ["MLIP_LOOP_STRATEGY__TIMEOUT_SECONDS"] = "3600"
-        _os.environ["MLIP_DISTILLATION_CONFIG__TEMP_DIR"] = str(_tmp_path)
-        _os.environ["MLIP_DISTILLATION_CONFIG__OUTPUT_DIR"] = str(_tmp_path)
-        _os.environ["MLIP_DISTILLATION_CONFIG__MODEL_STORAGE_PATH"] = str(_tmp_path)
-        _os.environ["MLIP_TRAINER__TRUSTED_DIRECTORIES"] = '["' + str(_tmp_path) + '"]'
-
+    with _patch("pathlib.Path.cwd", return_value=_tmp_path):
         (_tmp_path / "README.md").touch()
-        _full_config = _ProjectConfig(oracle={"pseudo_dir": str(_tmp_path)}, validator={})
+        _full_config = _ProjectConfig(
+            project_root=_tmp_path,
+            dynamics={
+                "project_root": str(_tmp_path),
+                "trusted_directories": [str(_tmp_path)],
+                "md_steps": 1000,
+                "temperature": 300.0,
+                "thresholds": {"threshold_call_dft": 5.0, "smooth_steps": 3}
+            },
+            system={"elements": ["Fe", "Pt"], "baseline_potential": "zbl"},
+            loop_strategy={"replay_buffer_size": 500, "checkpoint_interval": 5, "timeout_seconds": 3600},
+            distillation_config={"temp_dir": str(_tmp_path), "output_dir": str(_tmp_path), "model_storage_path": str(_tmp_path)},
+            trainer={"trusted_directories": [str(_tmp_path)]},
+            oracle={"pseudo_dir": str(_tmp_path)},
+            validator={}
+        )
         _config = _full_config.dynamics
         _sys_config = _full_config.system
         # Config loaded from env variables via ProjectConfig
@@ -94,9 +93,6 @@ def test_scenario_01(
         _engine = MDInterface(_config, _sys_config)
 
         # Mocking external LAMMPS execution for purely functional UAT
-        _old_run = subprocess.run
-        _old_which = shutil.which
-
         def mock_run_explore(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[bytes]:
             # Simulate LAMMPS halting due to extrapolation threshold breach
             _work_dir = Path(kwargs.get("cwd", str(_tmp_path)))
@@ -122,13 +118,9 @@ ITEM: ATOMS id type x y z c_pace_gamma
 
             raise subprocess.CalledProcessError(1, ["lmp"])
 
-        subprocess.run = mock_run_explore
-
         _lmp_path = _tmp_path / "lmp"
         _lmp_path.touch()
         _lmp_path.chmod(0o755)
-        shutil.which = lambda *args, **kwargs: str(_lmp_path.resolve())
-        _config.lmp_binary = "lmp"
 
         _pot_file = _tmp_path / "dummy.yace"
         _pot_file.touch()
@@ -136,22 +128,25 @@ ITEM: ATOMS id type x y z c_pace_gamma
         _work_dir = _tmp_path / "md_run"
         _work_dir.mkdir(parents=True)
 
-        # THEN: The system flawlessly executes and gracefully halts upon encountering unknown extrapolation region
-        _res = _engine.run_exploration(_pot_file, _work_dir)
-        assert _res["halted"] is True
-        print("✓ Successfully executed molecular dynamics _engine and gracefully halted on high systemic uncertainty.")
+        with _patch("subprocess.run", side_effect=mock_run_explore), _patch("shutil.which", return_value=str(_lmp_path.resolve())):
+            _config.lmp_binary = "lmp"
 
-        # Verify that the generated input script rigorously enforces the Lennard-Jones/ZBL baseline
-        _in_file = _work_dir / "in.lammps"
-        _script_content = _in_file.read_text()
-        assert "pair_style hybrid/overlay pace zbl 1.0 2.0" in _script_content
-        assert "pair_coeff * * pace" in _script_content
-        assert "pair_coeff * * zbl" in _script_content
-        print("✓ System rigorously enforced the Lennard-Jones/ZBL baseline to prevent unphysical atomic collisions.")
+            # THEN: The system flawlessly executes and gracefully halts upon encountering unknown extrapolation region
+            _res = _engine.run_exploration(_pot_file, _work_dir)
+            assert _res["halted"] is True
+            print("✓ Successfully executed molecular dynamics _engine and gracefully halted on high systemic uncertainty.")
 
-        # Verify the extrapolative grade (gamma value) watchdog
-        assert 'fix watchdog all halt 3 v_max_gamma > 5.0 error hard message "AL_HALT"' in _script_content
-        print("✓ Orchestrator actively monitored the extrapolation grade emitted by the ACE potential.")
+            # Verify that the generated input script rigorously enforces the Lennard-Jones/ZBL baseline
+            _in_file = _work_dir / "in.lammps"
+            _script_content = _in_file.read_text()
+            assert "pair_style hybrid/overlay pace zbl 1.0 2.0" in _script_content
+            assert "pair_coeff * * pace" in _script_content
+            assert "pair_coeff * * zbl" in _script_content
+            print("✓ System rigorously enforced the Lennard-Jones/ZBL baseline to prevent unphysical atomic collisions.")
+
+            # Verify the extrapolative grade (gamma value) watchdog
+            assert 'fix watchdog all halt 3 v_max_gamma > 5.0 error hard message "AL_HALT"' in _script_content
+            print("✓ Orchestrator actively monitored the extrapolation grade emitted by the ACE potential.")
 
         # WHEN: The simulation resumes using the brand newly updated potential
 
@@ -174,8 +169,6 @@ ITEM: ATOMS id type x y z c_pace_gamma
             _dump_file.write_text(_dump_content)
             return subprocess.CompletedProcess(args=["lmp"], returncode=0, stdout=b"", stderr=b"")
 
-        subprocess.run = mock_run_resume
-
         _restart_dir = _tmp_path / "md_run"
         _restart_file = _restart_dir / "restart.lammps"
         _restart_file.touch()
@@ -183,17 +176,14 @@ ITEM: ATOMS id type x y z c_pace_gamma
         _resume_dir = _tmp_path / "resume_run"
         _resume_dir.mkdir(parents=True)
 
-        # THEN: Seamlessly flawlessly resume the paused simulation
-        _res_resume = _engine.resume(_pot_file, _restart_dir, _resume_dir)
-        assert _res_resume["halted"] is False
+        with _patch("subprocess.run", side_effect=mock_run_resume), _patch("shutil.which", return_value=str(_lmp_path.resolve())):
+            # THEN: Seamlessly flawlessly resume the paused simulation
+            _res_resume = _engine.resume(_pot_file, _restart_dir, _resume_dir)
+            assert _res_resume["halted"] is False
 
-        _resume_script = (_resume_dir / "in.lammps").read_text()
-        assert f"read_restart {_restart_file.resolve()}" in _resume_script
-        print("✓ Dynamics Engine successfully resumed from process checkpoint.")
-
-        # Cleanup
-        subprocess.run = _old_run
-        shutil.which = _old_which
+            _resume_script = (_resume_dir / "in.lammps").read_text()
+            assert f"read_restart {_restart_file.resolve()}" in _resume_script
+            print("✓ Dynamics Engine successfully resumed from process checkpoint.")
 
     return ()
 
@@ -211,35 +201,37 @@ def test_scenario_02_eon_client(
 ) -> tuple:
     print("Executing UAT-C02-02: Interfacing with the EON client for long-timescale Adaptive KMC")
 
-    with tempfile.TemporaryDirectory() as _td:
-        _tmp_path = Path(_td)
+    _tmp_path = Path("/home/jules/tmp_test_dir2")
+    if _tmp_path.exists(): shutil.rmtree(_tmp_path)
+    _tmp_path.mkdir(parents=True)
 
-        import os as _os
-        _os.environ["MLIP_DYNAMICS__TRUSTED_DIRECTORIES"] = '["' + str(_tmp_path) + '"]'
-        _os.environ["MLIP_PROJECT_ROOT"] = str(_tmp_path)
-        _os.environ["MLIP_DYNAMICS__PROJECT_ROOT"] = str(_tmp_path)
-        _os.environ["MLIP_DYNAMICS__EON_JOB"] = "process_search"
-        _os.environ["MLIP_DYNAMICS__EON_MIN_MODE_METHOD"] = "dimer"
-        _os.environ["MLIP_SYSTEM__ELEMENTS"] = '["Fe", "Pt"]'
+    import os as _os
+    from src.domain_models.config import ProjectConfig as _ProjectConfig
+    from unittest.mock import patch as _patch
 
-        from src.domain_models.config import ProjectConfig as _ProjectConfig
-        _os.environ["MLIP_LOOP_STRATEGY__REPLAY_BUFFER_SIZE"] = "500"
-        _os.environ["MLIP_LOOP_STRATEGY__CHECKPOINT_INTERVAL"] = "5"
-        _os.environ["MLIP_LOOP_STRATEGY__TIMEOUT_SECONDS"] = "3600"
-        _os.environ["MLIP_DISTILLATION_CONFIG__TEMP_DIR"] = str(_tmp_path)
-        _os.environ["MLIP_DISTILLATION_CONFIG__OUTPUT_DIR"] = str(_tmp_path)
-        _os.environ["MLIP_DISTILLATION_CONFIG__MODEL_STORAGE_PATH"] = str(_tmp_path)
-        _os.environ["MLIP_TRAINER__TRUSTED_DIRECTORIES"] = '["' + str(_tmp_path) + '"]'
 
+    with _patch("pathlib.Path.cwd", return_value=_tmp_path):
         (_tmp_path / "README.md").touch()
-        _full_config = _ProjectConfig(oracle={"pseudo_dir": str(_tmp_path)}, validator={})
+        _full_config = _ProjectConfig(
+            project_root=_tmp_path,
+            dynamics={
+                "project_root": str(_tmp_path),
+                "trusted_directories": [str(_tmp_path)],
+                "md_steps": 1000,
+                "temperature": 300.0,
+                "thresholds": {"threshold_call_dft": 5.0, "smooth_steps": 3}
+            },
+            system={"elements": ["Fe", "Pt"], "baseline_potential": "zbl"},
+            loop_strategy={"replay_buffer_size": 500, "checkpoint_interval": 5, "timeout_seconds": 3600},
+            distillation_config={"temp_dir": str(_tmp_path), "output_dir": str(_tmp_path), "model_storage_path": str(_tmp_path)},
+            trainer={"trusted_directories": [str(_tmp_path)]},
+            oracle={"pseudo_dir": str(_tmp_path)},
+            validator={}
+        )
         _config = _full_config.dynamics
         _sys_config = _full_config.system
 
         _wrapper = EONWrapper(_config, _sys_config)
-
-        _old_popen = subprocess.Popen
-        _old_which = shutil.which
 
         # Mocking the Popen call for eonclient
         class _MockProc:
@@ -255,33 +247,27 @@ def test_scenario_02_eon_client(
             def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
                 pass
 
-        subprocess.Popen = lambda *args, **kwargs: _MockProc()
-
         _eon_bin = _tmp_path / "eonclient"
         _eon_bin.touch()
         _eon_bin.chmod(0o755)
-        shutil.which = lambda *args, **kwargs: str(_eon_bin.resolve())
-        _config.eon_binary = "eonclient"
 
         _pot_file = _tmp_path / "dummy.yace"
         _pot_file.touch()
         _work_dir = _tmp_path / "eon_run"
 
-        _res = _wrapper.run_kmc(_pot_file, _work_dir)
+        with _patch("subprocess.Popen", return_value=_MockProc()), _patch("shutil.which", return_value=str(_eon_bin.resolve())):
+            _config.eon_binary = "eonclient"
+            _res = _wrapper.run_kmc(_pot_file, _work_dir)
 
-        assert _res["halted"] is True
-        assert _res["is_kmc"] is True
+            assert _res["halted"] is True
+            assert _res["is_kmc"] is True
 
-        print("✓ System seamlessly transitions from standard molecular dynamics to long-timescale Adaptive Kinetic Monte Carlo (aKMC) simulations via EON.")
+            print("✓ System seamlessly transitions from standard molecular dynamics to long-timescale Adaptive Kinetic Monte Carlo (aKMC) simulations via EON.")
 
-        _ini_content = (_work_dir / "config.ini").read_text()
-        assert "job = process_search" in _ini_content
-        assert "min_mode_method = dimer" in _ini_content
-        print("✓ Engine can accurately explore slow diffusion pathways and calculate precise activation energy barriers.")
-
-        # Cleanup
-        subprocess.Popen = _old_popen
-        shutil.which = _old_which
+            _ini_content = (_work_dir / "config.ini").read_text()
+            assert "job = process_search" in _ini_content
+            assert "min_mode_method = dimer" in _ini_content
+            print("✓ Engine can accurately explore slow diffusion pathways and calculate precise activation energy barriers.")
 
     return ()
 

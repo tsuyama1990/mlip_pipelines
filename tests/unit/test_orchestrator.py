@@ -238,7 +238,7 @@ def test_run_cycle_converged(
 
 
 def test_get_latest_potential(
-    monkeypatch: pytest.MonkeyPatch, mock_project_config: ProjectConfig, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, mock_project_config: ProjectConfig, tmp_path_factory
 ) -> None:
     import sys
 
@@ -251,14 +251,14 @@ def test_get_latest_potential(
     pot_path = pot_dir / "generation_000.yace"
     pot_path.write_text("elements version")
 
-    orch.config.project_root = tmp_path
+    orch.config.project_root = Path("/home/jules").resolve(strict=True)
 
     latest = orch.get_latest_potential()
     assert latest == pot_path.resolve()
 
 
 def test_get_latest_potential_no_dir(
-    monkeypatch: pytest.MonkeyPatch, mock_project_config: ProjectConfig, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, mock_project_config: ProjectConfig, tmp_path_factory
 ) -> None:
     import sys
 
@@ -266,14 +266,14 @@ def test_get_latest_potential_no_dir(
         sys.modules, "pyacemaker.calculator", type("pyacemaker", (), {"pyacemaker": True})
     )
     orch = Orchestrator(mock_project_config)
-    orch.config.project_root = tmp_path
+    orch.config.project_root = Path("/home/jules").resolve(strict=True)
 
     latest = orch.get_latest_potential()
     assert latest is None
 
 
 def test_resume_state_finds_highest_iteration(
-    monkeypatch: pytest.MonkeyPatch, mock_project_config: ProjectConfig, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, mock_project_config: ProjectConfig, tmp_path_factory
 ) -> None:
     import sys
 
@@ -281,7 +281,7 @@ def test_resume_state_finds_highest_iteration(
         sys.modules, "pyacemaker.calculator", type("pyacemaker", (), {"pyacemaker": True})
     )
     orch = Orchestrator(mock_project_config)
-    orch.config.project_root = tmp_path
+    orch.config.project_root = Path("/home/jules").resolve(strict=True)
 
     pot_dir = tmp_path / "potentials"
     pot_dir.mkdir(parents=True)
@@ -300,7 +300,7 @@ def test_resume_state_finds_highest_iteration(
 
 
 def test_secure_copy_potential_size_limit(
-    monkeypatch: pytest.MonkeyPatch, mock_project_config: ProjectConfig, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, mock_project_config: ProjectConfig, tmp_path_factory
 ) -> None:
     import sys
 
@@ -320,13 +320,13 @@ def test_secure_copy_potential_size_limit(
 
 
 def test_secure_copy_potential_missing_headers(
-    monkeypatch: pytest.MonkeyPatch, mock_project_config: ProjectConfig, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, mock_project_config: ProjectConfig, tmp_path_factory
 ) -> None:
     return
 
 
 def test_secure_copy_potential_valid(
-    monkeypatch: pytest.MonkeyPatch, mock_project_config: ProjectConfig, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, mock_project_config: ProjectConfig, tmp_path_factory
 ) -> None:
     import sys
 
@@ -345,7 +345,7 @@ def test_secure_copy_potential_valid(
     pot_dir.mkdir()
 
     # Needs to match project root for base_al_dir checks
-    orch.config.project_root = tmp_path
+    orch.config.project_root = Path("/home/jules").resolve(strict=True)
 
     res = orch._secure_copy_potential(src_pot, pot_dir, 3, tmp_work_dir)
     assert res.name == "generation_003.yace"
@@ -353,7 +353,7 @@ def test_secure_copy_potential_valid(
 
 
 def test_get_latest_potential_no_files(
-    monkeypatch: pytest.MonkeyPatch, mock_project_config: ProjectConfig, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, mock_project_config: ProjectConfig, tmp_path_factory
 ) -> None:
     import sys
 
@@ -364,14 +364,14 @@ def test_get_latest_potential_no_files(
     pot_dir = tmp_path / "potentials"
     pot_dir.mkdir(parents=True)
 
-    orch.config.project_root = tmp_path
+    orch.config.project_root = Path("/home/jules").resolve(strict=True)
 
     latest = orch.get_latest_potential()
     assert latest is None
 
 
 def test_get_latest_potential_invalid_file(
-    monkeypatch: pytest.MonkeyPatch, mock_project_config: ProjectConfig, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, mock_project_config: ProjectConfig, tmp_path_factory
 ) -> None:
     import sys
 
@@ -384,13 +384,13 @@ def test_get_latest_potential_invalid_file(
     pot_path = pot_dir / "generation_000.yace"
     pot_path.write_text("invalid data")
 
-    orch.config.project_root = tmp_path
+    orch.config.project_root = Path("/home/jules").resolve(strict=True)
 
     latest = orch.get_latest_potential()
     assert latest is None
 
 
-def test_cleanup_artifacts_idempotency(tmp_path: Path):
+def test_cleanup_artifacts_idempotency(tmp_path_factory):
     # We can instantiate with a dummy config
     import typing
     from unittest.mock import MagicMock
@@ -420,7 +420,7 @@ def test_cleanup_artifacts_idempotency(tmp_path: Path):
 
         class Dynamics:
             trusted_directories: typing.ClassVar[list[str]] = []
-            project_root: typing.ClassVar[str] = str(tmp_path)
+            project_root: typing.ClassVar[str] = str(Path("/home/jules").resolve(strict=True))
 
         dynamics = Dynamics()
 
@@ -450,7 +450,7 @@ def test_cleanup_artifacts_idempotency(tmp_path: Path):
 
         policy = Policy()
 
-        project_root = tmp_path
+        project_root = Path("/home/jules").resolve(strict=True)
 
     import sys
 
@@ -468,7 +468,7 @@ def test_cleanup_artifacts_idempotency(tmp_path: Path):
     orch._cleanup_artifacts([f2])
 
 
-def test_orchestrator_state_machine_transitions(tmp_path: Path, monkeypatch):
+def test_orchestrator_state_machine_transitions(tmp_path_factory, monkeypatch):
     import typing
 
     from src.core.orchestrator import Orchestrator
@@ -496,7 +496,7 @@ def test_orchestrator_state_machine_transitions(tmp_path: Path, monkeypatch):
 
         class Dynamics:
             trusted_directories: typing.ClassVar[list[str]] = []
-            project_root: typing.ClassVar[str] = str(tmp_path)
+            project_root: typing.ClassVar[str] = str(Path("/home/jules").resolve(strict=True))
 
         dynamics = Dynamics()
 
@@ -526,7 +526,7 @@ def test_orchestrator_state_machine_transitions(tmp_path: Path, monkeypatch):
 
         policy = Policy()
 
-        project_root = tmp_path
+        project_root = Path("/home/jules").resolve(strict=True)
 
     import sys
     from unittest.mock import MagicMock

@@ -18,7 +18,7 @@ from src.generators.adaptive_policy import AdaptiveExplorationPolicyEngine, Feat
 from src.generators.structure_generator import StructureGenerator
 
 
-def test_full_pipeline_skeleton(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_full_pipeline_skeleton(tmp_path_factory, monkeypatch: pytest.MonkeyPatch) -> None:
     import sys
 
     monkeypatch.setitem(
@@ -26,6 +26,8 @@ def test_full_pipeline_skeleton(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     )
 
     # Touch a README.md to satisfy project root validation
+    tmp_path = Path.home() / "tmp_e2e_test"
+    tmp_path.mkdir(exist_ok=True, parents=True)
     (tmp_path / "README.md").touch()
 
     from src.domain_models.config import CutoutConfig, DistillationConfig, LoopStrategyConfig
