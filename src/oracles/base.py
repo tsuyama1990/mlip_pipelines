@@ -5,6 +5,7 @@ from ase import Atoms
 
 
 class BaseOracle(abc.ABC):
+    mace_model_path: str | None = None
     """Abstract Base Class for all Oracles."""
 
     @abc.abstractmethod

@@ -4,31 +4,34 @@ rootdir: /app
 configfile: pyproject.toml
 testpaths: tests
 plugins: cov-7.0.0, anyio-4.12.1
-collected 208 items
+collected 225 items
 
 tests/e2e/test_skeleton.py s.                                            [  0%]
 tests/uat/test_cycle03_oracle.py ...                                     [  2%]
 tests/uat/test_cycle04_trainer.py ...                                    [  3%]
-tests/uat/test_cycle05_dynamics.py ...                                   [  5%]
-tests/uat/test_cycle06_validator.py ...                                  [  6%]
-tests/uat/test_tutorial.py s....                                         [  9%]
-tests/unit/test_ace_trainer.py ....................                      [ 18%]
+tests/uat/test_cycle05_dynamics.py ...                                   [  4%]
+tests/uat/test_cycle06_domain_logic.py ....                              [  6%]
+tests/uat/test_cycle06_validator.py ...                                  [  8%]
+tests/uat/test_tutorial.py s....                                         [ 10%]
+tests/unit/test_ace_trainer.py ....................                      [ 19%]
 tests/unit/test_adaptive_policy.py .......                               [ 22%]
 tests/unit/test_checkpoint.py .....                                      [ 24%]
-tests/unit/test_config.py ........................                       [ 36%]
-tests/unit/test_defect_builder.py ...                                    [ 37%]
-tests/unit/test_dft_oracle.py ...............                            [ 44%]
-tests/unit/test_domain_models.py .                                       [ 45%]
-tests/unit/test_dynamics_engine.py ............................          [ 58%]
+tests/unit/test_config.py ........................                       [ 35%]
+tests/unit/test_config2.py .......                                       [ 38%]
+tests/unit/test_defect_builder.py ...                                    [ 39%]
+tests/unit/test_dft_oracle.py ...............                            [ 46%]
+tests/unit/test_domain_models.py .                                       [ 46%]
+tests/unit/test_dynamics_engine.py ............................          [ 59%]
 tests/unit/test_eon_driver.py .............                              [ 64%]
-tests/unit/test_eon_wrapper.py .................                         [ 73%]
-tests/unit/test_finetune_manager.py ....                                 [ 75%]
-tests/unit/test_mace_manager.py .                                        [ 75%]
-tests/unit/test_orchestrator.py ...............                          [ 82%]
-tests/unit/test_reporter.py ..                                           [ 83%]
-tests/unit/test_security_utils.py .........                              [ 87%]
-tests/unit/test_stability.py ........                                    [ 91%]
-tests/unit/test_structure_generator.py ........                          [ 95%]
+tests/unit/test_eon_wrapper.py .................                         [ 72%]
+tests/unit/test_finetune_manager.py ....                                 [ 74%]
+tests/unit/test_mace_manager.py .                                        [ 74%]
+tests/unit/test_orchestrator.py ...............                          [ 81%]
+tests/unit/test_reporter.py ..                                           [ 82%]
+tests/unit/test_retry.py ......                                          [ 84%]
+tests/unit/test_security_utils.py .........                              [ 88%]
+tests/unit/test_stability.py ........                                    [ 92%]
+tests/unit/test_structure_generator.py ........                          [ 96%]
 tests/unit/test_tiered_oracle.py .                                       [ 96%]
 tests/unit/test_validator.py ........                                    [100%]
 
@@ -41,10 +44,10 @@ src/__init__.py                             0      0   100%
 src/core/__init__.py                       21      0   100%
 src/core/checkpoint.py                     42      4    90%   39-42
 src/core/exceptions.py                      2      0   100%
-src/core/orchestrator.py                  574    312    46%   69, 85-86, 91, 102-105, 124-125, 128-129, 134-136, 158-172, 176, 182-183, 216-298, 306-313, 318, 330-398, 401-407, 423-424, 429-430, 441-442, 445-446, 449-450, 453-460, 496-497, 501-507, 512-513, 516-524, 527-590, 593-594, 597-601, 608-611, 614-617, 620-624, 633-680, 712-715, 719-722, 727-730, 734-737, 745-750, 753-754, 763, 767, 773-776, 815, 823-824, 856, 862-893, 896, 927-930
-src/core/retry.py                          80     36    55%   25-30, 35, 43-50, 74-75, 82-103, 108-109
+src/core/orchestrator.py                  574    311    46%   85-86, 91, 102-105, 124-125, 128-129, 134-136, 158-172, 176, 182-183, 216-298, 306-313, 318, 330-398, 401-407, 423-424, 429-430, 441-442, 445-446, 449-450, 453-460, 496-497, 501-507, 512-513, 516-524, 527-591, 594-595, 598-602, 609-612, 615-618, 621-625, 634-681, 713-716, 720-723, 728-731, 735-738, 746-751, 754-755, 764, 768, 774-777, 816, 824-825, 857, 863-897, 900, 931-934
+src/core/retry.py                          80     13    84%   35, 45-47, 50, 83-89, 108-109
 src/domain_models/__init__.py               3      0   100%
-src/domain_models/config.py               527    150    72%   26-27, 32-33, 48-49, 67-68, 70-71, 77-78, 81-82, 97-98, 101-102, 118-119, 206, 227-228, 234-235, 255-269, 273, 276, 316-317, 322-327, 443-446, 511-514, 519-522, 576-584, 589-590, 592-593, 597-599, 607-608, 611-612, 617-618, 622-623, 634-635, 643-646, 649-650, 671-672, 674-675, 680-702, 865-891, 900-901, 903-904, 922-923, 925-926, 932-933, 936-937, 945-946, 953-954, 958-959
+src/domain_models/config.py               527    128    76%   26-27, 32-33, 48-49, 67-68, 70-71, 77-78, 81-82, 97-98, 101-102, 118-119, 206, 227-228, 234-235, 255-269, 273, 276, 316-317, 322-327, 443-446, 511-514, 519-522, 617-618, 622-623, 634-635, 643-646, 649-650, 671-672, 674-675, 680-702, 865-891, 903-904, 922-923, 925-926, 932-933, 936-937, 945-946, 953-954, 958-959
 src/domain_models/dtos.py                  50      4    92%   41-44
 src/dynamics/__init__.py                    0      0   100%
 src/dynamics/dynamics_engine.py           261     57    78%   35-36, 43-44, 47-48, 51-52, 55-56, 60-61, 65-66, 104-105, 113-114, 129-130, 136-137, 140-141, 144-145, 148-149, 152-153, 157-158, 162-163, 201, 210-211, 220-221, 236-237, 243-244, 246-247, 319-321, 341-342, 348-349, 353-354, 358-359, 415
@@ -56,7 +59,7 @@ src/generators/adaptive_policy.py          85     15    82%   16, 44-45, 123-124
 src/generators/defect_builder.py           72     15    79%   14, 22-23, 26, 43-44, 47, 66-67, 76-77, 81, 103, 105-106
 src/generators/structure_generator.py     142     34    76%   47-48, 52-53, 99, 105-108, 126-127, 164, 192-214, 226-227, 231-233, 276-278
 src/oracles/__init__.py                     0      0   100%
-src/oracles/base.py                         6      0   100%
+src/oracles/base.py                         8      0   100%
 src/oracles/dft_oracle.py                 258     61    76%   22-23, 26-27, 33-34, 38-39, 42-43, 48-49, 59-60, 79-80, 86-87, 117-118, 120-121, 123-124, 142, 145, 150, 160, 172-173, 177-179, 184-185, 190-195, 222-224, 227-228, 239-240, 259-260, 275, 288-291, 294-295, 301-303, 364-365
 src/oracles/mace_manager.py                40      4    90%   23-26, 63, 65
 src/oracles/tiered_oracle.py               25      1    96%   31
@@ -69,7 +72,8 @@ src/validators/reporter.py                  7      0   100%
 src/validators/stability_tests.py         119      5    96%   51, 59-60, 63-66
 src/validators/validator.py                90     11    88%   20-22, 28-30, 34-36, 80, 94-95
 ---------------------------------------------------------------------
-TOTAL                                    3289    958    71%
-======================== 206 passed, 2 skipped in 8.22s ========================
+TOTAL                                    3291    912    72%
+Required test coverage of 70% reached. Total coverage: 72.29%
+======================= 223 passed, 2 skipped in 10.58s ========================
 /app/.venv/lib/python3.12/site-packages/coverage/inorout.py:561: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.4/messages.html#warning-module-not-imported
   self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")

@@ -591,7 +591,7 @@ def _validate_env_value(val: str) -> None:
     if ".." in val:
         msg = "Path traversal sequences not allowed in .env values"
         raise ValueError(msg)
-    if any(char in val for char in [';', '&', '|', '$', '!', '`']):
+    if any(char in val for char in [";", "&", "|", "$", "!", "`"]):
         msg = "Environment variable value contains command injection characters"
         raise ValueError(msg)
     if not re.match(r"^[a-zA-Z0-9_.+-]+$", val):
