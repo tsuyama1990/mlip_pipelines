@@ -12,7 +12,6 @@ from ase import Atoms
 
 from src.core import AbstractDynamics, AbstractGenerator, AbstractTrainer, BaseOracle
 from src.core.exceptions import DynamicsHaltInterrupt
-from src.core.retry import RetryManager
 from src.domain_models.config import ProjectConfig
 from src.domain_models.dtos import ExplorationStrategy, MaterialFeatures
 from src.dynamics.dynamics_engine import MDInterface
@@ -53,6 +52,7 @@ class Orchestrator:
         self.structure_generator: AbstractGenerator = StructureGenerator(config.structure_generator)
 
         from src.core.checkpoint import CheckpointManager
+        from src.core.retry import RetryManager
         from src.trainers.finetune_manager import FinetuneManager
 
         # Ensure we have a database path
@@ -61,6 +61,7 @@ class Orchestrator:
         self.checkpoint = CheckpointManager(db_path)
 
         self.finetune_manager = FinetuneManager(config.trainer)
+        self._policy_retry_manager = RetryManager()
 
         # In a real active learning loop, iteration is managed by state.
         state_iter = self.checkpoint.get_state("CURRENT_ITERATION")
@@ -150,14 +151,10 @@ class Orchestrator:
             policy_name="Fallback Standard",
         )
 
-        # Retry logic and circuit breaking is handled by RetryManager
-        retry_manager = getattr(self, "_policy_retry_manager", None)
-        if not retry_manager:
-            retry_manager = RetryManager()
-            self._policy_retry_manager = retry_manager
-
         try:
-            strategy = retry_manager.execute_with_retry(self.policy_engine.decide_policy, features)
+            strategy = self._policy_retry_manager.execute_with_retry(
+                self.policy_engine.decide_policy, features
+            )
         except RuntimeError:
             # Reached when transient retries are exhausted or breaker is open
             logging.exception("Policy engine failed to execute. Falling back to default.")
@@ -205,23 +202,12 @@ class Orchestrator:
     def _run_exploration(
         self, current_pot: Path | None, tmp_work_dir: Path
     ) -> dict[str, Any] | str:
-        import concurrent.futures
-
         strategy = self._decide_exploration_strategy()
 
-        try:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(
-                    self._execute_exploration, strategy, current_pot, tmp_work_dir
-                )
-                timeout_seconds = getattr(self.config.loop_strategy, "timeout_seconds", 86400)
-                # Exploration should not take the full global timeout, we limit it.
-                exploration_timeout = timeout_seconds * 0.9
-                halt_info = future.result(timeout=exploration_timeout)
-        except concurrent.futures.TimeoutError as e:
-            executor.shutdown(wait=False, cancel_futures=True)
-            msg = "Exploration execution timed out"
-            raise RuntimeError(msg) from e
+        # The MD engine handles its own execution and timeouts in a synchronous, thread-safe manner.
+        # Spawning ThreadPoolExecutors for MD execution violates state consistency assumptions
+        # and triggers critical race conditions with LAMMPS single-threaded internals.
+        halt_info = self._execute_exploration(strategy, current_pot, tmp_work_dir)
 
         return self._detect_halt(halt_info)
 
@@ -438,7 +424,7 @@ class Orchestrator:
 
         resolved_src = src_pot.resolve(strict=True)
 
-        if not re.match(r"^[a-zA-Z0-9_-]+\.yace$", src_pot.name):
+        if not re.match(r"^[a-zA-Z0-9_]+\.yace$", src_pot.name) or src_pot.name.startswith("-"):
             msg = "Source potential file must have a valid .yace filename format"
             raise ValueError(msg)
 
@@ -692,6 +678,8 @@ class Orchestrator:
         )
         size_threshold = getattr(self.config.loop_strategy, "cleanup_size_threshold", 10240)
 
+        failure_count = 0
+
         for path in paths:
             try:
                 if not path.exists() or not path.is_file():
@@ -740,9 +728,14 @@ class Orchestrator:
                     logging.info(f"Cleaned up large artifact securely: {canonical_str}")
                 except OSError as e:
                     logging.warning(f"OS error during file deletion for {canonical_str}: {e}")
+                    failure_count += 1
             except Exception as e:
-                # Swallow error to ensure idempotency and non-blocking behavior
                 logging.warning(f"Failed to securely cleanup artifact {path}: {e}")
+                failure_count += 1
+
+            if failure_count > 3:
+                msg = "Exceeded maximum allowed cleanup failures, potentially indicating a malicious file locking DOS or persistent filesystem error."
+                raise RuntimeError(msg)
 
     def run_cycle(self) -> str | None:  # noqa: PLR0911
         """Runs the 4-phase Hierarchical Distillation Workflow infinitely or bounded."""

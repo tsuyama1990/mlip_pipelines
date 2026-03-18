@@ -159,10 +159,6 @@ class PacemakerWrapper(AbstractTrainer, BinaryResolverMixin):
         return combined_data
 
     def _validate_train_directories(self, dataset: Path, output_dir: Path) -> tuple[Path, Path]:
-        from src.domain_models.config import _secure_resolve_and_validate_dir
-
-        _secure_resolve_and_validate_dir(str(dataset), check_exists=False)
-        _secure_resolve_and_validate_dir(str(output_dir), check_exists=False)
         import os
         import tempfile
 
@@ -170,10 +166,15 @@ class PacemakerWrapper(AbstractTrainer, BinaryResolverMixin):
             msg = f"Dataset not found: {dataset}"
             raise FileNotFoundError(msg)
 
+        # Secure atomic resolution
         resolved_dataset = dataset.resolve(strict=True)
 
-        # Verify it's an extxyz file case-insensitively
-        if resolved_dataset.suffix.lower() != ".extxyz":
+        # Basic path traversal prevention checks on the original inputs before resolution
+        if ".." in str(dataset) or ".." in str(output_dir):
+            msg = "Path traversal characters detected"
+            raise ValueError(msg)
+
+        if not str(resolved_dataset.name).lower().endswith(".extxyz"):
             msg = f"Dataset must be an .extxyz file, got: {resolved_dataset.name}"
             raise ValueError(msg)
 
@@ -260,10 +261,8 @@ class PacemakerWrapper(AbstractTrainer, BinaryResolverMixin):
         ]
 
         if initial_potential and initial_potential.exists():
-            import os
-
             resolved_init_pot = initial_potential.resolve(strict=True)
-            canon_init_pot = os.path.realpath(str(resolved_init_pot))
+            canon_init_pot = str(resolved_init_pot)
 
             # Use strict whitelist pattern matching for each path component
             for part in Path(canon_init_pot).parts:
@@ -275,8 +274,14 @@ class PacemakerWrapper(AbstractTrainer, BinaryResolverMixin):
                 msg = "Security Violation: Path depth exceeds limits"
                 raise ValueError(msg)
 
-            if ".." in canon_init_pot:
-                msg = f"Security Violation: Path traversal characters detected: {canon_init_pot}"
+            import tempfile
+
+            tmp_root = str(Path(tempfile.gettempdir()).resolve(strict=False))
+
+            if not canon_init_pot.startswith(str(Path.cwd())) and not canon_init_pot.startswith(
+                tmp_root
+            ):
+                msg = "Initial potential outside working directory or temp directory"
                 raise ValueError(msg)
 
             cmd.extend(["--initial_potential", canon_init_pot])

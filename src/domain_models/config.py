@@ -17,6 +17,7 @@ class InterfaceTarget(BaseModel):
 
 
 def _check_allowed_base_dirs(resolved_str: str, path_str: str) -> None:
+    import os
     import tempfile
     import urllib.parse
 
@@ -25,22 +26,11 @@ def _check_allowed_base_dirs(resolved_str: str, path_str: str) -> None:
         msg = f"Path traversal sequences (..) are not allowed: {path_str}"
         raise ValueError(msg)
 
-    # Use realpath to resolve all symlinks and strictly match canonical bounds
-    canonical_str = os.path.realpath(resolved_str)
+    canonical_str = str(Path(resolved_str).resolve(strict=True))
 
-    # Validate the full path structure: no unresolvable symlink tricks
-    if Path(path_str).is_symlink():
-        link_target = os.path.realpath(path_str)
-        if link_target != canonical_str:
-            msg = f"Symlink validation failed: target mismatch. {path_str} -> {link_target}"
-            raise ValueError(msg)
-
-    # Use realpath and resolve(strict=True) on allowed bases to ensure no symlinks bypass checks
-    home_dir = os.path.realpath(str(Path.home().resolve(strict=True)))
-    tmp_dir = os.path.realpath(str(Path(tempfile.gettempdir()).resolve(strict=True)))
-    app_dir = (
-        os.path.realpath(str(Path("/app").resolve(strict=False))) if Path("/app").exists() else ""
-    )
+    home_dir = str(Path.home().resolve(strict=True))
+    tmp_dir = str(Path(tempfile.gettempdir()).resolve(strict=True))
+    app_dir = str(Path("/app").resolve(strict=True)) if Path("/app").exists() else ""
 
     is_safe = False
     for safe_base in filter(None, [home_dir, tmp_dir, app_dir]):
@@ -90,7 +80,6 @@ def _check_ownership_and_perms(resolved: Path, path_str: str) -> None:
 
 
 def _secure_resolve_and_validate_dir(path_str: str, check_exists: bool = True) -> str:
-    import os
     import urllib.parse
 
     decoded_path = urllib.parse.unquote(path_str)
@@ -98,17 +87,23 @@ def _secure_resolve_and_validate_dir(path_str: str, check_exists: bool = True) -
         msg = f"Path traversal sequences (..) are not allowed: {path_str}"
         raise ValueError(msg)
 
-    # Use realpath for canonicalization
-    canonical_path = Path(os.path.realpath(path_str))
-
-    if Path(path_str).is_symlink():
-        link_target = os.path.realpath(path_str)
-        if link_target != str(canonical_path):
-            msg = f"Symlink validation failed: target mismatch. {path_str} -> {link_target}"
-            raise ValueError(msg)
+    canonical_path = Path(path_str).resolve(strict=check_exists)
+    canonical_str = str(canonical_path)
 
     if not canonical_path.is_absolute():
         msg = f"Directory path must be absolute: {path_str}"
+        raise ValueError(msg)
+
+    import tempfile
+
+    tmp_dir = str(Path(tempfile.gettempdir()).resolve(strict=False))
+
+    if (
+        not canonical_str.startswith(str(Path.home()))
+        and not canonical_str.startswith("/app")
+        and not canonical_str.startswith(tmp_dir)
+    ):
+        msg = "Path outside allowed directories"
         raise ValueError(msg)
 
     if check_exists:
@@ -574,6 +569,9 @@ def _validate_env_key(key: str) -> None:
     if len(key) > 64:
         msg = "Environment variable key exceeds maximum length"
         raise ValueError(msg)
+    if any(char in key for char in ["$", "!", ";", "&", "|"]):
+        msg = "Environment variable key contains command injection characters"
+        raise ValueError(msg)
     if not re.match(r"^MLIP_[A-Z0-9]+$", key):
         msg = f"Invalid characters in .env variable key: {key}"
         raise ValueError(msg)
@@ -583,7 +581,10 @@ def _validate_env_value(val: str) -> None:
     if len(val) > 256:
         msg = "Environment variable value exceeds maximum length of 256 characters"
         raise ValueError(msg)
-    if not re.match(r"^[a-zA-Z0-9_.:/+-]*$", val):
+    if ".." in val:
+        msg = "Path traversal sequences not allowed in .env values"
+        raise ValueError(msg)
+    if not re.match(r"^[a-zA-Z0-9_.:/+-]+$", val):
         msg = "Invalid characters detected in .env variable value."
         raise ValueError(msg)
 
@@ -592,8 +593,8 @@ def _validate_env_permissions_and_size(resolved_env: Path) -> None:
     import os
     import stat
 
-    if resolved_env.is_symlink():
-        msg = ".env file cannot be a symlink for security reasons"
+    if not os.access(resolved_env, os.R_OK):
+        msg = "Environment file not readable by current process"
         raise ValueError(msg)
 
     st = os.lstat(resolved_env)
@@ -615,16 +616,9 @@ def _validate_env_permissions_and_size(resolved_env: Path) -> None:
 def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
     import os
 
-    if env_file.is_symlink():
-        msg = ".env file cannot be a symlink for security reasons"
-        raise ValueError(msg)
-
-    expected_base_resolved = expected_base.resolve(strict=True)
-    canonical_base = os.path.realpath(str(expected_base_resolved))
-
-    # Symlinks are blocked above, this just resolves relative paths
+    canonical_base = str(expected_base.resolve(strict=True))
     resolved_env = env_file.resolve(strict=True)
-    canonical_env = os.path.realpath(str(resolved_env))
+    canonical_env = str(resolved_env)
 
     try:
         common_p = os.path.commonpath([canonical_base, canonical_env])
@@ -634,7 +628,7 @@ def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
         raise ValueError(msg) from e
 
     if common_p != canonical_base:
-        msg = f".env file symlink target must reside securely within the allowed base directory: {expected_base}"
+        msg = f".env file must reside securely within the allowed base directory: {expected_base}"
         raise ValueError(msg)
 
     restricted_prefixes = [
@@ -652,7 +646,7 @@ def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
     ]
     for restricted in restricted_prefixes:
         try:
-            canonical_restricted = os.path.realpath(restricted)
+            canonical_restricted = str(Path(restricted).resolve(strict=False))
             is_restricted = (
                 os.path.commonpath([canonical_restricted, canonical_env]) == canonical_restricted
             )
