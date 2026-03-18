@@ -213,15 +213,13 @@ class PacemakerWrapper(AbstractTrainer, BinaryResolverMixin):
         # Validate configuration values natively rather than with strict regexes
         # Whitelist approaches for categorical parameters:
         allowed_baselines = ["lj", "zbl", "none"]
-        if (
-            self.config.baseline_potential.lower() not in allowed_baselines
-            and not self.config.baseline_potential.isalnum()
-            and "_" not in self.config.baseline_potential
+        if self.config.baseline_potential.lower() not in allowed_baselines and not re.match(
+            r"^[a-zA-Z0-9_-]+$", self.config.baseline_potential
         ):
             msg = f"Invalid baseline potential format: {self.config.baseline_potential}"
             raise ValueError(msg)
 
-        if not self.config.regularization.isalnum() and "_" not in self.config.regularization:
+        if not re.match(r"^[a-zA-Z0-9_-]+$", self.config.regularization):
             msg = "Invalid regularization format"
             raise ValueError(msg)
 

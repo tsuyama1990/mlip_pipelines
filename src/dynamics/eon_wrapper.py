@@ -62,6 +62,9 @@ class EONWrapper(AbstractDynamics):
                     msg = f"Potential path must be within the project root: {resolved_pot}"
                     raise ValueError(msg)
             resolved_pot_str = resolved_pot.as_posix()
+            if not re.match(r"^[/a-zA-Z0-9_.-]+$", resolved_pot_str) or ".." in resolved_pot_str:
+                msg = f"Invalid characters in potential path: {resolved_pot_str}"
+                raise ValueError(msg)
 
         try:
             executable = Path(sys.executable).resolve(strict=True)

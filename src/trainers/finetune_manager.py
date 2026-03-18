@@ -65,22 +65,32 @@ class FinetuneManager(BinaryResolverMixin):
             msg = f"Temporary directory {temp_dir} is not within trusted temp root {tmp_root}."
             raise ValueError(msg)
 
-    def _secure_write_xyz(self, train_xyz: Path, structures: list[Atoms]) -> None:
+    def _secure_write_xyz(self, train_xyz: Path, structures: list) -> None:
+        """Secure atomic write."""
         import fcntl
+        import os
+        import tempfile
 
-        fd = os.open(
-            train_xyz, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600
-        )
+        if train_xyz.exists():
+            msg = f"File already exists: {train_xyz}"
+            raise FileExistsError(msg)
+
+        # Write to a temporary file first in the same directory, then rename
+        fd, tmp_path_str = tempfile.mkstemp(dir=str(train_xyz.parent), prefix=".tmp_finetune_")
+        tmp_path = Path(tmp_path_str)
         try:
+            # File locking using fcntl
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            with os.fdopen(fd, "w") as f_out:
-                write(f_out, structures, format="extxyz")
-        except Exception as e:
-            import contextlib
+            with os.fdopen(fd, "w", encoding="utf-8") as f_out:
+                for atoms in structures:
+                    write(f_out, atoms, format="extxyz")
 
-            with contextlib.suppress(OSError):
-                os.close(fd)
-            msg = f"Failed to securely create or write to {train_xyz}"
+            # Atomic rename (POSIX only, but fine for HPC)
+            Path(tmp_path_str).replace(str(train_xyz))
+        except Exception as e:
+            if tmp_path.exists():
+                tmp_path.unlink(missing_ok=True)
+            msg = f"Failed to securely write xyz: {e}"
             raise RuntimeError(msg) from e
 
     def _run_mace_subprocess(

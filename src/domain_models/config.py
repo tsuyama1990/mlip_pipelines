@@ -545,6 +545,18 @@ def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
         msg = f".env file must reside securely within the allowed base directory: {expected_base}"
         raise ValueError(msg)
 
+    restricted_prefixes = ["/etc", "/bin", "/usr", "/sbin", "/var", "/lib", "/boot", "/root"]
+    for restricted in restricted_prefixes:
+        try:
+            import os
+
+            is_restricted = os.path.commonpath([restricted, str(resolved_env)]) == restricted
+        except ValueError:
+            continue
+        if is_restricted:
+            msg = f".env file cannot be a system directory/file: {restricted}"
+            raise ValueError(msg)
+
     st = os.lstat(resolved_env)
 
     # Remove the 1KB size limit
