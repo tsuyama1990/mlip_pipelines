@@ -1,5 +1,4 @@
 from pathlib import Path
-import re
 
 content = Path("tests/unit/test_orchestrator.py").read_text()
 # We don't replace with newlines to avoid IndentationError

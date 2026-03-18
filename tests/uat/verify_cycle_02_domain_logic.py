@@ -62,14 +62,21 @@ def test_scenario_01(
 
 
     # GIVEN: A valid YAML-equivalent configuration defining materials and thresholds
-    import os as _os
-    from src.domain_models.config import ProjectConfig as _ProjectConfig
     from unittest.mock import patch as _patch
+
+    from src.domain_models.config import ProjectConfig as _ProjectConfig
 
 
     with _patch("pathlib.Path.cwd", return_value=_tmp_path):
         (_tmp_path / "README.md").touch()
-        from src.domain_models.config import DynamicsConfig as _DynamicsConfig, SystemConfig as _SystemConfig, LoopStrategyConfig as _LoopStrategyConfig, DistillationConfig as _DistillationConfig, TrainerConfig as _TrainerConfig, OracleConfig as _OracleConfig, ValidatorConfig as _ValidatorConfig, ActiveLearningThresholds as _ActiveLearningThresholds
+        from src.domain_models.config import ActiveLearningThresholds as _ActiveLearningThresholds
+        from src.domain_models.config import DistillationConfig as _DistillationConfig
+        from src.domain_models.config import DynamicsConfig as _DynamicsConfig
+        from src.domain_models.config import LoopStrategyConfig as _LoopStrategyConfig
+        from src.domain_models.config import OracleConfig as _OracleConfig
+        from src.domain_models.config import SystemConfig as _SystemConfig
+        from src.domain_models.config import TrainerConfig as _TrainerConfig
+        from src.domain_models.config import ValidatorConfig as _ValidatorConfig
         _full_config = _ProjectConfig(
             project_root=_tmp_path,
             dynamics=_DynamicsConfig(
@@ -199,14 +206,21 @@ def test_scenario_02_eon_client(
 
 
 
-    import os as _os
-    from src.domain_models.config import ProjectConfig as _ProjectConfig
     from unittest.mock import patch as _patch
+
+    from src.domain_models.config import ProjectConfig as _ProjectConfig
 
 
     with _patch("pathlib.Path.cwd", return_value=_tmp_path):
         (_tmp_path / "README.md").touch()
-        from src.domain_models.config import DynamicsConfig as _DynamicsConfig, SystemConfig as _SystemConfig, LoopStrategyConfig as _LoopStrategyConfig, DistillationConfig as _DistillationConfig, TrainerConfig as _TrainerConfig, OracleConfig as _OracleConfig, ValidatorConfig as _ValidatorConfig, ActiveLearningThresholds as _ActiveLearningThresholds
+        from src.domain_models.config import ActiveLearningThresholds as _ActiveLearningThresholds
+        from src.domain_models.config import DistillationConfig as _DistillationConfig
+        from src.domain_models.config import DynamicsConfig as _DynamicsConfig
+        from src.domain_models.config import LoopStrategyConfig as _LoopStrategyConfig
+        from src.domain_models.config import OracleConfig as _OracleConfig
+        from src.domain_models.config import SystemConfig as _SystemConfig
+        from src.domain_models.config import TrainerConfig as _TrainerConfig
+        from src.domain_models.config import ValidatorConfig as _ValidatorConfig
         _full_config = _ProjectConfig(
             project_root=_tmp_path,
             dynamics=_DynamicsConfig(

@@ -114,6 +114,7 @@ class Orchestrator:
             return None
 
         try:
+            # max(files) will sort them lexicographically, which is correct for generation_000.yace, etc.
             latest_pot = max(files).resolve(strict=True)
 
             # Directory traversal vulnerability fix

@@ -1,5 +1,5 @@
-from pathlib import Path
 import re
+from pathlib import Path
 
 content = Path("src/domain_models/config.py").read_text()
 # Fix regex to use `r"^[a-zA-Z0-9_-]{1,1024}$"` for values as instructed

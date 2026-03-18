@@ -1,5 +1,4 @@
 from pathlib import Path
-import re
 
 content = Path("tests/unit/test_orchestrator.py").read_text()
 # We must clean up `/home/jules/potentials` if it exists since tests are sharing it
