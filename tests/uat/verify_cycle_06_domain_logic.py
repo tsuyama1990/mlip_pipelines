@@ -100,27 +100,30 @@ def _():
 
 @app.cell
 def test_scenario_1(DummyConfig, Orchestrator, tmp_path):
+    import tempfile
     # Scenario ID: UAT-C06-01: HPC Wall-Time Job Kill Recovery and State Resumption
     print("Testing UAT-C06-01: HPC Kill Recovery")
 
-    orch1 = Orchestrator(DummyConfig())
-    # Simulate a run that completed Phase1 and is killed
-    orch1.checkpoint.set_state("CURRENT_PHASE", "PHASE2_VALIDATION")
-    orch1.checkpoint.set_state("CURRENT_ITERATION", 5)
+    with tempfile.TemporaryDirectory() as td:
+        temp_dir = Path(td).resolve()
+        config = DummyConfig(str(temp_dir))
 
-    # "Restart" the process
-    orch2 = Orchestrator(DummyConfig())
+        orch1 = Orchestrator(config)
+        # Simulate a run that completed Phase1 and is killed
+        orch1.checkpoint.set_state("CURRENT_PHASE", "PHASE2_VALIDATION")
+        orch1.checkpoint.set_state("CURRENT_ITERATION", 5)
 
-    # Explaining the logic here: iteration might be 0 because we don't set it from state in __init__
-    # unless we use `get_state`. Let's verify this is working.
-    assert orch2.checkpoint.get_state("CURRENT_PHASE") == "PHASE2_VALIDATION", (
-        "State did not persist!"
-    )
-    assert orch2.iteration == 5, (
-        f"Iteration counter did not resume correctly! It is {orch2.iteration}"
-    )
-    print("✓ Orchestrator successfully resumed from database checkpoint")
-    return orch1, orch2
+        # "Restart" the process
+        orch2 = Orchestrator(config)
+
+        assert orch2.checkpoint.get_state("CURRENT_PHASE") == "PHASE2_VALIDATION", (
+            "State did not persist!"
+        )
+        assert orch2.iteration == 5, (
+            f"Iteration counter did not resume correctly! It is {orch2.iteration}"
+        )
+        print("✓ Orchestrator successfully resumed from database checkpoint")
+        return orch1, orch2
 
 
 @app.cell

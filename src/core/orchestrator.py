@@ -189,22 +189,8 @@ class Orchestrator:
             strategy = self._decide_exploration_strategy()
             halt_info = self._execute_exploration(strategy, current_pot, tmp_work_dir)
             return self._detect_halt(halt_info)
-        except DynamicsHaltInterrupt:
-            logging.exception("Exploration halted due to configured uncertainty thresholds.")
-            raise
-        except OracleConvergenceError:
-            logging.exception("Oracle convergence failed during initial setup/exploration.")
-            raise
-        except Exception as e:
-            logging.exception("An unexpected critical failure occurred during exploration.")
-            # Ensure proper resource cleanup occurs even on unexpected generic exceptions
-            import shutil
-
-            if tmp_work_dir.exists():
-                shutil.rmtree(str(tmp_work_dir), ignore_errors=True)
-
-            msg = "Critical infrastructure failure during exploration."
-            raise RuntimeError(msg) from e
+        finally:
+            pass
 
     def _select_candidates(self, halt_info: dict[str, Any]) -> Iterator[list[Atoms]]:
         dump_file = halt_info.get("dump_file")

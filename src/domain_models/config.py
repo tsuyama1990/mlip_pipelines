@@ -586,16 +586,7 @@ def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
                     raise ValueError(msg)
 
                 val = val.strip()
-                if (
-                    ".." in val
-                    or ";" in val
-                    or "&" in val
-                    or "|" in val
-                    or "$" in val
-                    or "`" in val
-                    or "{" in val
-                    or "}" in val
-                ):
+                if not re.match(r"^[-a-zA-Z0-9_.:/=]{1,1024}$", val):
                     msg = f"Invalid characters or traversal sequences in .env file content: {val}"
                     raise ValueError(msg)
 
