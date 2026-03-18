@@ -1,7 +1,53 @@
+import enum
 import logging
+import threading
 import time
 from collections.abc import Callable
 from typing import Any
+
+
+class CircuitBreakerState(enum.Enum):
+    CLOSED = "CLOSED"
+    OPEN = "OPEN"
+    HALF_OPEN = "HALF_OPEN"
+
+
+class CircuitBreaker:
+    def __init__(self, failure_threshold: int = 3, recovery_timeout: float = 300.0) -> None:
+        self.failure_threshold = failure_threshold
+        self.recovery_timeout = recovery_timeout
+        self.state = CircuitBreakerState.CLOSED
+        self.failures = 0
+        self.last_failure_time = 0.0
+        self._lock = threading.Lock()
+
+    def record_failure(self) -> None:
+        with self._lock:
+            self.failures += 1
+            self.last_failure_time = time.time()
+            if self.failures >= self.failure_threshold:
+                self.state = CircuitBreakerState.OPEN
+                logging.error("Circuit breaker tripped to OPEN.")
+
+    def record_success(self) -> None:
+        with self._lock:
+            if self.state == CircuitBreakerState.HALF_OPEN:
+                logging.info("Circuit breaker recovered, transitioning to CLOSED.")
+            self.state = CircuitBreakerState.CLOSED
+            self.failures = 0
+
+    def can_execute(self) -> bool:
+        with self._lock:
+            if self.state == CircuitBreakerState.CLOSED:
+                return True
+            if self.state == CircuitBreakerState.OPEN:
+                if time.time() - self.last_failure_time >= self.recovery_timeout:
+                    self.state = CircuitBreakerState.HALF_OPEN
+                    logging.info("Circuit breaker transitioning to HALF_OPEN to test recovery.")
+                    return True
+                return False
+            # state == HALF_OPEN: only allow 1 test execution
+            return True
 
 
 class RetryManager:
@@ -17,23 +63,14 @@ class RetryManager:
         self.max_retries = max_retries
         self.backoff_factor = backoff_factor
         self.timeout = timeout
-        self.circuit_breaker_cooldown = circuit_breaker_cooldown
-
-        self._circuit_breaker_open = False
-        self._circuit_breaker_reset_time = 0.0
-
-    def check_circuit_breaker(self) -> bool:
-        """Returns True if the circuit breaker is OPEN and operation should fail fast."""
-        if self._circuit_breaker_open:
-            if time.time() < self._circuit_breaker_reset_time:
-                return True
-            self._circuit_breaker_open = False
-        return False
+        self.circuit_breaker = CircuitBreaker(
+            failure_threshold=max_retries, recovery_timeout=circuit_breaker_cooldown
+        )
 
     def execute_with_retry(self, operation: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         import concurrent.futures
 
-        if self.check_circuit_breaker():
+        if not self.circuit_breaker.can_execute():
             msg = "Circuit breaker is OPEN. Operation aborted."
             raise RuntimeError(msg)
 
@@ -47,7 +84,7 @@ class RetryManager:
                 if attempt < self.max_retries - 1:
                     time.sleep(self.backoff_factor**attempt)
                 else:
-                    self._trip_circuit_breaker()
+                    self.circuit_breaker.record_failure()
                     msg = "Transient timeout failures exhausted."
                     raise RuntimeError(msg) from e
             except (ConnectionError, TimeoutError, OSError) as e:
@@ -57,21 +94,16 @@ class RetryManager:
                     logging.warning(f"Transient failure: {e}. Retrying in {sleep_time}s...")
                     time.sleep(sleep_time)
                 else:
-                    self._trip_circuit_breaker()
+                    self.circuit_breaker.record_failure()
                     msg = "Transient IO failures exhausted."
                     raise RuntimeError(msg) from e
             except Exception:
                 # Permanent configuration or infrastructure issues
+                self.circuit_breaker.record_failure()
                 raise
             else:
-                # Success closes the breaker if it was half-open
-                self._circuit_breaker_open = False
+                self.circuit_breaker.record_success()
                 return result
 
         unreachable_msg = "Unreachable"
         raise RuntimeError(unreachable_msg)
-
-    def _trip_circuit_breaker(self) -> None:
-        self._circuit_breaker_open = True
-        self._circuit_breaker_reset_time = time.time() + self.circuit_breaker_cooldown
-        logging.exception("Tripping circuit breaker for operation.")

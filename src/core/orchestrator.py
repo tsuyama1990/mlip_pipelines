@@ -205,8 +205,24 @@ class Orchestrator:
     def _run_exploration(
         self, current_pot: Path | None, tmp_work_dir: Path
     ) -> dict[str, Any] | str:
+        import concurrent.futures
+
         strategy = self._decide_exploration_strategy()
-        halt_info = self._execute_exploration(strategy, current_pot, tmp_work_dir)
+
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(
+                    self._execute_exploration, strategy, current_pot, tmp_work_dir
+                )
+                timeout_seconds = getattr(self.config.loop_strategy, "timeout_seconds", 86400)
+                # Exploration should not take the full global timeout, we limit it.
+                exploration_timeout = timeout_seconds * 0.9
+                halt_info = future.result(timeout=exploration_timeout)
+        except concurrent.futures.TimeoutError as e:
+            executor.shutdown(wait=False, cancel_futures=True)
+            msg = "Exploration execution timed out"
+            raise RuntimeError(msg) from e
+
         return self._detect_halt(halt_info)
 
     def _select_candidates(self, halt_info: dict[str, Any]) -> Iterator[list[Atoms]]:
@@ -219,6 +235,12 @@ class Orchestrator:
         dump_path = Path(dump_file)
         if not dump_path.exists() or not dump_path.is_file():
             logging.error(f"Dump file missing or invalid: {dump_path}")
+            yield from []
+            return
+
+        max_dump_size = 5 * 1024 * 1024 * 1024  # 5 GB limit to prevent OOM
+        if dump_path.stat().st_size > max_dump_size:
+            logging.error(f"Dump file exceeds 5GB limit: {dump_path}")
             yield from []
             return
 
@@ -242,7 +264,11 @@ class Orchestrator:
                 high_gamma_atoms = []
 
         mace_calc = None
-        if hasattr(self, "oracle") and isinstance(self.oracle, TieredOracle) and hasattr(self.oracle, "primary_oracle"):
+        if (
+            hasattr(self, "oracle")
+            and isinstance(self.oracle, TieredOracle)
+            and hasattr(self.oracle, "primary_oracle")
+        ):
             mace_calc_provider = getattr(self.oracle.primary_oracle, "_init_calculator", None)
             if callable(mace_calc_provider):
                 try:
@@ -276,7 +302,7 @@ class Orchestrator:
                         structure=s0,
                         target_atoms=target_atoms,
                         config=self.config.cutout_config,
-                        mace_calc=mace_calc
+                        mace_calc=mace_calc,
                     )
                 except Exception as e:
                     logging.warning(f"Failed to extract intelligent cluster: {e}")
@@ -316,22 +342,49 @@ class Orchestrator:
     ) -> Path | str:
         data_dir = self.config.project_root / "data"
         data_dir.mkdir(parents=True, exist_ok=True)
-        dataset_path = data_dir / "accumulated.extxyz"
+
+        # Isolate this specific iteration's new data into a temporary batch file
+        import os
+        import tempfile
+
+        from ase.io import read, write
+
+        fd, temp_batch_str = tempfile.mkstemp(
+            dir=str(tmp_work_dir), prefix="dft_batch_", suffix=".extxyz"
+        )
+        os.close(fd)
+        temp_batch_path = Path(temp_batch_str)
 
         has_new_data = self._compute_dft_and_update_dataset(
-            candidate_generator, tmp_work_dir, dataset_path
+            candidate_generator, tmp_work_dir, temp_batch_path
         )
 
         if not has_new_data:
             logging.error("No valid data obtained from DFT.")
+            if temp_batch_path.exists():
+                temp_batch_path.unlink()
             return "ERROR"
 
-        # Phase 4: Incremental Update & Replay Buffer
-        if getattr(self.config.loop_strategy, "incremental_update", False):
-            import ase.io
+        # Merge with global accumulated dataset (always keep an unpruned record for potential cold-starts)
+        global_dataset_path = data_dir / "accumulated.extxyz"
+        if temp_batch_path.exists():
+            try:
+                new_data = read(str(temp_batch_path), index=":")
+                if not isinstance(new_data, list):
+                    new_data = [new_data]
+                self.trainer.update_dataset(new_data, global_dataset_path)
+            except Exception as e:
+                logging.warning(f"Failed to append to global dataset: {e}")
 
-            if dataset_path.exists():
-                new_surrogate_data = ase.io.read(str(dataset_path), index=":")
+        train_dataset_path = temp_batch_path
+
+        # Phase 4: Incremental Update & Replay Buffer
+        if (
+            getattr(self.config.loop_strategy, "incremental_update", False)
+            and temp_batch_path.exists()
+        ):
+            try:
+                new_surrogate_data = read(str(temp_batch_path), index=":")
                 if not isinstance(new_surrogate_data, list):
                     new_surrogate_data = [new_surrogate_data]
 
@@ -342,23 +395,20 @@ class Orchestrator:
                     combined_data = self.trainer.manage_replay_buffer(
                         new_surrogate_data=new_surrogate_data,
                         history_file_path=history_file_path,
-                        buffer_size=buffer_size
+                        buffer_size=buffer_size,
                     )
 
-                    # Update dataset with combined data
-                    import os
+                    fd_t, temp_train_str = tempfile.mkstemp(
+                        dir=str(tmp_work_dir), prefix="train_batch_", suffix=".extxyz"
+                    )
+                    os.close(fd_t)
+                    temp_train_path = Path(temp_train_str)
+                    write(temp_train_str, combined_data, format="extxyz")
+                    train_dataset_path = temp_train_path
+            except Exception as e:
+                logging.warning(f"Failed to process replay buffer correctly: {e}")
 
-                    # Secure replace strategy
-                    import tempfile
-
-                    from ase.io import write
-                    fd, temp_path_str = tempfile.mkstemp(dir=str(dataset_path.parent), suffix=".extxyz")
-                    os.close(fd)
-                    temp_path = Path(temp_path_str)
-                    write(temp_path_str, combined_data, format="extxyz")
-                    temp_path.replace(dataset_path)
-
-        return self._train_model(dataset_path, current_pot, tmp_work_dir)
+        return self._train_model(train_dataset_path, current_pot, tmp_work_dir)
 
     def _validate_potential(self, new_pot_path: Path) -> bool:
         validation_result = self.validator.validate(new_pot_path)
@@ -395,10 +445,11 @@ class Orchestrator:
         # Cross-check that the fully resolved source file is within the explicitly allowed workspace
         # to prevent complex symlink/traversal attacks where a file named 'valid.yace'
         # points to a restricted target path outside the active learning bounds
-        allowed_src_dir = tmp_work_dir.resolve(strict=True)
+        allowed_src_dir = os.path.realpath(str(tmp_work_dir.resolve(strict=True)))
         try:
-            is_valid_path = os.path.commonpath([str(allowed_src_dir), str(resolved_src)]) == str(
-                allowed_src_dir
+            is_valid_path = (
+                os.path.commonpath([allowed_src_dir, os.path.realpath(str(resolved_src))])
+                == allowed_src_dir
             )
         except ValueError:
             is_valid_path = False
@@ -407,11 +458,19 @@ class Orchestrator:
             msg = f"Security Violation: Resolved source potential {resolved_src} lies outside the trusted directory {allowed_src_dir}"
             raise ValueError(msg)
 
+        if len(resolved_src.parts) > 50:
+            msg = "Security Violation: Path depth exceeds maximum allowed limit of 50."
+            raise ValueError(msg)
+
         if src_pot.is_symlink():
-            target = src_pot.resolve(strict=True)
-            if not target.is_relative_to(allowed_src_dir):
+            target = os.path.realpath(str(src_pot.resolve(strict=True)))
+            try:
+                if os.path.commonpath([allowed_src_dir, target]) != allowed_src_dir:
+                    msg = "Symlink target outside allowed directory"
+                    raise ValueError(msg)
+            except ValueError as e:
                 msg = "Symlink target outside allowed directory"
-                raise ValueError(msg)
+                raise ValueError(msg) from e
 
         pot_dir.mkdir(parents=True, exist_ok=True)
         resolved_pot_dir = pot_dir.resolve()
@@ -673,9 +732,14 @@ class Orchestrator:
                     )
                     continue
 
-                # Proceed with deletion
-                canonical_path.unlink()
-                logging.info(f"Cleaned up large artifact securely: {canonical_str}")
+                # Proceed with deletion securely
+                # Use Path.unlink() directly and catch exceptions instead of doing TOCTOU property checks
+                # The st_uid check above is fine as a prerequisite, but we still rely on Path.unlink atomic success
+                try:
+                    canonical_path.unlink()
+                    logging.info(f"Cleaned up large artifact securely: {canonical_str}")
+                except OSError as e:
+                    logging.warning(f"OS error during file deletion for {canonical_str}: {e}")
             except Exception as e:
                 # Swallow error to ensure idempotency and non-blocking behavior
                 logging.warning(f"Failed to securely cleanup artifact {path}: {e}")
@@ -783,8 +847,12 @@ class Orchestrator:
                                 return new_pot_path
 
                             # 3. Finetune explicitly triggering hierarchical trainers
-                            if isinstance(self.oracle, TieredOracle) and hasattr(self.oracle, "primary_oracle"):
-                                mace_model = getattr(self.oracle.primary_oracle, "mace_model_path", None)
+                            if isinstance(self.oracle, TieredOracle) and hasattr(
+                                self.oracle, "primary_oracle"
+                            ):
+                                mace_model = getattr(
+                                    self.oracle.primary_oracle, "mace_model_path", None
+                                )
                                 if mace_model:
                                     import tempfile
 
@@ -799,12 +867,16 @@ class Orchestrator:
                                             if not isinstance(structures, list):
                                                 structures = [structures]
 
-                                            with tempfile.TemporaryDirectory(dir=str(tmp_work_dir)) as mace_tmp:
+                                            with tempfile.TemporaryDirectory(
+                                                dir=str(tmp_work_dir)
+                                            ) as mace_tmp:
                                                 mace_out_path = Path(mace_tmp) / "finetuned.model"
-                                                new_mace_model = self.finetune_manager.finetune_mace(
-                                                    structures=structures,
-                                                    model_path=str(mace_model),
-                                                    output_path=mace_out_path.parent
+                                                new_mace_model = (
+                                                    self.finetune_manager.finetune_mace(
+                                                        structures=structures,
+                                                        model_path=str(mace_model),
+                                                        output_path=mace_out_path.parent,
+                                                    )
                                                 )
                                                 # Update primary oracle with the awakened MACE model
                                                 self.oracle.primary_oracle.mace_model_path = str(new_mace_model)  # type: ignore[attr-defined]

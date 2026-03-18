@@ -110,7 +110,11 @@ class StructureGenerator(AbstractGenerator):
             return stack(mat1, mat2, axis=2, maxstrain=self.config.interface_max_strain)  # type: ignore[no-untyped-call]
 
     def extract_intelligent_cluster(
-        self, structure: Atoms, target_atoms: list[int], config: CutoutConfig, mace_calc: typing.Any = None
+        self,
+        structure: Atoms,
+        target_atoms: list[int],
+        config: CutoutConfig,
+        mace_calc: typing.Any = None,
     ) -> Atoms:
         """
         Isolates the epicentre of a halted simulation, carving out a spherical cluster.
@@ -131,7 +135,9 @@ class StructureGenerator(AbstractGenerator):
         # Using a simple pairwise distance calculation respecting minimum image convention
         from ase.geometry import get_distances
 
-        _, D = get_distances(positions, target_positions, cell=structure.get_cell(), pbc=structure.get_pbc())  # type: ignore[no-untyped-call]
+        _, D = get_distances(
+            positions, target_positions, cell=structure.get_cell(), pbc=structure.get_pbc()
+        )  # type: ignore[no-untyped-call]
 
         # D is (N_all, N_target). Find the minimum distance to any target atom for each atom.
         min_distances = np.min(D, axis=1)
@@ -142,7 +148,9 @@ class StructureGenerator(AbstractGenerator):
 
         # Recalculate distances for the extracted cluster to set force_weights
         cluster_positions = cluster.get_positions()
-        _, D_cluster = get_distances(cluster_positions, target_positions, cell=structure.get_cell(), pbc=structure.get_pbc())  # type: ignore[no-untyped-call]
+        _, D_cluster = get_distances(
+            cluster_positions, target_positions, cell=structure.get_cell(), pbc=structure.get_pbc()
+        )  # type: ignore[no-untyped-call]
         min_distances_cluster = np.min(D_cluster, axis=1)
 
         # Apply force_weights: Core=1.0, Buffer=0.0
@@ -153,20 +161,33 @@ class StructureGenerator(AbstractGenerator):
 
         # 2. MACE Pre-relaxation
         if config.enable_pre_relaxation and mace_calc is not None:
-            self._pre_relax_buffer(cluster, mace_calc, mask_core)
+            self._pre_relax_buffer(
+                cluster,
+                mace_calc,
+                mask_core,
+                fmax=config.pre_relax_fmax,
+                steps=config.pre_relax_steps,
+            )
 
         # 3. Automated Hydrogen Passivation
         if config.enable_passivation:
-            cluster = self._passivate_surface(cluster, config.passivation_element)
+            cluster = self._passivate_surface(
+                cluster,
+                config.passivation_element,
+                mult=config.neighbor_mult,
+                threshold=config.under_coordination_threshold,
+            )
 
         # 4. Periodic Embedding (Put in a large box with vacuum)
         # Instead of a small box, place it in an Orthorhombic Box with vacuum
-        cluster.center(vacuum=10.0)  # type: ignore[no-untyped-call]
+        cluster.center(vacuum=config.vacuum_size)  # type: ignore[no-untyped-call]
         cluster.set_pbc(True)  # type: ignore[no-untyped-call]
 
         return cluster
 
-    def _pre_relax_buffer(self, cluster: Atoms, mace_calc: typing.Any, mask_core: typing.Any) -> None:
+    def _pre_relax_buffer(
+        self, cluster: Atoms, mace_calc: typing.Any, mask_core: typing.Any, fmax: float, steps: int
+    ) -> None:
         """Gently relaxes the buffer region whilst strictly freezing the core atoms."""
         import numpy as np
         from ase.constraints import FixAtoms
@@ -184,7 +205,7 @@ class StructureGenerator(AbstractGenerator):
         try:
             # Short optimization to avoid drifting too much
             dyn = LBFGS(cluster, logfile=None)  # type: ignore[no-untyped-call]
-            dyn.run(fmax=0.05, steps=50)  # type: ignore[no-untyped-call]
+            dyn.run(fmax=fmax, steps=steps)  # type: ignore[no-untyped-call]
         except Exception as e:
             logging.warning(f"MACE pre-relaxation failed: {e}")
         finally:
@@ -192,18 +213,31 @@ class StructureGenerator(AbstractGenerator):
             cluster.set_constraint()  # type: ignore[no-untyped-call]
             cluster.calc = None
 
-    def _passivate_surface(self, cluster: Atoms, element: str = "H") -> Atoms:
+    def _passivate_surface(
+        self, cluster: Atoms, element: str = "H", mult: float = 1.2, threshold: int = 5
+    ) -> Atoms:
         """Adds passivation atoms to under-coordinated surface atoms."""
+        import re
+
         import numpy as np
         from ase.neighborlist import NeighborList, natural_cutoffs
 
+        if not re.match(r"^[A-Z][a-z]?$", element):
+            msg = f"Security Violation: Invalid chemical symbol for passivation: {element}"
+            raise ValueError(msg)
+
+        try:
+            passivation_Z = chemical_symbols.index(element)
+        except ValueError as e:
+            msg = f"Unsupported or unrecognized passivation element: {element}"
+            raise ValueError(msg) from e
+
         # Compute neighbor list using natural covalent cutoffs with a small multiplier
-        cutoffs = natural_cutoffs(cluster, mult=1.2)  # type: ignore[no-untyped-call]
+        cutoffs = natural_cutoffs(cluster, mult=mult)  # type: ignore[no-untyped-call]
         nl = NeighborList(cutoffs, self_interaction=False, bothways=True)  # type: ignore[no-untyped-call]
         nl.update(cluster)  # type: ignore[no-untyped-call]
 
         new_atoms = []
-        passivation_Z = chemical_symbols.index(element)
         bond_length = covalent_radii[passivation_Z] * 2.0  # approximate
 
         for i in range(len(cluster)):
@@ -216,8 +250,10 @@ class StructureGenerator(AbstractGenerator):
             # Simple heuristic: if a buffer atom has fewer than expected neighbors, it's on the surface
             # In a real scenario we'd use oxidation states, but a basic coordination check works for UAT
             # We'll just add one H atom pointing away from the center of mass of its neighbors
-            if len(indices) > 0 and len(indices) <= 5: # Arbitrary under-coordination threshold
-                neighbor_positions = cluster.positions[indices] + np.dot(offsets, cluster.get_cell())
+            if len(indices) > 0 and len(indices) <= 5:  # Arbitrary under-coordination threshold
+                neighbor_positions = cluster.positions[indices] + np.dot(
+                    offsets, cluster.get_cell()
+                )
                 com = np.mean(neighbor_positions, axis=0)
 
                 # Vector from COM of neighbors to the atom
@@ -238,7 +274,7 @@ class StructureGenerator(AbstractGenerator):
             fw = cluster.arrays.get("force_weights", np.zeros(len(cluster)))
             if len(fw) < len(cluster):
                 new_fw = np.zeros(len(cluster))
-                new_fw[:len(fw)] = fw
+                new_fw[: len(fw)] = fw
                 cluster.arrays["force_weights"] = new_fw
 
         return cluster

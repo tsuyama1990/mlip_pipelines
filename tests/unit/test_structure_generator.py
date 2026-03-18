@@ -85,10 +85,7 @@ def test_extract_intelligent_cluster() -> None:
     system = bulk("Fe", crystalstructure="bcc", a=2.86, cubic=True) * (3, 3, 3)
 
     cutout_config = CutoutConfig(
-        core_radius=2.0,
-        buffer_radius=4.0,
-        enable_pre_relaxation=False,
-        enable_passivation=False
+        core_radius=2.0, buffer_radius=4.0, enable_pre_relaxation=False, enable_passivation=False
     )
 
     # Target the center atom
@@ -131,7 +128,7 @@ def test_hydrogen_passivation() -> None:
         buffer_radius=5.0,
         enable_pre_relaxation=False,
         enable_passivation=True,
-        passivation_element="H"
+        passivation_element="H",
     )
 
     # Use a target closer to the removed atom

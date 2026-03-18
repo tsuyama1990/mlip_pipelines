@@ -756,6 +756,23 @@ class CutoutConfig(BaseModel):
     passivation_element: str = Field(
         default_factory=lambda: "H", description="Element used for passivation"
     )
+    vacuum_size: float = Field(
+        default=10.0, ge=0.0, description="Vacuum padding size in Angstroms for isolated clusters"
+    )
+    pre_relax_fmax: float = Field(
+        default=0.05, gt=0.0, description="Max force convergence criteria for MACE pre-relaxation"
+    )
+    pre_relax_steps: int = Field(
+        default=50, ge=1, description="Maximum number of optimization steps for MACE pre-relaxation"
+    )
+    neighbor_mult: float = Field(
+        default=1.2,
+        gt=0.0,
+        description="Multiplier for natural covalent cutoffs during passivation",
+    )
+    under_coordination_threshold: int = Field(
+        default=5, ge=1, description="Maximum neighbors to trigger passivation"
+    )
 
     @model_validator(mode="after")
     def validate_radii(self) -> "CutoutConfig":
