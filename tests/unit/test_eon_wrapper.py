@@ -424,7 +424,7 @@ def test_run_kmc_untrusted_binary(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     work_dir = tmp_path / "work"
     work_dir.mkdir(parents=True, exist_ok=True)
 
-    with pytest.raises(ValueError, match="Resolved binary must reside securely in a trusted directory:"):
+    with pytest.raises(ValueError, match="Resolved binary must reside in a trusted directory:"):
         engine.run_kmc(None, work_dir)
 
 

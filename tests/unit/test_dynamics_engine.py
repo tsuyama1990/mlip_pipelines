@@ -136,7 +136,7 @@ ITEM: ATOMS id type x y z c_pace_gamma
 
 def test_run_exploration_invalid_potential(tmp_path: Path) -> None:
     config = DynamicsConfig(
-        uncertainty_threshold=2.0, project_root=str(tmp_path), trusted_directories=[]
+        project_root=str(tmp_path), trusted_directories=[]
     )
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)

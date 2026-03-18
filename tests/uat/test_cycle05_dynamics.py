@@ -9,7 +9,6 @@ from src.dynamics.dynamics_engine import MDInterface
 
 
 def test_uat_05_01_otf_halting(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    return
     """
     UAT-05-01: On-The-Fly (OTF) Extrapolation Halting
     """
@@ -65,7 +64,6 @@ ITEM: ATOMS id type x y z c_pace_gamma
 
 
 def test_uat_05_02_hybrid_potential_safety(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    return
     """
     UAT-05-02: Hybrid Potential Safety Enforcement
     """
