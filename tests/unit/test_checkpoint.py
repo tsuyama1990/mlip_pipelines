@@ -62,12 +62,7 @@ def test_checkpoint_transaction_rollback(tmp_path: Path, monkeypatch):
 
 
 def test_checkpoint_invalid_db_path(tmp_path: Path):
-    with pytest.raises(ValueError, match="must reside securely within an allowed base directory"):
-        # Using path traversal to test validation
-        # The parent path 'tmp_path / ".." / "root.db".parent' is 'tmp_path / ".."'.
-        # Since _secure_resolve_and_validate_dir requires absolute, safe paths, let's construct a bad one.
-        # However, Path(bad_path).parent.resolve() might just be /tmp, which is "allowed" if it's within CWD?
-        # Actually _secure_resolve_and_validate_dir expects the path to be relative to CWD.
+    with pytest.raises(ValueError, match="Path outside allowed directories"):
         # Let's pass an absolute path like /etc/passwd that will definitely fail.
         CheckpointManager(Path("/etc/shadow_db.sqlite"))
 

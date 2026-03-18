@@ -10,8 +10,11 @@ from src.trainers.finetune_manager import FinetuneManager
 
 
 @pytest.fixture
-def mock_config():
-    return TrainerConfig(trusted_directories=[])
+def mock_config(tmp_path):
+    import os
+
+    os.chown(tmp_path, os.getuid(), os.getgid())
+    return TrainerConfig(trusted_directories=[str(tmp_path.resolve(strict=False))])
 
 
 @pytest.fixture

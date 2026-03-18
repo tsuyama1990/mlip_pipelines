@@ -73,6 +73,73 @@ def test_generate_interface_invalid():
         generator.generate_interface(target)
 
 
+def test_extract_intelligent_cluster() -> None:
+    from ase.build import bulk
+
+    from src.domain_models.config import CutoutConfig
+
+    config = StructureGeneratorConfig(seed_base=1)
+    gen = StructureGenerator(config)
+
+    # 3x3x3 bulk Fe block (27 atoms)
+    system = bulk("Fe", crystalstructure="bcc", a=2.86, cubic=True) * (3, 3, 3)
+
+    cutout_config = CutoutConfig(
+        core_radius=2.0, buffer_radius=4.0, enable_pre_relaxation=False, enable_passivation=False
+    )
+
+    # Target the center atom
+    target_idx = [13]
+
+    cluster = gen.extract_intelligent_cluster(system, target_idx, cutout_config)
+
+    assert len(cluster) < len(system)
+    assert len(cluster) > 1
+
+    # Check force weights
+    assert "force_weights" in cluster.arrays
+    fw = cluster.arrays["force_weights"]
+
+    # Target atom and very close neighbors should have weight 1.0
+    core_atoms = sum(1 for w in fw if w == 1.0)
+    assert core_atoms >= 1
+
+
+def test_hydrogen_passivation() -> None:
+    from ase.build import bulk
+
+    from src.domain_models.config import CutoutConfig
+
+    config = StructureGeneratorConfig(seed_base=1)
+    gen = StructureGenerator(config)
+
+    # Very small cluster to test passivation
+    cluster = bulk("MgO", crystalstructure="rocksalt", a=4.21) * (1, 1, 1)
+
+    # Need a bigger cluster to test passivation, a 1x1x1 only has 2 atoms, so it's fully exposed
+    # but natural_cutoffs might not trigger properly if neighbors don't match our simple heuristic
+    cluster = bulk("MgO", crystalstructure="rocksalt", a=4.21) * (2, 2, 2)
+
+    # Manually remove an atom to create an under-coordinated surface
+    del cluster[10]
+
+    cutout_config = CutoutConfig(
+        core_radius=1.0,
+        buffer_radius=5.0,
+        enable_pre_relaxation=False,
+        enable_passivation=True,
+        passivation_element="H",
+    )
+
+    # Use a target closer to the removed atom
+    target_idx = [9]
+    passivated_cluster = gen.extract_intelligent_cluster(cluster, target_idx, cutout_config)
+
+    assert "H" in passivated_cluster.symbols
+    # Check force_weights correctly applied to newly added passivating H atoms
+    assert len(passivated_cluster.arrays["force_weights"]) == len(passivated_cluster)
+
+
 def test_generate_interface_valid():
     """Test interface generation with valid elements."""
     config = StructureGeneratorConfig()

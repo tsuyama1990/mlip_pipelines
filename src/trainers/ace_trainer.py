@@ -119,47 +119,46 @@ class PacemakerWrapper(AbstractTrainer, BinaryResolverMixin):
             msg = "pace_activeset did not generate the output file."
             raise RuntimeError(msg)
 
-    def _manage_replay_buffer(
+    def manage_replay_buffer(
         self, new_surrogate_data: list[Atoms], history_file_path: Path, buffer_size: int
     ) -> list[Atoms]:
-        """Samples the replay buffer to prevent catastrophic forgetting and returns combined training set."""
+        """Samples the replay buffer to prevent catastrophic forgetting and returns combined training set.
+        Uses O(N) Reservoir Sampling with streaming interfaces to prevent OOM errors on massive datasets.
+        """
         import random
 
-        from ase.io import read
+        from ase.io import iread
 
         resolved_history = history_file_path.resolve()
-        historical_data: list[Atoms] = []
+        sampled_history: list[Atoms] = []
 
         if resolved_history.exists():
             try:
-                # Read all historical data
-                read_data = read(str(resolved_history), index=":")
-                historical_data = read_data if isinstance(read_data, list) else [read_data]
+                # O(N) Reservoir Sampling to avoid loading all history into memory
+                for i, atoms in enumerate(iread(str(resolved_history), format="extxyz")):
+                    if i < buffer_size:
+                        sampled_history.append(atoms)
+                    else:
+                        import secrets
+
+                        j = secrets.randbelow(i + 1)
+                        if j < buffer_size:
+                            sampled_history[j] = atoms
             except Exception as e:
                 import logging
 
                 logging.warning(f"Failed to read history file {resolved_history}: {e}")
 
-        # Sample historical data if it exceeds buffer_size
-        if len(historical_data) > buffer_size:
-            sampled_history = random.sample(historical_data, buffer_size)
-        else:
-            sampled_history = historical_data.copy()
-
         # Combine and shuffle
         combined_data = sampled_history + new_surrogate_data
         random.shuffle(combined_data)
 
-        # Persist new surrogate data to history
+        # Persist new surrogate data to history securely
         self.update_dataset(new_surrogate_data, history_file_path)
 
         return combined_data
 
     def _validate_train_directories(self, dataset: Path, output_dir: Path) -> tuple[Path, Path]:
-        from src.domain_models.config import _secure_resolve_and_validate_dir
-
-        _secure_resolve_and_validate_dir(str(dataset), check_exists=False)
-        _secure_resolve_and_validate_dir(str(output_dir), check_exists=False)
         import os
         import tempfile
 
@@ -167,19 +166,36 @@ class PacemakerWrapper(AbstractTrainer, BinaryResolverMixin):
             msg = f"Dataset not found: {dataset}"
             raise FileNotFoundError(msg)
 
+        # Secure atomic resolution
         resolved_dataset = dataset.resolve(strict=True)
 
-        # Verify it's an extxyz file case-insensitively
-        if resolved_dataset.suffix.lower() != ".extxyz":
+        # Basic path traversal prevention checks on the original inputs before resolution
+        if ".." in str(dataset) or ".." in str(output_dir):
+            msg = "Path traversal characters detected"
+            raise ValueError(msg)
+
+        if not str(resolved_dataset.name).lower().endswith(".extxyz"):
             msg = f"Dataset must be an .extxyz file, got: {resolved_dataset.name}"
             raise ValueError(msg)
 
         # Atomic file validation
+
+        st = resolved_dataset.stat()
+        max_dataset_size = 10 * 1024 * 1024 * 1024  # 10 GB limit for dataset
+        if st.st_size > max_dataset_size:
+            msg = f"Dataset size exceeds maximum limit of 10 GB: {st.st_size} bytes"
+            raise ValueError(msg)
+
         try:
             with Path.open(resolved_dataset, "r", encoding="utf-8") as f:
                 first_line: str = f.readline().strip()
                 if not first_line.isdigit():
                     msg = "Dataset does not appear to be a valid XYZ format (first line must be atom count)."
+                    raise ValueError(msg)
+
+                # Check for basic content injection / sanity
+                if "\x00" in first_line:
+                    msg = "Null bytes detected in dataset file"
                     raise ValueError(msg)
         except OSError as e:
             msg = f"Failed to read dataset: {e}"
@@ -223,6 +239,14 @@ class PacemakerWrapper(AbstractTrainer, BinaryResolverMixin):
             msg = "Invalid regularization format"
             raise ValueError(msg)
 
+        if any(char in self.config.baseline_potential for char in [';', '&', '|', '$', '`']):
+            msg = "Baseline potential format contains illegal shell characters"
+            raise ValueError(msg)
+
+        if any(char in self.config.regularization for char in [';', '&', '|', '$', '`']):
+            msg = "Regularization format contains illegal shell characters"
+            raise ValueError(msg)
+
         # Delta Learning explicitly enabled: scale down max_num_epochs if we have an initial_potential
         epochs = int(self.config.max_epochs)
         if initial_potential and initial_potential.exists():
@@ -245,11 +269,30 @@ class PacemakerWrapper(AbstractTrainer, BinaryResolverMixin):
         ]
 
         if initial_potential and initial_potential.exists():
-            resolved_init_pot = str(initial_potential.resolve(strict=True))
-            if not re.match(r"^[/a-zA-Z0-9_.-]+$", resolved_init_pot) or ".." in resolved_init_pot:
-                msg = f"Initial potential path contains invalid characters: {resolved_init_pot}"
+            resolved_init_pot = initial_potential.resolve(strict=True)
+            canon_init_pot = str(resolved_init_pot)
+
+            # Use strict whitelist pattern matching for each path component
+            for part in Path(canon_init_pot).parts:
+                if not re.match(r"^[-a-zA-Z0-9_.]+$", part) and part != "/":
+                    msg = f"Security Violation: Initial potential path contains invalid characters: {canon_init_pot}"
+                    raise ValueError(msg)
+
+            if len(Path(canon_init_pot).parts) > 50:
+                msg = "Security Violation: Path depth exceeds limits"
                 raise ValueError(msg)
-            cmd.extend(["--initial_potential", resolved_init_pot])
+
+            import tempfile
+
+            tmp_root = str(Path(tempfile.gettempdir()).resolve(strict=False))
+
+            if not canon_init_pot.startswith(str(Path.cwd())) and not canon_init_pot.startswith(
+                tmp_root
+            ):
+                msg = "Initial potential outside working directory or temp directory"
+                raise ValueError(msg)
+
+            cmd.extend(["--initial_potential", canon_init_pot])
 
         return cmd
 

@@ -289,7 +289,7 @@ class TestACETrainer:
         new_atoms = [Atoms("Fe", positions=[(i, 0, 0)]) for i in range(3)]
 
         # Sample with buffer_size = 5
-        combined = ace_trainer._manage_replay_buffer(new_atoms, history_file, buffer_size=5)
+        combined = ace_trainer.manage_replay_buffer(new_atoms, history_file, buffer_size=5)
 
         # Combined should be 5 + 3 = 8
         assert len(combined) == 8
@@ -314,7 +314,7 @@ class TestACETrainer:
         new_atoms = [Atoms("Fe", positions=[(i, 0, 0)]) for i in range(3)]
 
         # Sample with buffer_size = 5
-        combined = ace_trainer._manage_replay_buffer(new_atoms, history_file, buffer_size=5)
+        combined = ace_trainer.manage_replay_buffer(new_atoms, history_file, buffer_size=5)
 
         # Combined should be 2 + 3 = 5
         assert len(combined) == 5
