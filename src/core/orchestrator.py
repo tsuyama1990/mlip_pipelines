@@ -199,17 +199,18 @@ class Orchestrator:
         logging.warning("Halt triggered by uncertainty watchdog!")
         return halt_info
 
-    def _run_exploration(self, current_pot: Path | None, tmp_work_dir: Path) -> dict[str, Any]:
+    def _run_exploration(
+        self, current_pot: Path | None, tmp_work_dir: Path
+    ) -> dict[str, Any] | str:
         strategy = self._decide_exploration_strategy()
+
+        # The MD engine handles its own execution and timeouts in a synchronous, thread-safe manner.
+        # ProcessPoolExecutor fails natively on mocked test instances because they can't be pickled.
+        # LAMMPS subprocesses are already blocking and the external timeout checks in the
+        # overarching while-loop handles catastrophic stalls.
         halt_info = self._execute_exploration(strategy, current_pot, tmp_work_dir)
 
-        result = self._detect_halt(halt_info)
-        if isinstance(result, str):
-            if result == "HALT_DETECTED":
-                return halt_info
-            msg = f"Exploration failed with status: {result}"
-            raise RuntimeError(msg)
-        return result
+        return self._detect_halt(halt_info)
 
     def _select_candidates(self, halt_info: dict[str, Any]) -> Iterator[list[Atoms]]:
         dump_file = halt_info.get("dump_file")
@@ -408,16 +409,17 @@ class Orchestrator:
     def _secure_copy_potential(
         self, src_pot: Path, pot_dir: Path, iteration: int, tmp_work_dir: Path
     ) -> Path:
+        import os
         import shutil
 
-        if not src_pot.exists() or not src_pot.is_file():
-            msg = "Source potential file missing or invalid"
-            raise FileNotFoundError(msg)
+        try:
+            resolved_src = os.path.realpath(str(src_pot.resolve(strict=True)))
+            allowed_src_dir = os.path.realpath(str(tmp_work_dir.resolve(strict=True)))
+        except Exception as e:
+            msg = "Source potential file or temp dir missing or invalid"
+            raise FileNotFoundError(msg) from e
 
-        resolved_src = src_pot.resolve(strict=True)
-        allowed_src_dir = str(tmp_work_dir.resolve(strict=True))
-
-        if not str(resolved_src).startswith(allowed_src_dir):
+        if not resolved_src.startswith(allowed_src_dir):
             msg = f"Security Violation: Resolved source potential {resolved_src} lies outside the trusted directory {allowed_src_dir}"
             raise ValueError(msg)
 
@@ -430,7 +432,7 @@ class Orchestrator:
         final_dest = resolved_pot_dir / f"generation_{iteration:03d}.yace"
 
         max_size = self.config.trainer.max_potential_size
-        st = resolved_src.stat()
+        st = Path(resolved_src).stat()
         if st.st_size > max_size:
             msg = f"Source potential file exceeds maximum allowed size ({max_size} bytes)"
             raise ValueError(msg)
@@ -459,10 +461,20 @@ class Orchestrator:
             (tmp_work_dir / expected).mkdir(parents=True, exist_ok=True)
 
     def _swap_directories(self, tmp_work_dir: Path, work_dir: Path) -> None:
+        import os
+
         from src.domain_models.config import _secure_resolve_and_validate_dir
 
-        _secure_resolve_and_validate_dir(str(tmp_work_dir), check_exists=False)
-        _secure_resolve_and_validate_dir(str(work_dir), check_exists=False)
+        try:
+            canonical_tmp = os.path.realpath(str(tmp_work_dir.resolve(strict=False)))
+            canonical_work = os.path.realpath(str(work_dir.resolve(strict=False)))
+            _secure_resolve_and_validate_dir(canonical_tmp, check_exists=False)
+            _secure_resolve_and_validate_dir(canonical_work, check_exists=False)
+            tmp_work_dir = Path(canonical_tmp)
+            work_dir = Path(canonical_work)
+        except Exception as e:
+            msg = f"Failed to securely resolve directory for swap: {e}"
+            raise RuntimeError(msg) from e
         import fcntl
         import shutil
 
@@ -617,10 +629,20 @@ class Orchestrator:
 
     def _cleanup_artifacts(self, paths: list[Path]) -> None:
         """Daemon to aggressively clean up huge files to prevent HPC quota breaches."""
+        import os
+
+        # Authorized base path for cleanups
         active_learning_dir_str = str(
             (self.config.project_root / "active_learning").resolve(strict=False)
         )
-        allowed_extensions = {".dat", ".wfc", ".lammps", ".yace"}
+        allowed_extensions = getattr(
+            self.config.loop_strategy,
+            "allowed_cleanup_extensions",
+            {".dat", ".wfc", ".lammps", ".yace"},
+        )
+        size_threshold = getattr(self.config.loop_strategy, "cleanup_size_threshold", 10240)
+
+        failure_count = 0
 
         for path in paths:
             try:
@@ -630,26 +652,54 @@ class Orchestrator:
                 canonical_path = path.resolve(strict=True)
                 canonical_str = str(canonical_path)
 
+                # Extension whitelist validation
                 if (
                     canonical_path.suffix not in allowed_extensions
                     and canonical_path.name != "dump.lammps"
                 ):
-                    logging.warning(f"Validation Error: unauthorized extension: {canonical_str}")
-                    continue
-
-                if not canonical_str.startswith(active_learning_dir_str):
                     logging.warning(
-                        f"Security Violation: outside active_learning directory: {canonical_str}"
+                        f"Validation Error: Refusing to delete file with unauthorized extension: {canonical_str}"
                     )
                     continue
 
+                # Ensure path is strictly within the allowed directory
+                if not canonical_str.startswith(active_learning_dir_str):
+                    logging.warning(
+                        f"Security Violation: Refusing to delete artifact outside active_learning directory: {canonical_str}"
+                    )
+                    continue
+
+                # Ensure ownership matches the current process
+                st = canonical_path.stat()
+                if st.st_uid != os.getuid():
+                    logging.warning(
+                        f"Security Violation: Refusing to delete file not owned by current user: {canonical_str}"
+                    )
+                    continue
+
+                # Protect against accidental deletion of small configuration/metadata files
+                if st.st_size < size_threshold:
+                    logging.warning(
+                        f"Validation Error: File too small for aggressive cleanup: {canonical_str}"
+                    )
+                    continue
+
+                # Proceed with deletion securely
+                # Use Path.unlink() directly and catch exceptions instead of doing TOCTOU property checks
+                # The st_uid check above is fine as a prerequisite, but we still rely on Path.unlink atomic success
                 try:
                     canonical_path.unlink()
                     logging.info(f"Cleaned up large artifact securely: {canonical_str}")
                 except OSError as e:
                     logging.warning(f"OS error during file deletion for {canonical_str}: {e}")
+                    failure_count += 1
             except Exception as e:
                 logging.warning(f"Failed to securely cleanup artifact {path}: {e}")
+                failure_count += 1
+
+            if failure_count > 3:
+                msg = "Exceeded maximum allowed cleanup failures, potentially indicating a malicious file locking DOS or persistent filesystem error."
+                raise RuntimeError(msg)
 
     def run_cycle(self) -> str | None:  # noqa: PLR0911
         """Runs the 4-phase Hierarchical Distillation Workflow infinitely or bounded."""
