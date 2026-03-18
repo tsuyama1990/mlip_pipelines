@@ -286,9 +286,9 @@ class DFTManager(BaseOracle):
                         is_safe = True
                         break
                 except ValueError:
-                    pass
+                    continue
         except OSError:
-            pass
+            is_safe = False
 
         if not is_safe:
             msg = f"Work directory {canonical_work_dir} is not within trusted boundaries or device mismatch."
