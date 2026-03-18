@@ -18,8 +18,10 @@ class InterfaceTarget(BaseModel):
 
 def _check_allowed_base_dirs(resolved_str: str, path_str: str) -> None:
     import tempfile
+    import urllib.parse
 
-    if ".." in path_str:
+    decoded_path_str = urllib.parse.unquote(path_str)
+    if ".." in decoded_path_str:
         msg = f"Path traversal sequences (..) are not allowed: {path_str}"
         raise ValueError(msg)
 
@@ -592,13 +594,23 @@ def _validate_env_permissions_and_size(resolved_env: Path) -> None:
         raise ValueError(msg)
 
 def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
+    import os
     expected_base_resolved = expected_base.resolve(strict=True)
+    canonical_base = os.path.realpath(str(expected_base_resolved))
 
     # Allow symlinks, but they must securely resolve within expected_base
     resolved_env = env_file.resolve(strict=True)
+    canonical_env = os.path.realpath(str(resolved_env))
 
-    if not resolved_env.is_relative_to(expected_base_resolved):
+    try:
+        common_p = os.path.commonpath([canonical_base, canonical_env])
+    except ValueError as e:
+        # Happens if paths are on different drives
         msg = f".env file must reside securely within the allowed base directory: {expected_base}"
+        raise ValueError(msg) from e
+
+    if common_p != canonical_base:
+        msg = f".env file symlink target must reside securely within the allowed base directory: {expected_base}"
         raise ValueError(msg)
 
     restricted_prefixes = [
@@ -616,9 +628,8 @@ def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
     ]
     for restricted in restricted_prefixes:
         try:
-            import os
-
-            is_restricted = os.path.commonpath([restricted, str(resolved_env)]) == restricted
+            canonical_restricted = os.path.realpath(restricted)
+            is_restricted = os.path.commonpath([canonical_restricted, canonical_env]) == canonical_restricted
         except ValueError:
             continue
         if is_restricted:

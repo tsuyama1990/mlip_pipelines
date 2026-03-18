@@ -188,12 +188,27 @@ class Orchestrator:
             logging.info("Policy engine circuit breaker reset time reached. Attempting HALF-OPEN.")
             self._policy_circuit_breaker_open = False
 
+        import concurrent.futures
+
         for attempt in range(max_retries):
             try:
-                strategy = self.policy_engine.decide_policy(features)
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                    future = executor.submit(self.policy_engine.decide_policy, features)
+                    strategy = future.result(timeout=30.0)
                 # Success closes the breaker if it was half-open
                 self._policy_circuit_breaker_open = False
                 return _validate_strategy(strategy)
+            except concurrent.futures.TimeoutError as e:
+                logging.warning("Policy engine decision timed out after 30 seconds.")
+                if attempt < max_retries - 1:
+                    sleep_time = backoff_factor ** attempt
+                    time.sleep(sleep_time)
+                else:
+                    self._policy_circuit_breaker_open = True
+                    self._policy_circuit_breaker_reset_time = time.time() + 300
+                    msg = "Transient timeout failures exhausted. Tripping circuit breaker for policy engine."
+                    logging.exception(msg)
+                    raise RuntimeError(msg) from e
             except (ValueError, TypeError, KeyError) as e:
                 # Permanent configuration or type issues, won't be fixed by retrying
                 logging.warning(
@@ -378,6 +393,14 @@ class Orchestrator:
 
         if not re.match(r"^[a-zA-Z0-9_-]+\.yace$", src_pot.name):
             msg = "Source potential file must have a valid .yace filename format"
+            raise ValueError(msg)
+
+        # Cross-check that the fully resolved source file is within the explicitly allowed workspace
+        # to prevent complex symlink/traversal attacks where a file named 'valid.yace'
+        # points to a restricted target path outside the active learning bounds
+        allowed_src_dir = tmp_work_dir.resolve(strict=True)
+        if not str(resolved_src).startswith(str(allowed_src_dir)):
+            msg = f"Security Violation: Resolved source potential {resolved_src} lies outside the trusted directory {allowed_src_dir}"
             raise ValueError(msg)
 
         pot_dir.mkdir(parents=True, exist_ok=True)
@@ -623,15 +646,26 @@ class Orchestrator:
                 # Swallow error to ensure idempotency and non-blocking behavior
                 logging.warning(f"Failed to securely cleanup artifact {path}: {e}")
 
-    def run_cycle(self) -> str | None:
+    def run_cycle(self) -> str | None:  # noqa: PLR0911
         """Runs the 4-phase Hierarchical Distillation Workflow infinitely or bounded."""
         import tempfile
+        import time
 
-        max_iters = getattr(self.config.loop_strategy, "max_iterations", 9999999)
-        if max_iters is None:
-            max_iters = 9999999  # effectively infinite
+        max_iters = getattr(self.config.loop_strategy, "max_iterations", 1000)
+        if not isinstance(max_iters, int) or max_iters <= 0:
+            max_iters = 1000
+
+        timeout_seconds = getattr(self.config.loop_strategy, "timeout_seconds", 86400)
+        if not isinstance(timeout_seconds, int) or timeout_seconds <= 0:
+            timeout_seconds = 86400
+
+        start_time = time.time()
 
         while self.iteration < max_iters:
+            if time.time() - start_time > timeout_seconds:
+                logging.error(f"Global Orchestrator timeout reached ({timeout_seconds}s). Halting execution to prevent infinite loop.")
+                return "TIMEOUT"
+
             logging.info(f"Starting iteration {self.iteration}")
             self.checkpoint.set_state("CURRENT_ITERATION", self.iteration)
 
