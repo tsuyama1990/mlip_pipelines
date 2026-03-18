@@ -26,10 +26,17 @@ def _check_allowed_base_dirs(resolved_str: str, path_str: str) -> None:
     # Use realpath to resolve all symlinks and strictly match canonical bounds
     canonical_str = os.path.realpath(resolved_str)
 
-    # Use resolve(strict=True) on allowed bases
-    home_dir = str(Path.home().resolve(strict=True))
-    tmp_dir = str(Path(tempfile.gettempdir()).resolve(strict=True))
-    app_dir = str(Path("/app").resolve(strict=False)) if Path("/app").exists() else ""
+    # Validate the full path structure: no unresolvable symlink tricks
+    if Path(path_str).is_symlink():
+        link_target = os.path.realpath(path_str)
+        if link_target != canonical_str:
+            msg = f"Symlink validation failed: target mismatch. {path_str} -> {link_target}"
+            raise ValueError(msg)
+
+    # Use realpath and resolve(strict=True) on allowed bases to ensure no symlinks bypass checks
+    home_dir = os.path.realpath(str(Path.home().resolve(strict=True)))
+    tmp_dir = os.path.realpath(str(Path(tempfile.gettempdir()).resolve(strict=True)))
+    app_dir = os.path.realpath(str(Path("/app").resolve(strict=False))) if Path("/app").exists() else ""
 
     is_safe = False
     for safe_base in filter(None, [home_dir, tmp_dir, app_dir]):
@@ -560,23 +567,24 @@ def _validate_env_value(val: str) -> None:
     if len(val) > 256:
         msg = "Environment variable value exceeds maximum length of 256 characters"
         raise ValueError(msg)
-    if not re.match(r"^[-a-zA-Z0-9_.:/=,+?&#@%]*$", val):
+    if not re.match(r"^[a-zA-Z0-9_.:/=\+-]*$", val):
         msg = "Invalid characters detected in .env variable value."
         raise ValueError(msg)
 
 
 def _validate_env_permissions_and_size(resolved_env: Path) -> None:
     import os
+    import stat
 
     st = os.lstat(resolved_env)
 
-    if st.st_size > 1024:
-        msg = ".env file is too large (max 1KB)."
+    if st.st_size > 10 * 1024:
+        msg = ".env file is too large (max 10KB)."
         raise ValueError(msg)
 
     current_uid = os.getuid()
     if st.st_uid != current_uid:
-        msg = ".env file is not owned by the current user."
+        msg = f".env file is not owned by the current user. File UID: {st.st_uid}, Current UID: {current_uid}"
         raise ValueError(msg)
 
     if bool(st.st_mode & stat.S_IRWXO) or bool(st.st_mode & stat.S_IRWXG):
@@ -638,7 +646,7 @@ def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
                 if len(val) > 256:
                     msg = "Value in .env file exceeds maximum length of 256 characters"
                     raise ValueError(msg)
-                if not re.match(r"^[-a-zA-Z0-9_.:/=,+?&#@%]*$", val):
+                if not re.match(r"^[a-zA-Z0-9_.:/=\+-]*$", val):
                     msg = f"Invalid characters or traversal sequences in .env file content: {val}"
                     raise ValueError(msg)
 

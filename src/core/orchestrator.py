@@ -173,14 +173,31 @@ class Orchestrator:
         max_retries = 3
         backoff_factor = 2.0
 
+        # Circuit breaker implementation
+        if getattr(self, "_policy_circuit_breaker_open", False):
+            if time.time() < getattr(self, "_policy_circuit_breaker_reset_time", 0):
+                logging.warning("Policy engine circuit breaker is OPEN. Falling back immediately.")
+                fallback = ExplorationStrategy(
+                    md_mc_ratio=0.0,
+                    t_max=300.0,
+                    n_defects=0.0,
+                    strain_range=0.0,
+                    policy_name="Fallback Standard",
+                )
+                return _validate_strategy(fallback)
+            logging.info("Policy engine circuit breaker reset time reached. Attempting HALF-OPEN.")
+            self._policy_circuit_breaker_open = False
+
         for attempt in range(max_retries):
             try:
                 strategy = self.policy_engine.decide_policy(features)
+                # Success closes the breaker if it was half-open
+                self._policy_circuit_breaker_open = False
                 return _validate_strategy(strategy)
             except (ValueError, TypeError, KeyError) as e:
-                # Configuration or type issues, won't be fixed by retrying
+                # Permanent configuration or type issues, won't be fixed by retrying
                 logging.warning(
-                    f"Policy engine parameter calculation failed ({e}). Falling back to default MD strategy.",
+                    f"Permanent failure in policy engine parameter calculation ({e}). Falling back to default MD strategy.",
                     exc_info=True
                 )
                 fallback = ExplorationStrategy(
@@ -191,18 +208,27 @@ class Orchestrator:
                     policy_name="Fallback Standard",
                 )
                 return _validate_strategy(fallback)
-            except Exception as e:
+            except (ConnectionError, TimeoutError, OSError) as e:
+                # Known transient exceptions
                 if attempt < max_retries - 1:
                     sleep_time = backoff_factor ** attempt
                     logging.warning(
-                        f"Transient failure in policy engine execution: {e}. Retrying in {sleep_time}s... (Attempt {attempt + 1}/{max_retries})",
+                        f"Transient failure in policy engine execution ({e.__class__.__name__}): {e}. Retrying in {sleep_time}s... (Attempt {attempt + 1}/{max_retries})",
                         exc_info=True
                     )
                     time.sleep(sleep_time)
                 else:
-                    msg = "Critical infrastructure failure in policy engine execution after multiple retries."
+                    # Trip the circuit breaker
+                    self._policy_circuit_breaker_open = True
+                    self._policy_circuit_breaker_reset_time = time.time() + 300  # 5 minutes
+                    msg = "Transient failures exhausted. Tripping circuit breaker for policy engine."
                     logging.exception(msg)
                     raise RuntimeError(msg) from e
+            except Exception as e:
+                # Unexpected permanent infrastructure issues
+                msg = f"Critical unexpected infrastructure failure in policy engine execution: {e}"
+                logging.exception(msg)
+                raise RuntimeError(msg) from e
 
         # Unreachable but satisfy mypy
         unreachable_msg = "Unreachable"
@@ -374,10 +400,7 @@ class Orchestrator:
 
                 # We copy into the temporary file in the target directory and hash the source
                 with os.fdopen(fd, "wb") as f_out, Path.open(resolved_src, "rb") as f_in:
-                    while True:
-                        chunk = f_in.read(8192)
-                        if not chunk:
-                            break
+                    for chunk in iter(lambda: f_in.read(8192), b""):
                         sha256_src.update(chunk)
                         f_out.write(chunk)
 
