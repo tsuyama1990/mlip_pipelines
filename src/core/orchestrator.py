@@ -4,7 +4,8 @@ import os
 import re
 import shutil
 import tempfile
-from collections.abc import Generator, Iterator
+import time
+from collections.abc import Callable, Generator, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +25,79 @@ from src.oracles.tiered_oracle import TieredOracle
 from src.trainers.ace_trainer import PacemakerWrapper
 from src.validators.reporter import Reporter
 from src.validators.validator import Validator
+
+
+class RetryManager:
+    """Manages retry logic and circuit breaking for arbitrary operations."""
+
+    def __init__(
+        self,
+        max_retries: int = 3,
+        backoff_factor: float = 2.0,
+        timeout: float = 30.0,
+        circuit_breaker_cooldown: float = 300.0,
+    ) -> None:
+        self.max_retries = max_retries
+        self.backoff_factor = backoff_factor
+        self.timeout = timeout
+        self.circuit_breaker_cooldown = circuit_breaker_cooldown
+
+        self._circuit_breaker_open = False
+        self._circuit_breaker_reset_time = 0.0
+
+    def check_circuit_breaker(self) -> bool:
+        """Returns True if the circuit breaker is OPEN and operation should fail fast."""
+        if self._circuit_breaker_open:
+            if time.time() < self._circuit_breaker_reset_time:
+                return True
+            self._circuit_breaker_open = False
+        return False
+
+    def execute_with_retry(self, operation: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+        import concurrent.futures
+
+        if self.check_circuit_breaker():
+            msg = "Circuit breaker is OPEN. Operation aborted."
+            raise RuntimeError(msg)
+
+        for attempt in range(self.max_retries):
+            try:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                    future = executor.submit(operation, *args, **kwargs)
+                    result = future.result(timeout=self.timeout)
+            except concurrent.futures.TimeoutError as e:
+                logging.warning(f"Operation timed out after {self.timeout} seconds.")
+                if attempt < self.max_retries - 1:
+                    time.sleep(self.backoff_factor**attempt)
+                else:
+                    self._trip_circuit_breaker()
+                    msg = "Transient timeout failures exhausted."
+                    raise RuntimeError(msg) from e
+            except (ConnectionError, TimeoutError, OSError) as e:
+                # Known transient exceptions
+                if attempt < self.max_retries - 1:
+                    sleep_time = self.backoff_factor**attempt
+                    logging.warning(f"Transient failure: {e}. Retrying in {sleep_time}s...")
+                    time.sleep(sleep_time)
+                else:
+                    self._trip_circuit_breaker()
+                    msg = "Transient IO failures exhausted."
+                    raise RuntimeError(msg) from e
+            except Exception:
+                # Permanent configuration or infrastructure issues
+                raise
+            else:
+                # Success closes the breaker if it was half-open
+                self._circuit_breaker_open = False
+                return result
+
+        unreachable_msg = "Unreachable"
+        raise RuntimeError(unreachable_msg)
+
+    def _trip_circuit_breaker(self) -> None:
+        self._circuit_breaker_open = True
+        self._circuit_breaker_reset_time = time.time() + self.circuit_breaker_cooldown
+        logging.exception("Tripping circuit breaker for operation.")
 
 
 class Orchestrator:
@@ -168,86 +242,38 @@ class Orchestrator:
                 raise ValueError(msg)
             return strat
 
-        import time
+        fallback = ExplorationStrategy(
+            md_mc_ratio=0.0,
+            t_max=300.0,
+            n_defects=0.0,
+            strain_range=0.0,
+            policy_name="Fallback Standard",
+        )
 
-        max_retries = 3
-        backoff_factor = 2.0
+        # Retry logic and circuit breaking is handled by RetryManager
+        retry_manager = getattr(self, "_policy_retry_manager", None)
+        if not retry_manager:
+            retry_manager = RetryManager()
+            self._policy_retry_manager = retry_manager
 
-        # Circuit breaker implementation
-        if getattr(self, "_policy_circuit_breaker_open", False):
-            if time.time() < getattr(self, "_policy_circuit_breaker_reset_time", 0):
-                logging.warning("Policy engine circuit breaker is OPEN. Falling back immediately.")
-                fallback = ExplorationStrategy(
-                    md_mc_ratio=0.0,
-                    t_max=300.0,
-                    n_defects=0.0,
-                    strain_range=0.0,
-                    policy_name="Fallback Standard",
-                )
-                return _validate_strategy(fallback)
-            logging.info("Policy engine circuit breaker reset time reached. Attempting HALF-OPEN.")
-            self._policy_circuit_breaker_open = False
-
-        import concurrent.futures
-
-        for attempt in range(max_retries):
-            try:
-                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                    future = executor.submit(self.policy_engine.decide_policy, features)
-                    strategy = future.result(timeout=30.0)
-                # Success closes the breaker if it was half-open
-                self._policy_circuit_breaker_open = False
-                return _validate_strategy(strategy)
-            except concurrent.futures.TimeoutError as e:
-                logging.warning("Policy engine decision timed out after 30 seconds.")
-                if attempt < max_retries - 1:
-                    sleep_time = backoff_factor ** attempt
-                    time.sleep(sleep_time)
-                else:
-                    self._policy_circuit_breaker_open = True
-                    self._policy_circuit_breaker_reset_time = time.time() + 300
-                    msg = "Transient timeout failures exhausted. Tripping circuit breaker for policy engine."
-                    logging.exception(msg)
-                    raise RuntimeError(msg) from e
-            except (ValueError, TypeError, KeyError) as e:
-                # Permanent configuration or type issues, won't be fixed by retrying
-                logging.warning(
-                    f"Permanent failure in policy engine parameter calculation ({e}). Falling back to default MD strategy.",
-                    exc_info=True
-                )
-                fallback = ExplorationStrategy(
-                    md_mc_ratio=0.0,
-                    t_max=300.0,
-                    n_defects=0.0,
-                    strain_range=0.0,
-                    policy_name="Fallback Standard",
-                )
-                return _validate_strategy(fallback)
-            except (ConnectionError, TimeoutError, OSError) as e:
-                # Known transient exceptions
-                if attempt < max_retries - 1:
-                    sleep_time = backoff_factor ** attempt
-                    logging.warning(
-                        f"Transient failure in policy engine execution ({e.__class__.__name__}): {e}. Retrying in {sleep_time}s... (Attempt {attempt + 1}/{max_retries})",
-                        exc_info=True
-                    )
-                    time.sleep(sleep_time)
-                else:
-                    # Trip the circuit breaker
-                    self._policy_circuit_breaker_open = True
-                    self._policy_circuit_breaker_reset_time = time.time() + 300  # 5 minutes
-                    msg = "Transient failures exhausted. Tripping circuit breaker for policy engine."
-                    logging.exception(msg)
-                    raise RuntimeError(msg) from e
-            except Exception as e:
-                # Unexpected permanent infrastructure issues
-                msg = f"Critical unexpected infrastructure failure in policy engine execution: {e}"
-                logging.exception(msg)
-                raise RuntimeError(msg) from e
-
-        # Unreachable but satisfy mypy
-        unreachable_msg = "Unreachable"
-        raise RuntimeError(unreachable_msg)
+        try:
+            strategy = retry_manager.execute_with_retry(self.policy_engine.decide_policy, features)
+            return _validate_strategy(strategy)
+        except RuntimeError:
+            # Reached when transient retries are exhausted or breaker is open
+            logging.exception("Policy engine failed to execute. Falling back to default.")
+            return _validate_strategy(fallback)
+        except (ValueError, TypeError, KeyError) as e:
+            # Reached when the operation yields a permanent schema/validation error internally
+            logging.warning(
+                f"Permanent failure in policy engine parameter calculation ({e}). Falling back to default MD strategy.",
+                exc_info=True,
+            )
+            return _validate_strategy(fallback)
+        except Exception as e:
+            msg = f"Critical unexpected infrastructure failure in policy engine execution: {e}"
+            logging.exception(msg)
+            raise RuntimeError(msg) from e
 
     def _execute_exploration(
         self, strategy: ExplorationStrategy, current_pot: Path | None, tmp_work_dir: Path
@@ -402,6 +428,12 @@ class Orchestrator:
         if not str(resolved_src).startswith(str(allowed_src_dir)):
             msg = f"Security Violation: Resolved source potential {resolved_src} lies outside the trusted directory {allowed_src_dir}"
             raise ValueError(msg)
+
+        if src_pot.is_symlink():
+            target = src_pot.resolve(strict=True)
+            if not target.is_relative_to(allowed_src_dir):
+                msg = "Symlink target outside allowed directory"
+                raise ValueError(msg)
 
         pot_dir.mkdir(parents=True, exist_ok=True)
         resolved_pot_dir = pot_dir.resolve()
@@ -615,6 +647,7 @@ class Orchestrator:
         active_learning_dir_str = str(
             (self.config.project_root / "active_learning").resolve(strict=False)
         )
+        allowed_extensions = {".dat", ".wfc", ".lammps", ".yace"}
 
         for path in paths:
             try:
@@ -623,6 +656,16 @@ class Orchestrator:
 
                 canonical_path = path.resolve(strict=True)
                 canonical_str = str(canonical_path)
+
+                # Extension whitelist validation
+                if (
+                    canonical_path.suffix not in allowed_extensions
+                    and canonical_path.name != "dump.lammps"
+                ):
+                    logging.warning(
+                        f"Validation Error: Refusing to delete file with unauthorized extension: {canonical_str}"
+                    )
+                    continue
 
                 # Ensure path is strictly within the allowed directory
                 if not canonical_str.startswith(active_learning_dir_str):
@@ -636,6 +679,13 @@ class Orchestrator:
                 if st.st_uid != os.getuid():
                     logging.warning(
                         f"Security Violation: Refusing to delete file not owned by current user: {canonical_str}"
+                    )
+                    continue
+
+                # Protect against accidental deletion of small configuration/metadata files
+                if st.st_size < 1024 * 10:  # Less than 10KB
+                    logging.warning(
+                        f"Validation Error: File too small for aggressive cleanup: {canonical_str}"
                     )
                     continue
 
@@ -663,7 +713,9 @@ class Orchestrator:
 
         while self.iteration < max_iters:
             if time.time() - start_time > timeout_seconds:
-                logging.error(f"Global Orchestrator timeout reached ({timeout_seconds}s). Halting execution to prevent infinite loop.")
+                logging.error(
+                    f"Global Orchestrator timeout reached ({timeout_seconds}s). Halting execution to prevent infinite loop."
+                )
                 return "TIMEOUT"
 
             logging.info(f"Starting iteration {self.iteration}")

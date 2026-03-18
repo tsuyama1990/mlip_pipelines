@@ -38,7 +38,9 @@ def _check_allowed_base_dirs(resolved_str: str, path_str: str) -> None:
     # Use realpath and resolve(strict=True) on allowed bases to ensure no symlinks bypass checks
     home_dir = os.path.realpath(str(Path.home().resolve(strict=True)))
     tmp_dir = os.path.realpath(str(Path(tempfile.gettempdir()).resolve(strict=True)))
-    app_dir = os.path.realpath(str(Path("/app").resolve(strict=False))) if Path("/app").exists() else ""
+    app_dir = (
+        os.path.realpath(str(Path("/app").resolve(strict=False))) if Path("/app").exists() else ""
+    )
 
     is_safe = False
     for safe_base in filter(None, [home_dir, tmp_dir, app_dir]):
@@ -88,10 +90,22 @@ def _check_ownership_and_perms(resolved: Path, path_str: str) -> None:
 
 
 def _secure_resolve_and_validate_dir(path_str: str, check_exists: bool = True) -> str:
-    # Use realpath for canonicalization
     import os
+    import urllib.parse
 
+    decoded_path = urllib.parse.unquote(path_str)
+    if ".." in decoded_path:
+        msg = f"Path traversal sequences (..) are not allowed: {path_str}"
+        raise ValueError(msg)
+
+    # Use realpath for canonicalization
     canonical_path = Path(os.path.realpath(path_str))
+
+    if Path(path_str).is_symlink():
+        link_target = os.path.realpath(path_str)
+        if link_target != str(canonical_path):
+            msg = f"Symlink validation failed: target mismatch. {path_str} -> {link_target}"
+            raise ValueError(msg)
 
     if not canonical_path.is_absolute():
         msg = f"Directory path must be absolute: {path_str}"
@@ -569,7 +583,7 @@ def _validate_env_value(val: str) -> None:
     if len(val) > 256:
         msg = "Environment variable value exceeds maximum length of 256 characters"
         raise ValueError(msg)
-    if not re.match(r"^[a-zA-Z0-9_.:/=\+-]*$", val):
+    if not re.match(r"^[a-zA-Z0-9_.:/=+-]*$", val):
         msg = "Invalid characters detected in .env variable value."
         raise ValueError(msg)
 
@@ -593,8 +607,10 @@ def _validate_env_permissions_and_size(resolved_env: Path) -> None:
         msg = ".env file has insecure permissions. It must not be group or world readable/writable."
         raise ValueError(msg)
 
+
 def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
     import os
+
     expected_base_resolved = expected_base.resolve(strict=True)
     canonical_base = os.path.realpath(str(expected_base_resolved))
 
@@ -629,7 +645,9 @@ def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
     for restricted in restricted_prefixes:
         try:
             canonical_restricted = os.path.realpath(restricted)
-            is_restricted = os.path.commonpath([canonical_restricted, canonical_env]) == canonical_restricted
+            is_restricted = (
+                os.path.commonpath([canonical_restricted, canonical_env]) == canonical_restricted
+            )
         except ValueError:
             continue
         if is_restricted:
@@ -657,7 +675,7 @@ def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
                 if len(val) > 256:
                     msg = "Value in .env file exceeds maximum length of 256 characters"
                     raise ValueError(msg)
-                if not re.match(r"^[a-zA-Z0-9_.:/=\+-]*$", val):
+                if not re.match(r"^[a-zA-Z0-9_.:/=+-]*$", val):
                     msg = f"Invalid characters or traversal sequences in .env file content: {val}"
                     raise ValueError(msg)
 

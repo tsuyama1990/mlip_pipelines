@@ -484,7 +484,7 @@ def test_cleanup_artifacts_idempotency(tmp_path_factory):
 
     # Test valid
     f1 = al_dir / "f1.dat"
-    f1.write_text("123")
+    f1.write_text("0" * 15000) # Ensure size is > 10KB to bypass small file protection
     orch._cleanup_artifacts([f1])
     assert not f1.exists()
 
