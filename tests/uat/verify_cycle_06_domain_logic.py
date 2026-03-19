@@ -3,10 +3,12 @@ import marimo
 __generated_with = "0.10.19"
 app = marimo.App()
 
+
 @app.cell
 def _():
     import sys
     from pathlib import Path
+
     sys.path.insert(0, str(Path.cwd()))
     import logging
     import shutil
@@ -21,8 +23,8 @@ def _():
     logging.getLogger().setLevel(logging.ERROR)
 
     # Mock heavy dependencies
-    sys.modules['pyacemaker'] = MagicMock()
-    sys.modules['pyacemaker.calculator'] = MagicMock()
+    sys.modules["pyacemaker"] = MagicMock()
+    sys.modules["pyacemaker.calculator"] = MagicMock()
 
     # Setup test workspace
     tmp_path = Path("/tmp/uat_c06_workspace")
@@ -41,10 +43,13 @@ def _():
     class DummyConfig:
         class LoopStrategy:
             use_tiered_oracle: typing.ClassVar[bool] = False
-            max_iterations: typing.ClassVar[int] = 2 # Enough to run full 4-phase and loop
+            max_iterations: typing.ClassVar[int] = 2  # Enough to run full 4-phase and loop
+
             class Thresholds:
                 threshold_call_dft: typing.ClassVar[float] = 0.5
+
             thresholds = Thresholds()
+
         loop_strategy = LoopStrategy()
 
         class System:
@@ -53,37 +58,45 @@ def _():
             interface_generation_iteration: typing.ClassVar[int] = 0
             restricted_directories: typing.ClassVar[list[str]] = []
             baseline_potential: typing.ClassVar[str] = "zbl"
+
         system = System()
 
         class Dynamics:
             trusted_directories: typing.ClassVar[list[str]] = []
             project_root: typing.ClassVar[str] = str(tmp_path)
+
         dynamics = Dynamics()
 
         class Oracle:
             pass
+
         oracle = Oracle()
 
         class Trainer:
             trusted_directories: typing.ClassVar[list[str]] = []
             max_potential_size: typing.ClassVar[int] = 1000000
+
         trainer = Trainer()
 
         class Validator:
             pass
+
         validator = Validator()
 
         class StructureGenerator:
             pass
+
         structure_generator = StructureGenerator()
 
         class Policy:
             pass
+
         policy = Policy()
 
         project_root = tmp_path
 
     return DummyConfig, Orchestrator, tmp_path, DynamicsHaltInterrupt, sqlite3
+
 
 @app.cell
 def test_scenario_1(DummyConfig, Orchestrator, tmp_path):
@@ -100,16 +113,22 @@ def test_scenario_1(DummyConfig, Orchestrator, tmp_path):
 
     # Explaining the logic here: iteration might be 0 because we don't set it from state in __init__
     # unless we use `get_state`. Let's verify this is working.
-    assert orch2.checkpoint.get_state("CURRENT_PHASE") == "PHASE2_VALIDATION", "State did not persist!"
-    assert orch2.iteration == 5, f"Iteration counter did not resume correctly! It is {orch2.iteration}"
+    assert orch2.checkpoint.get_state("CURRENT_PHASE") == "PHASE2_VALIDATION", (
+        "State did not persist!"
+    )
+    assert orch2.iteration == 5, (
+        f"Iteration counter did not resume correctly! It is {orch2.iteration}"
+    )
     print("✓ Orchestrator successfully resumed from database checkpoint")
     return orch1, orch2
+
 
 @app.cell
 def test_scenario_2(DummyConfig, Orchestrator, tmp_path, DynamicsHaltInterrupt):
     # Scenario ID: UAT-C06-02: Execution of the Full 4-Phase Loop
     print("\nTesting UAT-C06-02: 4-Phase Hierarchical Workflow")
     import unittest.mock
+
     _MagicMock = unittest.mock.MagicMock
 
     _orch = Orchestrator(DummyConfig())
@@ -140,6 +159,7 @@ def test_scenario_2(DummyConfig, Orchestrator, tmp_path, DynamicsHaltInterrupt):
     print("✓ Orchestrator successfully handled Halt -> DFT -> Finetune -> Resume -> Next Loop")
     return _orch
 
+
 @app.cell
 def test_scenario_3(DummyConfig, Orchestrator, tmp_path):
     # Scenario ID: UAT-C06-03: Automated Artifact Cleanup
@@ -155,16 +175,16 @@ def test_scenario_3(DummyConfig, Orchestrator, tmp_path):
     print("✓ Cleanup daemon aggressively deleted massive artifacts")
     return huge_file
 
+
 @app.cell
 def test_scenario_4(DummyConfig, Orchestrator, tmp_path, sqlite3):
     # Scenario ID: UAT-C06-04: Handling Corrupted State Files
     print("\nTesting UAT-C06-04: Handling Corrupted Checkpoint DB")
-    import os as _os
 
     db_path = tmp_path / ".ac_cdd" / "checkpoint.db"
 
     # Make DB read only to simulate lock/permission error
-    Path(db_path).chmod(0o400)
+    db_path.chmod(0o400)
 
     try:
         _orch3 = Orchestrator(DummyConfig())
@@ -173,15 +193,18 @@ def test_scenario_4(DummyConfig, Orchestrator, tmp_path, sqlite3):
     except RuntimeError as e:
         failed = True
         if "Failed to set state" not in str(e):
-            raise AssertionError("Did not raise expected error message") from e
+            err = "Did not raise expected error message"
+            raise AssertionError(err) from e
 
     # restore permission so it can be deleted later
-    Path(db_path).chmod(0o600)
+    db_path.chmod(0o600)
 
     if not failed:
-        raise AssertionError("Orchestrator did not fail loudly on corrupted DB")
+        err = "Orchestrator did not fail loudly on corrupted DB"
+        raise AssertionError(err)
     print("✓ Orchestrator successfully failed loudly without overwriting locked DB")
     return db_path
+
 
 if __name__ == "__main__":
     app.run()
