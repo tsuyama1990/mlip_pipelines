@@ -587,6 +587,7 @@ class Orchestrator:
         self._swap_directories(tmp_work_dir, work_dir)
 
     def _resume_md_engine(self, final_dest: Path, work_dir: Path) -> None:
+        """Resumes the Molecular Dynamics engine execution after a halt and potential finetune."""
         from src.dynamics.dynamics_engine import MDInterface
 
         md_engine = self.md_engine
