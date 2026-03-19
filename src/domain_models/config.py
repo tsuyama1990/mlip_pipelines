@@ -22,33 +22,36 @@ def _check_allowed_base_dirs(resolved_str: str, path_str: str, check_exists: boo
     import urllib.parse
 
     decoded_path_str = urllib.parse.unquote(path_str)
-    if ".." in decoded_path_str or "%2E%2E" in path_str.upper():
-        msg = f"Path traversal sequences (..) are not allowed: {path_str}"
-        raise ValueError(msg)
 
     if "%" in path_str or "%" in resolved_str:
         msg = f"URL encoded paths are not permitted: {path_str}"
         raise ValueError(msg)
 
-    # Use strict absolute path checking right after atomic resolution to prevent TOCTOU
+    # resolved_str is already the output of Path.resolve(strict=check_exists)
+    # Re-resolving ensures safety against TOCTOU manipulation between resolution and checking
     try:
-        canonical_path = Path(
-            os.path.realpath(str(Path(resolved_str).resolve(strict=check_exists)))
-        )
-        canonical_str = str(canonical_path)
+        canonical_str = os.path.realpath(str(Path(resolved_str).resolve(strict=check_exists)))
+        canonical_path = Path(canonical_str)
+
+        # Also resolve the decoded string to ensure it's not a bypass
+        canonical_decoded_str = os.path.realpath(str(Path(decoded_path_str).resolve(strict=check_exists)))
     except Exception as e:
         if isinstance(e, FileNotFoundError):
             raise
         msg = f"Failed to securely resolve directory {resolved_str}: {e}"
         raise ValueError(msg) from e
 
-    if ".." in canonical_str:
+    if ".." in canonical_str or ".." in canonical_decoded_str:
         msg = f"Path traversal sequences (..) are not allowed: {canonical_str}"
         raise ValueError(msg)
 
-    home_dir = Path.home().resolve(strict=True)
-    tmp_dir = Path(tempfile.gettempdir()).resolve(strict=True)
-    app_dir = Path("/app").resolve(strict=True) if Path("/app").exists() else None
+    # Use strict=True for known system paths to prevent attackers from substituting base paths
+    home_dir = Path(os.path.realpath(str(Path.home().resolve(strict=True))))
+    tmp_dir = Path(os.path.realpath(str(Path(tempfile.gettempdir()).resolve(strict=True))))
+    try:
+        app_dir = Path(os.path.realpath(str(Path("/app").resolve(strict=True))))
+    except FileNotFoundError:
+        app_dir = None
 
     is_safe = False
     for safe_base in filter(None, [home_dir, tmp_dir, app_dir]):
@@ -74,18 +77,17 @@ def _check_allowed_base_dirs(resolved_str: str, path_str: str, check_exists: boo
         "/dev",
     ]
     for restricted in restricted_prefixes:
-        # Resolving system paths dynamically
+        # Resolving system paths dynamically, enforcing strict=True
         try:
-            restricted_resolved = Path(restricted).resolve(strict=False)
+            canonical_restricted_str = os.path.realpath(str(Path(restricted).resolve(strict=True)))
+            restricted_resolved = Path(canonical_restricted_str)
             is_restricted = canonical_path.is_relative_to(restricted_resolved)
-        except ValueError:
+        except (ValueError, FileNotFoundError):
             continue
 
         if is_restricted:
             msg = f"Directory cannot reside within a restricted system directory: {restricted}"
             raise ValueError(msg)
-
-
 def _check_ownership_and_perms(resolved: Path, path_str: str) -> None:
     st = resolved.stat()
     if st.st_uid != os.getuid():
@@ -99,7 +101,6 @@ def _check_ownership_and_perms(resolved: Path, path_str: str) -> None:
 
 def _secure_resolve_and_validate_dir(path_str: str, check_exists: bool = True) -> str:
     import os
-    import tempfile
 
     if "%" in path_str:
         msg = f"URL encoded paths are not permitted: {path_str}"
@@ -111,8 +112,9 @@ def _secure_resolve_and_validate_dir(path_str: str, check_exists: bool = True) -
         raise ValueError(msg)
 
     try:
-        canonical_path = Path(os.path.realpath(str(Path(path_str).resolve(strict=check_exists))))
-        canonical_str = str(canonical_path)
+        # Atomic resolution with os.path.realpath ensures all symlinks resolve
+        canonical_str = os.path.realpath(str(Path(path_str).resolve(strict=check_exists)))
+        canonical_path = Path(canonical_str)
     except Exception as e:
         if isinstance(e, FileNotFoundError):
             raise
@@ -127,17 +129,9 @@ def _secure_resolve_and_validate_dir(path_str: str, check_exists: bool = True) -
         msg = f"Directory path must be absolute: {path_str}"
         raise ValueError(msg)
 
-    tmp_dir = Path(tempfile.gettempdir()).resolve(strict=False)
-    home_dir = Path.home().resolve(strict=False)
-    app_dir = Path("/app").resolve(strict=False)
-
-    if (
-        not canonical_path.is_relative_to(home_dir)
-        and not canonical_path.is_relative_to(app_dir)
-        and not canonical_path.is_relative_to(tmp_dir)
-    ):
-        msg = "Path outside allowed directories"
-        raise ValueError(msg)
+    # Single comprehensive check that incorporates all base directory rules
+    # Provide the already resolved, canonicalized path to avoid TOCTOU
+    _check_allowed_base_dirs(canonical_str, path_str, check_exists=check_exists)
 
     if check_exists:
         if not canonical_path.exists():
@@ -150,10 +144,7 @@ def _secure_resolve_and_validate_dir(path_str: str, check_exists: bool = True) -
 
         _check_ownership_and_perms(canonical_path, path_str)
 
-    _check_allowed_base_dirs(str(canonical_path), path_str, check_exists=check_exists)
     return canonical_str
-
-
 class SystemConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     elements: list[str] = Field(..., min_length=1, description="List of elements in the system")
@@ -662,22 +653,32 @@ def _validate_env_permissions_and_size(resolved_env: Path) -> None:
         raise ValueError(msg)
 
 
-def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
+def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:  # noqa: PLR0912, PLR0915
+    import os
     import re
 
+    # 1. First resolve completely using os.path.realpath to defeat symlink bypasses
+    # We resolve the expected base similarly
+    try:
+        canonical_base_str = os.path.realpath(str(expected_base.resolve(strict=True)))
+        canonical_base = Path(canonical_base_str)
+
+        canonical_env_str = os.path.realpath(str(env_file))
+        resolved_env = Path(canonical_env_str)
+
+        if not resolved_env.exists():
+            msg = f".env file missing: {env_file}"
+            raise FileNotFoundError(msg)  # noqa: TRY301
+    except Exception as e:
+        if isinstance(e, FileNotFoundError):
+            raise
+        msg = f"Failed to securely resolve .env file {env_file}: {e}"
+        raise ValueError(msg) from e
+
+    # Check if the ORIGINAL env_file was a symlink after we know its final destination is safe
     if env_file.is_symlink():
         msg = ".env file cannot be a symlink for security reasons"
         raise ValueError(msg)
-
-    # Validate parent before resolving to prevent external symlink bypass
-    parent_dir = env_file.parent
-    canonical_base = expected_base.resolve(strict=True)
-
-    if not parent_dir.resolve(strict=True).is_relative_to(canonical_base):
-        msg = f".env file must reside securely within the allowed base directory: {expected_base}"
-        raise ValueError(msg)
-
-    resolved_env = env_file.resolve(strict=True)
 
     if not resolved_env.is_relative_to(canonical_base):
         msg = f".env file must reside securely within the allowed base directory: {expected_base}"
@@ -698,9 +699,10 @@ def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
     ]
     for restricted in restricted_prefixes:
         try:
-            canonical_restricted = Path(restricted).resolve(strict=False)
+            canonical_restricted_str = os.path.realpath(str(Path(restricted)))
+            canonical_restricted = Path(canonical_restricted_str)
             is_restricted = resolved_env.is_relative_to(canonical_restricted)
-        except ValueError:
+        except (ValueError, FileNotFoundError):
             continue
         if is_restricted:
             msg = f".env file cannot be a system directory/file: {restricted}"
@@ -709,31 +711,44 @@ def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
     _validate_env_permissions_and_size(resolved_env)
 
     # Content validation for malicious patterns before parsing
-    with Path.open(resolved_env, "r", encoding="utf-8") as f:
-        for line in f:
-            stripped = line.strip()
-            if not stripped or stripped.startswith("#"):
-                continue
+    fd = os.open(str(resolved_env), os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    try:
+        with os.fdopen(fd, "r", encoding="utf-8") as f:
+            for line in f:
+                stripped = line.strip()
+                if not stripped or stripped.startswith("#"):
+                    continue
 
-            # Simple check to see if the key starts with MLIP_ and lacks injection symbols
-            if "=" in stripped:
-                key, val = stripped.split("=", 1)
-                key = key.strip()
-                if not key.startswith("MLIP_"):
-                    msg = f"All .env file keys must start with 'MLIP_'. Found invalid key: {key}"
-                    raise ValueError(msg)
+                if "=" in stripped:
+                    key, val = stripped.split("=", 1)
+                    key = key.strip()
+                    if not key.startswith("MLIP_"):
+                        msg = f"All .env file keys must start with 'MLIP_'. Found invalid key: {key}"
+                        raise ValueError(msg)  # noqa: TRY301
 
-                val = val.strip()
-                if len(val) > 256:
-                    msg = "Value in .env file exceeds maximum length of 256 characters"
-                    raise ValueError(msg)
-                if not re.match(r"^[a-zA-Z0-9_.:/+-]*$", val):
-                    msg = f"Invalid characters or traversal sequences in .env file content: {val}"
-                    raise ValueError(msg)
+                    if not re.match(r"^MLIP_[A-Z0-9_]+$", key):
+                        msg = f"Invalid characters in .env variable key: {key}"
+                        raise ValueError(msg)  # noqa: TRY301
+
+                    val = val.strip()
+                    if len(val) > 256:
+                        msg = "Value in .env file exceeds maximum length of 256 characters"
+                        raise ValueError(msg)  # noqa: TRY301
+
+                    if not re.match(r"^[a-zA-Z0-9_.:/-]*$", val):
+                        msg = f"Invalid characters or traversal sequences in .env file content: {val}"
+                        raise ValueError(msg)  # noqa: TRY301
+
+                    if ".." in val:
+                        msg = "Path traversal sequences not allowed in .env values"
+                        raise ValueError(msg)  # noqa: TRY301
+    except Exception as e:
+        if not isinstance(e, ValueError):
+            msg = f"Failed to securely parse .env file: {e}"
+            raise TypeError(msg) from e
+        raise
 
     return resolved_env
-
-
 class DistillationConfig(BaseModel):
     """Phase 1: Zero-Shot Distillation configuration."""
 

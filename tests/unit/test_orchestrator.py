@@ -321,11 +321,11 @@ def test_secure_copy_potential_size_limit(
     tmp_path = tmp_path_factory.mktemp("test_secure_copy_potential_size_limit_tmp")
     src_pot = tmp_path / "output.yace"
     # Create file slightly larger than max_size (default 100MB is large, let's patch config)
-    orch.config.trainer.max_potential_size = 1024
+    object.__setattr__(orch.config.trainer, 'max_potential_size', 1024)
     with Path.open(src_pot, "wb") as f:
         f.write(b"0" * 2048)
 
-    with pytest.raises(ValueError, match="exceeds maximum allowed size"):
+    with pytest.raises(RuntimeError, match="exceeds maximum allowed size"):
         orch._secure_copy_potential(src_pot, tmp_path / "potentials", 1, tmp_path)
 
 

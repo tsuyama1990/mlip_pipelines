@@ -24,7 +24,7 @@ tests/unit/test_eon_driver.py .............                              [ 64%]
 tests/unit/test_eon_wrapper.py .................                         [ 73%]
 tests/unit/test_finetune_manager.py ....                                 [ 75%]
 tests/unit/test_mace_manager.py .                                        [ 75%]
-tests/unit/test_orchestrator.py ...............                          [ 82%]
+tests/unit/test_orchestrator.py ...FF........FF                          [ 82%]
 tests/unit/test_reporter.py ..                                           [ 83%]
 tests/unit/test_security_utils.py .........                              [ 87%]
 tests/unit/test_stability.py ........                                    [ 91%]
@@ -32,6 +32,357 @@ tests/unit/test_structure_generator.py ........                          [ 95%]
 tests/unit/test_tiered_oracle.py .                                       [ 96%]
 tests/unit/test_validator.py ........                                    [100%]
 
+=================================== FAILURES ===================================
+________________________________ test_run_cycle ________________________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7efdd717c8c0>
+mock_project_config = ProjectConfig(project_root=PosixPath('/tmp/pytest-of-jules/pytest-18/test_run_cycle0'), system=SystemConfig(elements=[...ed_cleanup_extensions={'.wfc', '.dat', '.lammps', '.yace'}, cleanup_size_threshold=10240, swap_lock_file='.swap.lock'))
+
+    def test_run_cycle(monkeypatch: pytest.MonkeyPatch, mock_project_config: ProjectConfig) -> None:
+        import sys
+
+        monkeypatch.setitem(
+            sys.modules, "pyacemaker.calculator", type("pyacemaker", (), {"pyacemaker": True})
+        )
+        orch = Orchestrator(mock_project_config)
+
+        # Mock all internal models
+        from src.core import AbstractDynamics
+
+        class MockMD(AbstractDynamics):
+            def run_exploration(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+                work_dir = kwargs.get("work_dir")
+                if work_dir:
+                    work_dir.mkdir(parents=True, exist_ok=True)
+                    dump_file = work_dir / "dummy_dump"
+                    dump_file.touch()
+                    return {"halted": True, "dump_file": str(dump_file)}
+                return {"halted": True, "dump_file": "dummy_dump"}
+
+            def extract_high_gamma_structures(self, *args: Any, **kwargs: Any) -> list[Any]:
+                from ase import Atoms
+
+                return [Atoms("Fe", positions=[(0, 0, 0)])]
+
+            def resume(self, potential: Path, restart_dir: Path, work_dir: Path) -> dict[str, Any]:
+                return {"halted": False, "dump_file": None}
+
+        class MockOracle:
+            def compute_batch(self, *args: Any, **kwargs: Any) -> list[Any]:
+                from ase import Atoms
+
+                return [Atoms("Fe", positions=[(0, 0, 0)])]
+
+        class MockTrainer:
+            def get_latest_potential(self) -> str:
+                return "dummy_pot.yace"
+
+            def select_local_active_set(self, *args: Any, **kwargs: Any) -> list[Any]:
+                from ase import Atoms
+
+                return [Atoms("Fe", positions=[(0, 0, 0)])] * 5
+
+            def update_dataset(self, *args: Any, **kwargs: Any) -> Path:
+                from pathlib import Path
+
+                return Path("dummy.pckl")
+
+            def train(self, dataset: Any, initial_potential: Any, output_dir: Path) -> Path:
+                pot = output_dir / "output_potential.yace"
+                pot.parent.mkdir(parents=True, exist_ok=True)
+                pot.write_text("elements version b_functions dummy potential")
+                return pot
+
+        class MockValidator:
+            def validate(self, *args: Any, **kwargs: Any) -> ValidationReport:
+                from src.domain_models.dtos import ValidationReport
+
+                return ValidationReport(
+                    passed=True,
+                    energy_rmse=0.001,
+                    force_rmse=0.01,
+                    stress_rmse=0.05,
+                    phonon_stable=True,
+                    mechanically_stable=True,
+                )
+
+        orch.md_engine = MockMD()
+        # To bypass isinstance check cleanly without recursion issues from globally patching isinstance
+        # Just monkeypatch the specific orchestrator method or type locally if possible.
+        # Actually, we can just use the real MDInterface class for MockMD inheritance to completely avoid monkeypatching isinstance.
+        # But since instructions asked for a pure mock without inheriting real logic...
+        # the easiest way to avoid isinstance recursion is to save the original isinstance
+        import builtins
+
+        original_isinstance = builtins.isinstance
+
+        def mock_isinstance(obj, cls):
+            from src.dynamics.dynamics_engine import MDInterface
+
+            if cls == MDInterface and type(obj).__name__ == "MockMD":
+                return True
+            return original_isinstance(obj, cls)
+
+        monkeypatch.setattr(builtins, "isinstance", mock_isinstance)
+
+        orch.oracle = MockOracle()  # type: ignore[assignment]
+        orch.trainer = MockTrainer()  # type: ignore[assignment]
+        orch.validator = MockValidator()  # type: ignore[assignment]
+
+        # Mock structure generator
+        class MockGenerator:
+            def generate_local_candidates(self, s0: Any, n: int = 20) -> list[Any]:
+                from ase import Atoms
+
+                return [Atoms("Fe", positions=[(0, 0, 0)])] * n
+
+        orch.structure_generator = MockGenerator()  # type: ignore[assignment]
+
+        class MockPolicyEngine:
+            def decide_policy(self, *args: Any, **kwargs: Any) -> Any:
+                from src.domain_models.dtos import ExplorationStrategy
+
+                return ExplorationStrategy(
+                    md_mc_ratio=0.0,  # Run MD
+                    t_max=300.0,
+                    n_defects=0.0,
+                    strain_range=0.0,
+                    policy_name="Standard",
+                )
+
+        orch.policy_engine = MockPolicyEngine()  # type: ignore[assignment]
+
+        # run_cycle loops while self.iteration < max_iters. For tests we mock loop_strategy.max_iterations to 1
+        # but the mock_project_config might have a different value for max_iterations. Let's fix it explicitly.
+        object.__setattr__(orch.config.loop_strategy, "max_iterations", 1)
+>       res = orch.run_cycle()
+              ^^^^^^^^^^^^^^
+E       AttributeError: 'Orchestrator' object has no attribute 'run_cycle'
+
+tests/unit/test_orchestrator.py:194: AttributeError
+___________________________ test_run_cycle_converged ___________________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7efdd73d4e90>
+mock_project_config = ProjectConfig(project_root=PosixPath('/tmp/pytest-of-jules/pytest-18/test_run_cycle_converged0'), system=SystemConfig(...ed_cleanup_extensions={'.wfc', '.dat', '.lammps', '.yace'}, cleanup_size_threshold=10240, swap_lock_file='.swap.lock'))
+
+    def test_run_cycle_converged(
+        monkeypatch: pytest.MonkeyPatch, mock_project_config: ProjectConfig
+    ) -> None:
+        import sys
+
+        monkeypatch.setitem(
+            sys.modules, "pyacemaker.calculator", type("pyacemaker", (), {"pyacemaker": True})
+        )
+        orch = Orchestrator(mock_project_config)
+
+        from src.core import AbstractDynamics
+
+        class MockMD(AbstractDynamics):
+            def run_exploration(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+                return {"halted": False, "dump_file": "dummy_dump"}
+
+        class MockTrainer:
+            def get_latest_potential(self) -> str:
+                return "dummy_pot.yace"
+
+        class MockPolicyEngine:
+            def decide_policy(self, *args: Any, **kwargs: Any) -> Any:
+                from src.domain_models.dtos import ExplorationStrategy
+
+                return ExplorationStrategy(
+                    md_mc_ratio=0.0,  # Run MD
+                    t_max=300.0,
+                    n_defects=0.0,
+                    strain_range=0.0,
+                    policy_name="Standard",
+                )
+
+        orch.md_engine = MockMD()
+        orch.trainer = MockTrainer()  # type: ignore[assignment]
+        orch.policy_engine = MockPolicyEngine()  # type: ignore[assignment]
+
+>       res = orch.run_cycle()
+              ^^^^^^^^^^^^^^
+E       AttributeError: 'Orchestrator' object has no attribute 'run_cycle'
+
+tests/unit/test_orchestrator.py:236: AttributeError
+______________________ test_cleanup_artifacts_idempotency ______________________
+
+tmp_path_factory = TempPathFactory(_given_basetemp=None, _trace=<pluggy._tracing.TagTracerSub object at 0x7efdf3686c30>, _basetemp=PosixPath('/tmp/pytest-of-jules/pytest-18'), _retention_count=3, _retention_policy='all')
+
+    def test_cleanup_artifacts_idempotency(tmp_path_factory):
+        tmp_path = tmp_path_factory.mktemp("test_cleanup_artifacts_idempotency_tmp")
+        # We can instantiate with a dummy config
+        import typing
+        from unittest.mock import MagicMock
+
+        from src.core.orchestrator import Orchestrator
+
+        class DummyConfig:
+            class LoopStrategy:
+                use_tiered_oracle: typing.ClassVar[bool] = False
+                max_iterations: typing.ClassVar[int] = 1
+
+                class Thresholds:
+                    threshold_call_dft: typing.ClassVar[float] = 0.5
+
+                thresholds = Thresholds()
+
+            loop_strategy = LoopStrategy()
+
+            class System:
+                elements: typing.ClassVar[list[str]] = ["Fe"]
+                interface_target: typing.ClassVar[str | None] = None
+                interface_generation_iteration: typing.ClassVar[int] = 0
+                restricted_directories: typing.ClassVar[list[str]] = []
+                baseline_potential: typing.ClassVar[str] = "zbl"
+
+            system = System()
+
+            class Dynamics:
+                trusted_directories: typing.ClassVar[list[str]] = []
+                project_root: typing.ClassVar[str] = str(tmp_path)
+
+            dynamics = Dynamics()
+
+            class Oracle:
+                max_atoms: typing.ClassVar[int] = 1000
+
+            oracle = Oracle()
+
+            class Trainer:
+                trusted_directories: typing.ClassVar[list[str]] = []
+                max_potential_size: typing.ClassVar[int] = 1000000
+
+            trainer = Trainer()
+
+            class Validator:
+                validation_element: typing.ClassVar[str] = "Fe"
+
+            validator = Validator()
+
+            class StructureGenerator:
+                stdev: typing.ClassVar[float] = 0.05
+
+            structure_generator = StructureGenerator()
+
+            class Policy:
+                default_md_mc_ratio: typing.ClassVar[float] = 0.0
+
+            policy = Policy()
+
+            project_root = tmp_path
+
+        import sys
+
+        sys.modules["pyacemaker"] = MagicMock()
+        sys.modules["pyacemaker.calculator"] = MagicMock()
+        orch = Orchestrator(DummyConfig())
+
+        # We need to simulate the active_learning directory to pass validation
+        al_dir = tmp_path / "active_learning"
+        al_dir.mkdir(parents=True, exist_ok=True)
+
+        # Test valid
+        f1 = al_dir / "f1.dat"
+        f1.write_text("0" * 15000)  # Ensure size is > 10KB to bypass small file protection
+>       orch._cleanup_artifacts([f1])
+        ^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: 'Orchestrator' object has no attribute '_cleanup_artifacts'
+
+tests/unit/test_orchestrator.py:495: AttributeError
+_________________ test_orchestrator_state_machine_transitions __________________
+
+tmp_path_factory = TempPathFactory(_given_basetemp=None, _trace=<pluggy._tracing.TagTracerSub object at 0x7efdf3686c30>, _basetemp=PosixPath('/tmp/pytest-of-jules/pytest-18'), _retention_count=3, _retention_policy='all')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7efdd717dcd0>
+
+    def test_orchestrator_state_machine_transitions(tmp_path_factory, monkeypatch):
+        tmp_path = tmp_path_factory.mktemp("test_orchestrator_state_machine_transitions_tmp")
+        import typing
+
+        from src.core.orchestrator import Orchestrator
+
+        class DummyConfig:
+            class LoopStrategy:
+                use_tiered_oracle: typing.ClassVar[bool] = False
+                max_iterations: typing.ClassVar[int] = 1
+
+                class Thresholds:
+                    threshold_call_dft: typing.ClassVar[float] = 0.5
+
+                thresholds = Thresholds()
+
+            loop_strategy = LoopStrategy()
+
+            class System:
+                elements: typing.ClassVar[list[str]] = ["Fe"]
+                interface_target: typing.ClassVar[str | None] = None
+                interface_generation_iteration: typing.ClassVar[int] = 0
+                restricted_directories: typing.ClassVar[list[str]] = []
+                baseline_potential: typing.ClassVar[str] = "zbl"
+
+            system = System()
+
+            class Dynamics:
+                trusted_directories: typing.ClassVar[list[str]] = []
+                project_root: typing.ClassVar[str] = str(tmp_path)
+
+            dynamics = Dynamics()
+
+            class Oracle:
+                max_atoms: typing.ClassVar[int] = 1000
+
+            oracle = Oracle()
+
+            class Trainer:
+                trusted_directories: typing.ClassVar[list[str]] = []
+                max_potential_size: typing.ClassVar[int] = 1000000
+
+            trainer = Trainer()
+
+            class Validator:
+                validation_element: typing.ClassVar[str] = "Fe"
+
+            validator = Validator()
+
+            class StructureGenerator:
+                stdev: typing.ClassVar[float] = 0.05
+
+            structure_generator = StructureGenerator()
+
+            class Policy:
+                default_md_mc_ratio: typing.ClassVar[float] = 0.0
+
+            policy = Policy()
+
+            project_root = tmp_path
+
+        import sys
+        from unittest.mock import MagicMock
+
+        from src.core.exceptions import DynamicsHaltInterrupt
+
+        sys.modules["pyacemaker"] = MagicMock()
+        sys.modules["pyacemaker.calculator"] = MagicMock()
+        orch = Orchestrator(DummyConfig())
+        object.__setattr__(orch.config.loop_strategy, "max_iterations", 1)
+        orch.get_latest_potential = MagicMock(return_value=tmp_path / "pot.yace")
+        orch._pre_generate_interface_target = MagicMock(return_value=None)
+        orch._validate_potential = MagicMock(return_value=True)
+        orch._deploy_potential = MagicMock(return_value=tmp_path / "new.yace")
+        orch._finalize_directories = MagicMock()
+        orch._resume_md_engine = MagicMock()
+        orch._run_dft_and_train = MagicMock(return_value=tmp_path / "new.yace")
+        orch._select_candidates = MagicMock(return_value=iter([]))
+
+        # Force _run_exploration to raise DynamicsHaltInterrupt to test Phase 3 -> 4 transition
+        orch._run_exploration = MagicMock(side_effect=DynamicsHaltInterrupt("High uncertainty"))
+
+>       orch.run_cycle()
+        ^^^^^^^^^^^^^^
+E       AttributeError: 'Orchestrator' object has no attribute 'run_cycle'
+
+tests/unit/test_orchestrator.py:585: AttributeError
 ================================ tests coverage ================================
 _______________ coverage: platform linux, python 3.12.13-final-0 _______________
 
@@ -41,19 +392,19 @@ src/__init__.py                             0      0   100%
 src/core/__init__.py                       21      0   100%
 src/core/checkpoint.py                     42      4    90%   39-42
 src/core/exceptions.py                      2      0   100%
-src/core/orchestrator.py                  574    312    46%   69, 85-86, 91, 102-105, 124-125, 128-129, 134-136, 158-172, 176, 182-183, 216-298, 306-313, 318, 330-398, 401-407, 423-424, 429-430, 441-442, 445-446, 449-450, 453-460, 496-497, 501-507, 512-513, 516-524, 527-591, 594-595, 598-602, 609-612, 615-618, 621-625, 634-681, 713-716, 720-723, 728-731, 735-738, 746-751, 754-755, 764, 768, 774-777, 816, 824-825, 857, 863-896, 899, 930-933
-src/core/retry.py                          80     36    55%   25-30, 35, 43-50, 74-75, 82-103, 108-109
+src/core/orchestrator.py                  313    166    47%   67, 81-82, 87, 98-101, 120-121, 124-125, 130-132, 140-172, 177-185, 191-196, 201-209, 212-294, 302-309, 314, 326-392, 395-401, 419-420, 429-434, 437-438, 441-442, 488-489
+src/core/retry.py                          80     52    35%   25-30, 33-37, 40-50, 71-109
 src/domain_models/__init__.py               3      0   100%
-src/domain_models/config.py               554    164    70%   30-31, 39-43, 46-47, 60-61, 81-82, 85-86, 92-93, 96-97, 105-106, 110-111, 119-120, 123-124, 127-128, 144-145, 230, 251-252, 258-259, 279-293, 297, 300, 340-341, 346-351, 467-470, 535-538, 543-546, 600-608, 613-614, 624-626, 634-635, 638-639, 644-645, 649-650, 656-662, 669-670, 677-678, 683-684, 703-704, 706-707, 712-734, 897-923, 932-933, 935-936, 954-955, 957-958, 964-965, 968-969, 977-978, 985-986, 990-991
+src/domain_models/config.py               571    177    69%   27-28, 38-42, 45-46, 53-54, 85-86, 89-90, 94-95, 98-99, 106-107, 111-112, 121-122, 125-126, 129-130, 138-139, 221, 242-243, 249-250, 270-284, 288, 291, 331-332, 337-342, 458-461, 526-529, 534-537, 591-599, 604-605, 615-617, 625-626, 629-630, 635-636, 640-641, 647-653, 675-676, 680-681, 684-685, 705-706, 708-709, 714-751, 912-938, 947-948, 950-951, 969-970, 972-973, 979-980, 983-984, 992-993, 1000-1001, 1005-1006
 src/domain_models/dtos.py                  50      4    92%   41-44
 src/dynamics/__init__.py                    0      0   100%
 src/dynamics/dynamics_engine.py           261     57    78%   35-36, 43-44, 47-48, 51-52, 55-56, 60-61, 65-66, 104-105, 113-114, 129-130, 136-137, 140-141, 144-145, 148-149, 152-153, 157-158, 162-163, 201, 210-211, 220-221, 236-237, 243-244, 246-247, 319-321, 341-342, 348-349, 353-354, 358-359, 415
 src/dynamics/eon_driver.py                167     51    69%   13-14, 28-29, 42-51, 81-84, 88-89, 94-95, 121-124, 135-136, 138-139, 152-154, 157-158, 166-173, 177-179, 187-189, 192-193, 235
-src/dynamics/eon_wrapper.py               213     39    82%   43-44, 66-67, 78-79, 82-83, 146-147, 167-168, 170-171, 193-194, 199-211, 218, 231, 241-242, 245-246, 265, 269, 294-295, 330-331
+src/dynamics/eon_wrapper.py               213     37    83%   43-44, 66-67, 78-79, 82-83, 167-168, 170-171, 193-194, 199-211, 218, 231, 241-242, 245-246, 265, 269, 294-295, 330-331
 src/dynamics/security_utils.py            110     24    78%   17-18, 26-32, 78, 101-102, 110-111, 121-122, 133-134, 137-138, 141-142, 162-163
 src/generators/__init__.py                  0      0   100%
 src/generators/adaptive_policy.py          85     15    82%   16, 44-45, 123-124, 137-138, 140-141, 143-144, 146-147, 149-150
-src/generators/defect_builder.py           72     14    81%   14, 22-23, 26, 43-44, 47, 66-67, 76-77, 81, 105-106
+src/generators/defect_builder.py           72     15    79%   14, 22-23, 26, 43-44, 47, 66-67, 76-77, 81, 103, 105-106
 src/generators/structure_generator.py     142     34    76%   47-48, 52-53, 99, 105-108, 126-127, 164, 192-214, 226-227, 231-233, 276-278
 src/oracles/__init__.py                     0      0   100%
 src/oracles/base.py                         7      0   100%
@@ -69,7 +420,12 @@ src/validators/reporter.py                  7      0   100%
 src/validators/stability_tests.py         119      5    96%   51, 59-60, 63-66
 src/validators/validator.py                90     11    88%   20-22, 28-30, 34-36, 80, 94-95
 ---------------------------------------------------------------------
-TOTAL                                    3317    971    71%
-======================== 206 passed, 2 skipped in 6.98s ========================
+TOTAL                                    3073    853    72%
+=========================== short test summary info ============================
+FAILED tests/unit/test_orchestrator.py::test_run_cycle - AttributeError: 'Orc...
+FAILED tests/unit/test_orchestrator.py::test_run_cycle_converged - AttributeE...
+FAILED tests/unit/test_orchestrator.py::test_cleanup_artifacts_idempotency - ...
+FAILED tests/unit/test_orchestrator.py::test_orchestrator_state_machine_transitions
+=================== 4 failed, 202 passed, 2 skipped in 7.48s ===================
 /app/.venv/lib/python3.12/site-packages/coverage/inorout.py:561: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.4/messages.html#warning-module-not-imported
   self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")

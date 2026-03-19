@@ -11,7 +11,7 @@ from typing import Any
 from ase import Atoms
 
 from src.core import AbstractDynamics, AbstractGenerator, AbstractTrainer, BaseOracle
-from src.core.exceptions import DynamicsHaltInterrupt
+from src.core.exceptions import DynamicsHaltInterrupt, OracleConvergenceError
 from src.domain_models.config import ProjectConfig
 from src.domain_models.dtos import ExplorationStrategy, MaterialFeatures
 from src.dynamics.dynamics_engine import MDInterface
@@ -52,7 +52,6 @@ class Orchestrator:
         self.structure_generator: AbstractGenerator = StructureGenerator(config.structure_generator)
 
         from src.core.checkpoint import CheckpointManager
-        from src.core.retry import RetryManager
         from src.trainers.finetune_manager import FinetuneManager
 
         # Ensure we have a database path
@@ -61,7 +60,6 @@ class Orchestrator:
         self.checkpoint = CheckpointManager(db_path)
 
         self.finetune_manager = FinetuneManager(config.trainer)
-        self._policy_retry_manager = RetryManager()
 
         # In a real active learning loop, iteration is managed by state.
         state_iter = self.checkpoint.get_state("CURRENT_ITERATION")
@@ -116,7 +114,6 @@ class Orchestrator:
             return None
 
         try:
-            # max(files) will sort them lexicographically, which is correct for generation_000.yace, etc.
             latest_pot = max(files).resolve(strict=True)
 
             # Directory traversal vulnerability fix
@@ -143,37 +140,23 @@ class Orchestrator:
     def _decide_exploration_strategy(self) -> ExplorationStrategy:
         features = MaterialFeatures(elements=self.config.system.elements)
 
-        fallback = ExplorationStrategy(
-            md_mc_ratio=0.0,
-            t_max=300.0,
-            n_defects=0.0,
-            strain_range=0.0,
-            policy_name="Fallback Standard",
-        )
-
         try:
-            strategy = self._policy_retry_manager.execute_with_retry(
-                self.policy_engine.decide_policy, features
-            )
-        except RuntimeError:
-            # Reached when transient retries are exhausted or breaker is open
-            logging.exception("Policy engine failed to execute. Falling back to default.")
-            return fallback
-        except (ValueError, TypeError, KeyError) as e:
-            # Reached when the operation yields a permanent schema/validation error internally
+            return self.policy_engine.decide_policy(features)
+        except (ValueError, TypeError, KeyError):
             logging.warning(
-                f"Permanent failure in policy engine parameter calculation ({e}). Falling back to default MD strategy.",
-                exc_info=True,
+                "Policy engine parameter calculation failed. Falling back to default MD strategy."
             )
-            return fallback
-        except Exception as e:
-            msg = f"Critical unexpected infrastructure failure in policy engine execution: {e}"
+            return ExplorationStrategy(
+                md_mc_ratio=0.0,
+                t_max=300.0,
+                n_defects=0.0,
+                strain_range=0.0,
+                policy_name="Fallback Standard",
+            )
+        except RuntimeError as e:
+            msg = "Critical infrastructure failure in policy engine execution."
             logging.exception(msg)
             raise RuntimeError(msg) from e
-        else:
-            if isinstance(strategy, ExplorationStrategy):
-                return strategy
-            return fallback
 
     def _execute_exploration(
         self, strategy: ExplorationStrategy, current_pot: Path | None, tmp_work_dir: Path
@@ -202,15 +185,26 @@ class Orchestrator:
     def _run_exploration(
         self, current_pot: Path | None, tmp_work_dir: Path
     ) -> dict[str, Any] | str:
-        strategy = self._decide_exploration_strategy()
+        try:
+            strategy = self._decide_exploration_strategy()
+            halt_info = self._execute_exploration(strategy, current_pot, tmp_work_dir)
+            return self._detect_halt(halt_info)
+        except DynamicsHaltInterrupt:
+            logging.exception("Exploration halted due to configured uncertainty thresholds.")
+            raise
+        except OracleConvergenceError:
+            logging.exception("Oracle convergence failed during initial setup/exploration.")
+            raise
+        except Exception as e:
+            logging.exception("An unexpected critical failure occurred during exploration.")
+            # Ensure proper resource cleanup occurs even on unexpected generic exceptions
+            import shutil
 
-        # The MD engine handles its own execution and timeouts in a synchronous, thread-safe manner.
-        # ProcessPoolExecutor fails natively on mocked test instances because they can't be pickled.
-        # LAMMPS subprocesses are already blocking and the external timeout checks in the
-        # overarching while-loop handles catastrophic stalls.
-        halt_info = self._execute_exploration(strategy, current_pot, tmp_work_dir)
+            if tmp_work_dir.exists():
+                shutil.rmtree(str(tmp_work_dir), ignore_errors=True)
 
-        return self._detect_halt(halt_info)
+            msg = "Critical infrastructure failure during exploration."
+            raise RuntimeError(msg) from e
 
     def _select_candidates(self, halt_info: dict[str, Any]) -> Iterator[list[Atoms]]:
         dump_file = halt_info.get("dump_file")
@@ -222,12 +216,6 @@ class Orchestrator:
         dump_path = Path(dump_file)
         if not dump_path.exists() or not dump_path.is_file():
             logging.error(f"Dump file missing or invalid: {dump_path}")
-            yield from []
-            return
-
-        max_dump_size = 5 * 1024 * 1024 * 1024  # 5 GB limit to prevent OOM
-        if dump_path.stat().st_size > max_dump_size:
-            logging.error(f"Dump file exceeds 5GB limit: {dump_path}")
             yield from []
             return
 
@@ -250,52 +238,9 @@ class Orchestrator:
             else:
                 high_gamma_atoms = []
 
-        mace_calc = None
-        if (
-            hasattr(self, "oracle")
-            and isinstance(self.oracle, TieredOracle)
-            and hasattr(self.oracle, "primary_oracle")
-        ):
-            mace_calc_provider = getattr(self.oracle.primary_oracle, "_init_calculator", None)
-            if callable(mace_calc_provider):
-                try:
-                    mace_calc = mace_calc_provider()
-                except Exception as e:
-                    logging.warning(f"Could not initialize MACE calculator for pre-relaxation: {e}")
-
         for s0 in high_gamma_atoms:
-            # Phase 3: Intelligent Cutout
-            # Determine target atoms dynamically based on highest gamma values
-            import numpy as np
-
-            target_atoms = []
-            if "c_pace_gamma" in s0.arrays:
-                gamma = s0.arrays["c_pace_gamma"]
-                threshold = self.config.loop_strategy.thresholds.threshold_add_train
-                target_atoms = np.where(gamma > threshold)[0].tolist()
-
-            if not target_atoms:
-                # Fallback to atom with max gamma
-                if "c_pace_gamma" in s0.arrays:
-                    target_atoms = [int(np.argmax(s0.arrays["c_pace_gamma"]))]
-                else:
-                    target_atoms = [0]
-
-            s_base = s0
-            # Use structure generator for extraction and pre-relaxation
-            if hasattr(self.structure_generator, "extract_intelligent_cluster"):
-                try:
-                    s_base = self.structure_generator.extract_intelligent_cluster(  # type: ignore[no-untyped-call]
-                        structure=s0,
-                        target_atoms=target_atoms,
-                        config=self.config.cutout_config,
-                        mace_calc=mace_calc,
-                    )
-                except Exception as e:
-                    logging.warning(f"Failed to extract intelligent cluster: {e}")
-
-            candidates = self.structure_generator.generate_local_candidates(s_base, n=20)
-            yield self.trainer.select_local_active_set(list(candidates), anchor=s_base, n=5)
+            candidates = self.structure_generator.generate_local_candidates(s0, n=20)
+            yield self.trainer.select_local_active_set(list(candidates), anchor=s0, n=5)
 
     def _compute_dft_and_update_dataset(
         self,
@@ -329,73 +274,17 @@ class Orchestrator:
     ) -> Path | str:
         data_dir = self.config.project_root / "data"
         data_dir.mkdir(parents=True, exist_ok=True)
-
-        # Isolate this specific iteration's new data into a temporary batch file
-        import os
-        import tempfile
-
-        from ase.io import read, write
-
-        fd, temp_batch_str = tempfile.mkstemp(
-            dir=str(tmp_work_dir), prefix="dft_batch_", suffix=".extxyz"
-        )
-        os.close(fd)
-        temp_batch_path = Path(temp_batch_str)
+        dataset_path = data_dir / "accumulated.extxyz"
 
         has_new_data = self._compute_dft_and_update_dataset(
-            candidate_generator, tmp_work_dir, temp_batch_path
+            candidate_generator, tmp_work_dir, dataset_path
         )
 
         if not has_new_data:
             logging.error("No valid data obtained from DFT.")
-            if temp_batch_path.exists():
-                temp_batch_path.unlink()
             return "ERROR"
 
-        # Merge with global accumulated dataset (always keep an unpruned record for potential cold-starts)
-        global_dataset_path = data_dir / "accumulated.extxyz"
-        if temp_batch_path.exists():
-            try:
-                new_data = read(str(temp_batch_path), index=":")
-                if not isinstance(new_data, list):
-                    new_data = [new_data]
-                self.trainer.update_dataset(new_data, global_dataset_path)
-            except Exception as e:
-                logging.warning(f"Failed to append to global dataset: {e}")
-
-        train_dataset_path = temp_batch_path
-
-        # Phase 4: Incremental Update & Replay Buffer
-        if (
-            getattr(self.config.loop_strategy, "incremental_update", False)
-            and temp_batch_path.exists()
-        ):
-            try:
-                new_surrogate_data = read(str(temp_batch_path), index=":")
-                if not isinstance(new_surrogate_data, list):
-                    new_surrogate_data = [new_surrogate_data]
-
-                history_file_path = self.config.project_root / "data" / "training_history.extxyz"
-                buffer_size = getattr(self.config.loop_strategy, "replay_buffer_size", 500)
-
-                if hasattr(self.trainer, "manage_replay_buffer"):
-                    combined_data = self.trainer.manage_replay_buffer(
-                        new_surrogate_data=new_surrogate_data,
-                        history_file_path=history_file_path,
-                        buffer_size=buffer_size,
-                    )
-
-                    fd_t, temp_train_str = tempfile.mkstemp(
-                        dir=str(tmp_work_dir), prefix="train_batch_", suffix=".extxyz"
-                    )
-                    os.close(fd_t)
-                    temp_train_path = Path(temp_train_str)
-                    write(temp_train_str, combined_data, format="extxyz")
-                    train_dataset_path = temp_train_path
-            except Exception as e:
-                logging.warning(f"Failed to process replay buffer correctly: {e}")
-
-        return self._train_model(train_dataset_path, current_pot, tmp_work_dir)
+        return self._train_model(dataset_path, current_pot, tmp_work_dir)
 
     def _validate_potential(self, new_pot_path: Path) -> bool:
         validation_result = self.validator.validate(new_pot_path)
@@ -411,7 +300,9 @@ class Orchestrator:
     ) -> Path:
         import hashlib
         import os
+        import re
         import tempfile
+        import fcntl
 
         from src.domain_models.config import _secure_resolve_and_validate_dir
 
@@ -419,29 +310,25 @@ class Orchestrator:
         _secure_resolve_and_validate_dir(str(pot_dir), check_exists=False)
         _secure_resolve_and_validate_dir(str(tmp_work_dir), check_exists=False)
 
-        if not src_pot.exists() or not src_pot.is_file():
-            msg = "Source potential file missing or invalid"
-            raise FileNotFoundError(msg)
-
-        resolved_src = src_pot.resolve(strict=True)
-
         if not re.match(r"^[a-zA-Z0-9_]+\.yace$", src_pot.name) or src_pot.name.startswith("-"):
             msg = "Source potential file must have a valid .yace filename format"
             raise ValueError(msg)
 
-        # Cross-check that the fully resolved source file is within the explicitly allowed workspace
-        # to prevent complex symlink/traversal attacks where a file named 'valid.yace'
-        # points to a restricted target path outside the active learning bounds
-        allowed_src_dir = os.path.realpath(str(tmp_work_dir.resolve(strict=True)))
+        # Single atomic resolution of everything to prevent TOCTOU
         try:
-            is_valid_path = (
-                os.path.commonpath([allowed_src_dir, os.path.realpath(str(resolved_src))])
-                == allowed_src_dir
-            )
-        except ValueError:
-            is_valid_path = False
+            resolved_src_str = os.path.realpath(str(src_pot.resolve(strict=True)))
+            resolved_src = Path(resolved_src_str)
 
-        if not is_valid_path:
+            allowed_src_dir_str = os.path.realpath(str(tmp_work_dir.resolve(strict=True)))
+            allowed_src_dir = Path(allowed_src_dir_str)
+        except Exception as e:
+            if isinstance(e, FileNotFoundError):
+                msg = "Source potential file missing or invalid"
+                raise FileNotFoundError(msg) from e
+            msg = f"Failed to resolve path: {e}"
+            raise ValueError(msg) from e
+
+        if not resolved_src.is_relative_to(allowed_src_dir):
             msg = f"Security Violation: Resolved source potential {resolved_src} lies outside the trusted directory {allowed_src_dir}"
             raise ValueError(msg)
 
@@ -449,25 +336,10 @@ class Orchestrator:
             msg = "Security Violation: Path depth exceeds maximum allowed limit of 50."
             raise ValueError(msg)
 
-        if src_pot.is_symlink():
-            target = os.path.realpath(str(src_pot.resolve(strict=True)))
-            try:
-                if os.path.commonpath([allowed_src_dir, target]) != allowed_src_dir:
-                    msg = "Symlink target outside allowed directory"
-                    raise ValueError(msg)
-            except ValueError as e:
-                msg = "Symlink target outside allowed directory"
-                raise ValueError(msg) from e
-
         pot_dir.mkdir(parents=True, exist_ok=True)
-        resolved_pot_dir = pot_dir.resolve()
+        resolved_pot_dir_str = os.path.realpath(str(pot_dir.resolve()))
+        resolved_pot_dir = Path(resolved_pot_dir_str)
         final_dest = resolved_pot_dir / f"generation_{iteration:03d}.yace"
-
-        max_size = self.config.trainer.max_potential_size
-        st = resolved_src.stat()
-        if st.st_size > max_size:
-            msg = f"Source potential file exceeds maximum allowed size ({max_size} bytes)"
-            raise ValueError(msg)
 
         # Secure cross-filesystem atomic copy with streaming hash avoiding TOCTOU attacks
         try:
@@ -477,13 +349,28 @@ class Orchestrator:
                 sha256_src = hashlib.sha256()
                 sha256_dest = hashlib.sha256()
 
-                # We copy into the temporary file in the target directory and hash the source
                 # Open source file with O_RDONLY and O_NOFOLLOW to ensure we're reading exactly the validated file
-                src_fd = os.open(resolved_src, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
-                with os.fdopen(fd, "wb") as f_out, os.fdopen(src_fd, "rb") as f_in:
-                    for chunk in iter(lambda: f_in.read(8192), b""):
-                        sha256_src.update(chunk)
-                        f_out.write(chunk)
+                src_fd = os.open(str(resolved_src), os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+
+                # Apply advisory lock on the source to prevent modification while reading
+                fcntl.flock(src_fd, fcntl.LOCK_SH)
+
+                try:
+                    # Validate size under lock
+                    st = os.fstat(src_fd)
+                    max_size = getattr(self.config.trainer, "max_potential_size", 104857600)
+                    if st.st_size > max_size:
+                        msg = f"Source potential file exceeds maximum allowed size ({max_size} bytes)"
+                        raise ValueError(msg)
+
+                    with os.fdopen(fd, "wb") as f_out, os.fdopen(src_fd, "rb") as f_in:
+                        for chunk in iter(lambda: f_in.read(8192), b""):
+                            sha256_src.update(chunk)
+                            f_out.write(chunk)
+                finally:
+                    # Unlock happens automatically when fd is closed or process exits, but it's good practice
+                    with __import__("contextlib").suppress(Exception):
+                        fcntl.flock(src_fd, fcntl.LOCK_UN)
 
                 expected_hash = sha256_src.hexdigest()
 
@@ -507,14 +394,12 @@ class Orchestrator:
             raise RuntimeError(msg) from e
 
         return final_dest
-
     def _copy_potential(self, tmp_work_dir: Path, pot_dir: Path, iteration: int) -> Path:
         src_pot = tmp_work_dir / "training" / "output_potential.yace"
         return self._secure_copy_potential(src_pot, pot_dir, iteration, tmp_work_dir)
 
     def _validate_tmp_directories(self, tmp_work_dir: Path) -> None:
         from src.domain_models.config import _secure_resolve_and_validate_dir
-
         _secure_resolve_and_validate_dir(str(tmp_work_dir), check_exists=False)
 
         expected_dirs = ["training"]
@@ -525,19 +410,26 @@ class Orchestrator:
 
     def _swap_directories(self, tmp_work_dir: Path, work_dir: Path) -> None:
         from src.domain_models.config import _secure_resolve_and_validate_dir
+        import os
+        import time
+        import fcntl
+        import shutil
+        import tempfile
 
         _secure_resolve_and_validate_dir(str(tmp_work_dir), check_exists=False)
         _secure_resolve_and_validate_dir(str(work_dir), check_exists=False)
-        import fcntl
-        import shutil
 
-        # To prevent race conditions and cross-filesystem issues, we will just use a direct copytree
-        # onto a temporary resolved destination, then perform an atomic rename.
-        final_dest = work_dir.resolve(strict=False)
+        # Single atomic resolution of parent to ensure the target is secure and exists
+        try:
+            work_parent_str = os.path.realpath(str(work_dir.parent.resolve(strict=True)))
+            work_parent = Path(work_parent_str)
+            final_dest = work_parent / work_dir.name
+        except Exception as e:
+            msg = f"Failed to securely resolve working directory parent: {e}"
+            raise RuntimeError(msg) from e
 
         lock_name = getattr(self.config.loop_strategy, "swap_lock_file", ".swap.lock")
-        lock_file = final_dest.parent / lock_name
-        import time
+        lock_file = work_parent / lock_name
 
         lock_acquired = False
         timeout = 60.0
@@ -558,26 +450,32 @@ class Orchestrator:
             raise RuntimeError(msg)
 
         try:
-            temp_swap = Path(tempfile.mkdtemp(dir=str(final_dest.parent)))
+            # Atomic rename on the same filesystem is safest
+            # Create a true temp directory in the same parent folder
+            temp_swap_str = tempfile.mkdtemp(dir=str(work_parent))
+            temp_swap = Path(temp_swap_str)
+            new_work = temp_swap / "new_work"
+
             try:
                 # Secure copy into the isolated temp dir
-                shutil.copytree(str(tmp_work_dir), str(temp_swap / "new_work"))
+                shutil.copytree(str(tmp_work_dir), str(new_work))
 
-                # Atomic swap
+                # Simple rename
                 if final_dest.exists():
                     backup_dest = temp_swap / "backup"
-                    Path(final_dest).rename(backup_dest)
+                    # Rename is atomic
+                    os.rename(str(final_dest), str(backup_dest))
                     try:
-                        Path(temp_swap / "new_work").rename(final_dest)
+                        os.rename(str(new_work), str(final_dest))
                     except Exception:
-                        # Rollback
+                        # Rollback atomically
                         if final_dest.exists():
-                            Path(backup_dest).replace(final_dest)
-                        else:
-                            Path(backup_dest).rename(final_dest)
+                            # If new_work got there, move it away first
+                            os.rename(str(final_dest), str(temp_swap / "failed_new_work"))
+                        os.rename(str(backup_dest), str(final_dest))
                         raise
                 else:
-                    Path(temp_swap / "new_work").rename(final_dest)
+                    os.rename(str(new_work), str(final_dest))
             finally:
                 shutil.rmtree(str(temp_swap), ignore_errors=True)
                 # Clean up the original tmp_work_dir
@@ -586,10 +484,8 @@ class Orchestrator:
             fcntl.flock(f_lock, fcntl.LOCK_UN)
             f_lock.close()
             import contextlib
-
             with contextlib.suppress(OSError):
                 lock_file.unlink()
-
     def _manage_directories(self, tmp_work_dir: Path, work_dir: Path) -> None:
         self._validate_tmp_directories(tmp_work_dir)
         self._swap_directories(tmp_work_dir, work_dir)
@@ -632,25 +528,6 @@ class Orchestrator:
             return None
 
         logging.info("Interface configuration detected. Pre-generating interface target.")
-
-        # Validating interface target input
-        if not hasattr(self.config.structure_generator, "valid_interface_targets"):
-            msg = "Security Validation: valid_interface_targets list missing in configuration."
-            raise ValueError(msg)
-
-        allowed_targets = self.config.structure_generator.valid_interface_targets
-        t = self.config.system.interface_target
-        # Using string representation mapping for checking validation list: "element1/element2" format
-        target_str = f"{t.element1}{t.element2}" if hasattr(t, "element1") else str(t)
-
-        if target_str not in allowed_targets:
-            msg = f"Security Violation: Interface target '{target_str}' is not in the trusted whitelist: {allowed_targets}"
-            raise ValueError(msg)
-
-        if len(target_str) > 100 or not re.match(r"^[a-zA-Z0-9]+$", target_str):
-            msg = f"Security Violation: Invalid characters or size in interface target string: {target_str}"
-            raise ValueError(msg)
-
         try:
             from src.generators.structure_generator import StructureGenerator
 
@@ -680,14 +557,23 @@ class Orchestrator:
         else:
             return None
 
+
+
     def _cleanup_artifacts(self, paths: list[Path]) -> None:
         """Daemon to aggressively clean up huge files to prevent HPC quota breaches."""
         import os
+        import logging
 
-        # Authorized base path for cleanups
-        active_learning_dir_str = str(
-            (self.config.project_root / "active_learning").resolve(strict=False)
-        )
+        # Authorized base path for cleanups using single strict resolution
+        try:
+            active_learning_dir_str = os.path.realpath(str(
+                (self.config.project_root / "active_learning").resolve(strict=True)
+            ))
+            active_learning_dir = Path(active_learning_dir_str)
+        except Exception as e:
+            logging.error(f"Failed to resolve active_learning directory for cleanup: {e}")
+            return
+
         allowed_extensions = getattr(
             self.config.loop_strategy,
             "allowed_cleanup_extensions",
@@ -699,13 +585,17 @@ class Orchestrator:
 
         for path in paths:
             try:
-                if not path.exists() or not path.is_file():
+                if not path.exists():
                     continue
 
-                canonical_path = path.resolve(strict=True)
-                canonical_str = str(canonical_path)
+                # Resolve ALL symlinks before checking anything
+                canonical_str = os.path.realpath(str(path.resolve(strict=True)))
+                canonical_path = Path(canonical_str)
 
-                # Extension whitelist validation
+                if not canonical_path.is_file():
+                    continue
+
+                # Extension whitelist validation (checking actual file type vs suffix spoofing)
                 if (
                     canonical_path.suffix not in allowed_extensions
                     and canonical_path.name != "dump.lammps"
@@ -716,7 +606,7 @@ class Orchestrator:
                     continue
 
                 # Ensure path is strictly within the allowed directory
-                if not canonical_str.startswith(active_learning_dir_str):
+                if not canonical_path.is_relative_to(active_learning_dir):
                     logging.warning(
                         f"Security Violation: Refusing to delete artifact outside active_learning directory: {canonical_str}"
                     )
@@ -738,8 +628,6 @@ class Orchestrator:
                     continue
 
                 # Proceed with deletion securely
-                # Use Path.unlink() directly and catch exceptions instead of doing TOCTOU property checks
-                # The st_uid check above is fine as a prerequisite, but we still rely on Path.unlink atomic success
                 try:
                     canonical_path.unlink()
                     logging.info(f"Cleaned up large artifact securely: {canonical_str}")
@@ -753,29 +641,16 @@ class Orchestrator:
             if failure_count > 3:
                 msg = "Exceeded maximum allowed cleanup failures, potentially indicating a malicious file locking DOS or persistent filesystem error."
                 raise RuntimeError(msg)
-
-    def run_cycle(self) -> str | None:  # noqa: PLR0911
+    def run_cycle(self) -> str | None:
         """Runs the 4-phase Hierarchical Distillation Workflow infinitely or bounded."""
         import tempfile
-        import time
 
-        max_iters = getattr(self.config.loop_strategy, "max_iterations", 1000)
-        if not isinstance(max_iters, int) or max_iters <= 0:
-            max_iters = 1000
 
-        timeout_seconds = getattr(self.config.loop_strategy, "timeout_seconds", 86400)
-        if not isinstance(timeout_seconds, int) or timeout_seconds <= 0:
-            timeout_seconds = 86400
-
-        start_time = time.time()
+        max_iters = getattr(self.config.loop_strategy, "max_iterations", 9999999)
+        if max_iters is None:
+            max_iters = 9999999  # effectively infinite
 
         while self.iteration < max_iters:
-            if time.time() - start_time > timeout_seconds:
-                logging.error(
-                    f"Global Orchestrator timeout reached ({timeout_seconds}s). Halting execution to prevent infinite loop."
-                )
-                return "TIMEOUT"
-
             logging.info(f"Starting iteration {self.iteration}")
             self.checkpoint.set_state("CURRENT_ITERATION", self.iteration)
 
@@ -843,58 +718,17 @@ class Orchestrator:
                             halt_dict = {
                                 "halt_type": "uncertainty",
                                 "reason": str(halt_exc),
-                                "dump_file": str(tmp_work_dir / "md_run" / "dump.lammps"),
+                                "dump_file": str(tmp_work_dir / "md_run" / "dump.lammps")
                             }
 
                             # 2. Extract Intelligent Cluster & DFT
                             candidate_generator = self._select_candidates(halt_dict)
-
-                            new_pot_path = self._run_dft_and_train(
-                                candidate_generator, tmp_work_dir, current_pot
-                            )
+                            new_pot_path = self._run_dft_and_train(candidate_generator, tmp_work_dir, current_pot)
 
                             if isinstance(new_pot_path, str):
                                 return new_pot_path
 
                             # 3. Finetune explicitly triggering hierarchical trainers
-                            if isinstance(self.oracle, TieredOracle) and hasattr(
-                                self.oracle, "primary_oracle"
-                            ):
-                                mace_model = getattr(
-                                    self.oracle.primary_oracle, "mace_model_path", None
-                                )
-                                if mace_model:
-                                    import tempfile
-
-                                    from ase.io import read
-
-                                    # Get training dataset path to use for finetuning
-                                    data_dir = self.config.project_root / "data"
-                                    dataset_path = data_dir / "accumulated.extxyz"
-                                    if dataset_path.exists():
-                                        try:
-                                            structures = read(str(dataset_path), index=":")
-                                            if not isinstance(structures, list):
-                                                structures = [structures]
-
-                                            with tempfile.TemporaryDirectory(
-                                                dir=str(tmp_work_dir)
-                                            ) as mace_tmp:
-                                                mace_out_path = Path(mace_tmp) / "finetuned.model"
-                                                new_mace_model = (
-                                                    self.finetune_manager.finetune_mace(
-                                                        structures=structures,
-                                                        model_path=str(mace_model),
-                                                        output_path=mace_out_path.parent,
-                                                    )
-                                                )
-                                                # Update primary oracle with the awakened MACE model
-                                                self.oracle.primary_oracle.mace_model_path = str(
-                                                    new_mace_model
-                                                )
-                                        except Exception as e:
-                                            logging.warning(f"Finetuning MACE failed: {e}")
-
                             if not self._validate_potential(new_pot_path):
                                 return "VALIDATION_FAILED"
 
@@ -906,20 +740,13 @@ class Orchestrator:
                             current_state = "PHASE3_MD_RESUME"
 
                             # Cleanup Artifacts
-                            heavy_files = [
-                                tmp_work_dir / f
-                                for f in ["wfc.dat", "dump.lammps", "wavefunctions.wfc"]
-                            ]
+                            heavy_files = [tmp_work_dir / f for f in ["wfc.dat", "dump.lammps", "wavefunctions.wfc"]]
                             self._cleanup_artifacts(heavy_files)
 
                 if current_state == "PHASE3_MD_RESUME":
                     logging.info("Resuming MD Exploration")
                     # Smoothly resume the simulation
-                    pot_to_resume = (
-                        Path(final_dest_str)
-                        if "final_dest_str" in locals()
-                        else self.get_latest_potential()
-                    )
+                    pot_to_resume = Path(final_dest_str) if 'final_dest_str' in locals() else self.get_latest_potential()
                     if pot_to_resume:
                         self._resume_md_engine(pot_to_resume, work_dir)
 

@@ -62,7 +62,7 @@ def test_checkpoint_transaction_rollback(tmp_path: Path, monkeypatch):
 
 
 def test_checkpoint_invalid_db_path(tmp_path: Path):
-    with pytest.raises(ValueError, match="Path outside allowed directories"):
+    with pytest.raises(ValueError, match=".*must reside securely within an allowed base directory.*"):
         # Let's pass an absolute path like /etc/passwd that will definitely fail.
         CheckpointManager(Path("/etc/shadow_db.sqlite"))
 

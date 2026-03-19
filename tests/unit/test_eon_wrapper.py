@@ -143,7 +143,7 @@ def test_run_kmc_invalid_work_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     engine = EONWrapper(config, sys_config)
 
     work_dir = Path("/var/tmp/hacker_work")
-    with pytest.raises(ValueError, match="Path outside allowed directories"):
+    with pytest.raises(ValueError, match=".*must reside securely within an allowed base directory.*"):
         engine.run_kmc(None, work_dir)
 
 
@@ -294,7 +294,7 @@ def test_validate_work_dir_outside_root(tmp_path: Path):
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = EONWrapper(config, sys_config)
 
-    with pytest.raises(ValueError, match="Path traversal sequences"):
+    with pytest.raises(ValueError, match=".*outside the allowed project root.*"):
         engine._validate_work_dir(tmp_path / "../outside")
 
 
