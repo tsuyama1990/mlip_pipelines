@@ -1,1 +1,4 @@
-uv run ruff check . --fix --unsafe-fixes
+#!/bin/bash
+uv run ruff check .
+uv run ruff format .
+uv run mypy .

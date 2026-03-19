@@ -239,11 +239,11 @@ class PacemakerWrapper(AbstractTrainer, BinaryResolverMixin):
             msg = "Invalid regularization format"
             raise ValueError(msg)
 
-        if any(char in self.config.baseline_potential for char in [';', '&', '|', '$', '`']):
+        if any(char in self.config.baseline_potential for char in [";", "&", "|", "$", "`"]):
             msg = "Baseline potential format contains illegal shell characters"
             raise ValueError(msg)
 
-        if any(char in self.config.regularization for char in [';', '&', '|', '$', '`']):
+        if any(char in self.config.regularization for char in [";", "&", "|", "$", "`"]):
             msg = "Regularization format contains illegal shell characters"
             raise ValueError(msg)
 

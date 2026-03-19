@@ -586,6 +586,7 @@ class Orchestrator:
             fcntl.flock(f_lock, fcntl.LOCK_UN)
             f_lock.close()
             import contextlib
+
             with contextlib.suppress(OSError):
                 lock_file.unlink()
 
@@ -888,7 +889,9 @@ class Orchestrator:
                                                     )
                                                 )
                                                 # Update primary oracle with the awakened MACE model
-                                                self.oracle.primary_oracle.mace_model_path = str(new_mace_model)  # type: ignore[attr-defined]
+                                                self.oracle.primary_oracle.mace_model_path = str(
+                                                    new_mace_model
+                                                )
                                         except Exception as e:
                                             logging.warning(f"Finetuning MACE failed: {e}")
 
