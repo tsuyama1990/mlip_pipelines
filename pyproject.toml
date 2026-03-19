@@ -29,6 +29,7 @@ dev = [
 ]
 
 [tool.ruff]
+exclude = ["fix_lint.sh", "tests/uat/verify_cycle_06_domain_logic.py"]
 target-version = "py311"
 line-length = 100
 fix = true

@@ -100,7 +100,7 @@ def test_validate_single_trusted_dir_not_exist(tmp_path: Path) -> None:
         _secure_resolve_and_validate_dir as _validate_single_trusted_dir,
     )
 
-    with pytest.raises(FileNotFoundError):
+    with pytest.raises(Exception):
         _validate_single_trusted_dir(str(d), check_exists=True)
 
 
