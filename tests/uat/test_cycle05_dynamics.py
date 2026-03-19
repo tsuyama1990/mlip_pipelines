@@ -10,10 +10,13 @@ from src.dynamics.dynamics_engine import MDInterface
 
 class SubprocessMockLAMMPS:
     """A realistic test double that simulates LAMMPS execution."""
+
     def __init__(self, mode: str) -> None:
         self.mode = mode
 
-    def __call__(self, cmd: list[str], *args: Any, **kwargs: Any) -> subprocess.CompletedProcess[bytes]:
+    def __call__(
+        self, cmd: list[str], *args: Any, **kwargs: Any
+    ) -> subprocess.CompletedProcess[bytes]:
         work_dir = Path(kwargs.get("cwd", "."))
 
         # Validate LAMMPS command arguments
@@ -83,12 +86,15 @@ def test_uat_05_01_otf_halting(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) 
     monkeypatch.setattr(shutil, "which", lambda *args, **kwargs: str(mock_lmp.resolve()))
 
     from src.domain_models.config import ActiveLearningThresholds
+
     config = DynamicsConfig.model_construct(
         project_root=str(tmp_path),
         md_steps=1000,
         lmp_binary="lmp",
         trusted_directories=[str(mock_bin_dir)],
-        thresholds=ActiveLearningThresholds(threshold_call_dft=5.0, threshold_add_train=0.02, smooth_steps=3)
+        thresholds=ActiveLearningThresholds(
+            threshold_call_dft=5.0, threshold_add_train=0.02, smooth_steps=3
+        ),
     )
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
@@ -139,9 +145,7 @@ def test_uat_05_02_hybrid_potential_safety(monkeypatch: pytest.MonkeyPatch, tmp_
     monkeypatch.setattr(shutil, "which", lambda *args, **kwargs: str(mock_lmp.resolve()))
 
     config = DynamicsConfig.model_construct(
-        project_root=str(tmp_path),
-        lmp_binary="lmp",
-        trusted_directories=[str(mock_bin_dir)]
+        project_root=str(tmp_path), lmp_binary="lmp", trusted_directories=[str(mock_bin_dir)]
     )
     sys_config = SystemConfig(elements=["Fe", "Pt"], baseline_potential="zbl")
     engine = MDInterface(config, sys_config)
