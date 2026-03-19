@@ -16,33 +16,60 @@ class InterfaceTarget(BaseModel):
     face2: str = Field(default="Mg", description="Terminating face of second material")
 
 
-def _check_allowed_base_dirs(resolved_str: str, path_str: str) -> None:
+def _check_allowed_base_dirs(resolved_str: str, path_str: str, check_exists: bool = True) -> None:
+    import os
     import tempfile
 
-    # Use resolve(strict=True) on allowed bases
-    home_dir = str(Path.home().resolve(strict=True))
-    tmp_dir = str(Path(tempfile.gettempdir()).resolve(strict=True))
+    # Use strict absolute path checking right after atomic resolution to prevent TOCTOU
+    canonical_path = Path(os.path.realpath(str(Path(resolved_str).resolve(strict=check_exists))))
+    canonical_str = str(canonical_path)
 
-    # Explicitly check for /app mapping because the tests run within an /app container block
-    app_dir = "/app"
+    import urllib.parse
+
+    decoded_path_str = urllib.parse.unquote(canonical_str)
+    if ".." in decoded_path_str or "%2E%2E" in canonical_str.upper():
+        msg = f"Path traversal sequences (..) are not allowed: {canonical_str}"
+        raise ValueError(msg)
+
+    home_dir = str(Path(os.path.realpath(str(Path.home().resolve(strict=True)))))
+    tmp_dir = str(Path(os.path.realpath(str(Path(tempfile.gettempdir()).resolve(strict=True)))))
+    app_dir = (
+        str(Path(os.path.realpath(str(Path("/app").resolve(strict=True)))))
+        if Path("/app").exists()
+        else ""
+    )
 
     is_safe = False
-    for safe_base in [home_dir, tmp_dir, app_dir]:
-        try:
-            if os.path.commonpath([safe_base, resolved_str]) == safe_base:
-                is_safe = True
-                break
-        except ValueError:
-            pass
+    for safe_base in filter(None, [home_dir, tmp_dir, app_dir]):
+        # Direct string prefix matching on canonicalized absolute paths is atomic-equivalent
+        # for directory bounds checking after Path.resolve()
+        if canonical_str.startswith(safe_base):
+            is_safe = True
+            break
 
     if not is_safe:
         msg = f"Directory {path_str} must reside securely within an allowed base directory (home, tmp, or /app)."
         raise ValueError(msg)
 
-    restricted_prefixes = ["/etc", "/bin", "/usr", "/sbin", "/var", "/lib", "/boot", "/root"]
+    restricted_prefixes = [
+        "/etc",
+        "/bin",
+        "/usr",
+        "/sbin",
+        "/var",
+        "/lib",
+        "/boot",
+        "/root",
+        "/proc",
+        "/sys",
+        "/dev",
+    ]
     for restricted in restricted_prefixes:
         try:
-            is_restricted = os.path.commonpath([restricted, resolved_str]) == restricted
+            restricted_resolved = os.path.realpath(str(Path(restricted).resolve(strict=False)))
+            is_restricted = (
+                os.path.commonpath([restricted_resolved, canonical_str]) == restricted_resolved
+            )
         except ValueError:
             continue
         if is_restricted:
@@ -62,13 +89,47 @@ def _check_ownership_and_perms(resolved: Path, path_str: str) -> None:
 
 
 def _secure_resolve_and_validate_dir(path_str: str, check_exists: bool = True) -> str:
-    # Use realpath for canonicalization
     import os
+    import tempfile
+    import urllib.parse
 
-    canonical_path = Path(os.path.realpath(path_str))
+    if "%" in path_str:
+        msg = f"URL encoded paths are not permitted: {path_str}"
+        raise ValueError(msg)
+
+    # Block unicode variants of slash
+    if "\u2215" in path_str or "\u2044" in path_str:
+        msg = f"Unicode slash variants not allowed: {path_str}"
+        raise ValueError(msg)
+
+    try:
+        canonical_path = Path(os.path.realpath(str(Path(path_str).resolve(strict=check_exists))))
+        canonical_str = str(canonical_path)
+    except Exception as e:
+        if isinstance(e, FileNotFoundError):
+            raise
+        msg = f"Failed to securely resolve directory {path_str}: {e}"
+        raise ValueError(msg) from e
+
+    decoded_path = urllib.parse.unquote(canonical_str)
+    if ".." in decoded_path or "%2E%2E" in canonical_str.upper():
+        msg = f"Path traversal sequences (..) are not allowed: {canonical_str}"
+        raise ValueError(msg)
 
     if not canonical_path.is_absolute():
         msg = f"Directory path must be absolute: {path_str}"
+        raise ValueError(msg)
+
+    tmp_dir = str(Path(os.path.realpath(str(Path(tempfile.gettempdir()).resolve(strict=False)))))
+    home_dir = str(Path(os.path.realpath(str(Path.home().resolve(strict=False)))))
+    app_dir = str(Path(os.path.realpath(str(Path("/app").resolve(strict=False)))))
+
+    if (
+        not canonical_str.startswith(home_dir)
+        and not canonical_str.startswith(app_dir)
+        and not canonical_str.startswith(tmp_dir)
+    ):
+        msg = "Path outside allowed directories"
         raise ValueError(msg)
 
     if check_exists:
@@ -80,12 +141,12 @@ def _secure_resolve_and_validate_dir(path_str: str, check_exists: bool = True) -
             msg = f"Path must be a directory: {path_str}"
             raise ValueError(msg)
 
-    _check_allowed_base_dirs(str(canonical_path), path_str)
+    _check_allowed_base_dirs(canonical_str, path_str, check_exists=check_exists)
 
     if check_exists:
         _check_ownership_and_perms(canonical_path, path_str)
 
-    return str(canonical_path)
+    return canonical_str
 
 
 class SystemConfig(BaseModel):
@@ -101,7 +162,19 @@ class SystemConfig(BaseModel):
         default=0, description="The AL iteration number to inject the generated interface target."
     )
     restricted_directories: list[str] = Field(
-        default_factory=lambda: ["/etc", "/bin", "/usr", "/sbin", "/var", "/lib", "/boot", "/root"],
+        default_factory=lambda: [
+            "/etc",
+            "/bin",
+            "/usr",
+            "/sbin",
+            "/var",
+            "/lib",
+            "/boot",
+            "/root",
+            "/proc",
+            "/sys",
+            "/dev",
+        ],
         description="System directories forbidden from sandbox execution.",
     )
 
@@ -110,9 +183,7 @@ class ActiveLearningThresholds(BaseModel):
     """Two-tier thresholds inspired by FLARE."""
 
     model_config = ConfigDict(extra="forbid")
-    threshold_call_dft: float = Field(
-        default=0.05, description="Global threshold to halt MD and call DFT"
-    )
+    threshold_call_dft: float = Field(default=0.05, description="Threshold to call DFT")
     threshold_add_train: float = Field(
         default=0.02, description="Local threshold to select atoms for training"
     )
@@ -524,41 +595,112 @@ def _validate_env_key(key: str) -> None:
     if len(key) > 64:
         msg = "Environment variable key exceeds maximum length"
         raise ValueError(msg)
-    if not re.match(r"^[A-Z0-9_]+$", key):
+    if any(char in key for char in ["$", "!", ";", "&", "|"]):
+        msg = "Environment variable key contains command injection characters"
+        raise ValueError(msg)
+    if not re.match(r"^MLIP_[A-Z0-9]+$", key):
         msg = f"Invalid characters in .env variable key: {key}"
         raise ValueError(msg)
 
 
 def _validate_env_value(val: str) -> None:
-    # Remove length limit to allow long API keys/URLs/configurations
-    # Expand whitelist to prevent shell injections while allowing ?, &, #, @, %
-    if not re.match(r"^[-a-zA-Z0-9_.:/=,+?&#@%]*$", val):
+    if len(val) > 256:
+        msg = "Environment variable value exceeds maximum length of 256 characters"
+        raise ValueError(msg)
+    if ".." in val:
+        msg = "Path traversal sequences not allowed in .env values"
+        raise ValueError(msg)
+    if any(char in val for char in [";", "&", "|", "$", "!", "`"]):
+        msg = "Environment variable value contains command injection characters"
+        raise ValueError(msg)
+    if not re.match(r"^[a-zA-Z0-9_.+-]+$", val):
         msg = "Invalid characters detected in .env variable value."
         raise ValueError(msg)
 
 
-def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
-    expected_base_resolved = expected_base.resolve(strict=True)
+def _validate_env_permissions_and_size(resolved_env: Path) -> None:
+    import os
+    import stat
 
-    # Allow symlinks, but they must securely resolve within expected_base
-    resolved_env = env_file.resolve(strict=True)
+    if resolved_env.is_symlink():
+        msg = ".env file cannot be a symlink for security reasons"
+        raise ValueError(msg)
 
-    if not resolved_env.is_relative_to(expected_base_resolved):
-        msg = f".env file must reside securely within the allowed base directory: {expected_base}"
+    if not os.access(resolved_env, os.R_OK):
+        msg = "Environment file not readable by current process"
         raise ValueError(msg)
 
     st = os.lstat(resolved_env)
 
-    # Remove the 1KB size limit
-    # Relax ownership check to allow root execution (UID 0) in containerized environments
+    if st.st_size > 10 * 1024:
+        msg = ".env file is too large (max 10KB)."
+        raise ValueError(msg)
+
     current_uid = os.getuid()
-    if st.st_uid not in (current_uid, 0):
-        msg = ".env file is not owned by the current user or root."
+    if st.st_uid != current_uid:
+        msg = f".env file is not owned by the current user. File UID: {st.st_uid}, Current UID: {current_uid}"
         raise ValueError(msg)
 
     if bool(st.st_mode & stat.S_IRWXO) or bool(st.st_mode & stat.S_IRWXG):
         msg = ".env file has insecure permissions. It must not be group or world readable/writable."
         raise ValueError(msg)
+
+
+def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:  # noqa: PLR0912
+    import os
+
+    canonical_base = os.path.realpath(str(expected_base.resolve(strict=True)))
+
+    try:
+        canonical_env = os.path.realpath(str(env_file.resolve(strict=True)))
+    except Exception as e:
+        if isinstance(e, FileNotFoundError):
+            raise
+        msg = f"Failed to securely resolve env file {env_file}: {e}"
+        raise ValueError(msg) from e
+
+    try:
+        common_p = os.path.commonpath([canonical_base, canonical_env])
+    except ValueError as e:
+        # Happens if paths are on different drives
+        msg = f".env file must reside securely within the allowed base directory: {expected_base}"
+        raise ValueError(msg) from e
+
+    if common_p != canonical_base:
+        msg = f".env file must reside securely within the allowed base directory: {expected_base}"
+        raise ValueError(msg)
+
+    restricted_prefixes = [
+        "/etc",
+        "/bin",
+        "/usr",
+        "/sbin",
+        "/var",
+        "/lib",
+        "/boot",
+        "/root",
+        "/proc",
+        "/sys",
+        "/dev",
+    ]
+    for restricted in restricted_prefixes:
+        try:
+            canonical_restricted = os.path.realpath(str(Path(restricted).resolve(strict=False)))
+            is_restricted = (
+                os.path.commonpath([canonical_restricted, canonical_env]) == canonical_restricted
+            )
+        except ValueError:
+            continue
+        if is_restricted:
+            msg = f".env file cannot be a system directory/file: {restricted}"
+            raise ValueError(msg)
+
+    if env_file.is_symlink():
+        msg = ".env file cannot be a symlink for security reasons"
+        raise ValueError(msg)
+
+    resolved_env = Path(canonical_env)
+    _validate_env_permissions_and_size(resolved_env)
 
     # Content validation for malicious patterns before parsing
     with Path.open(resolved_env, "r", encoding="utf-8") as f:
@@ -576,16 +718,10 @@ def _validate_env_file_security(env_file: Path, expected_base: Path) -> Path:
                     raise ValueError(msg)
 
                 val = val.strip()
-                if (
-                    ".." in val
-                    or ";" in val
-                    or "&" in val
-                    or "|" in val
-                    or "$" in val
-                    or "`" in val
-                    or "{" in val
-                    or "}" in val
-                ):
+                if len(val) > 256:
+                    msg = "Value in .env file exceeds maximum length of 256 characters"
+                    raise ValueError(msg)
+                if not re.match(r"^[a-zA-Z0-9_.:/+-]*$", val):
                     msg = f"Invalid characters or traversal sequences in .env file content: {val}"
                     raise ValueError(msg)
 
@@ -609,15 +745,9 @@ class DistillationConfig(BaseModel):
         default="float32", description="Default dtype for MACE (e.g., float32, float64)"
     )
     dispersion: bool = Field(default=False, description="Enable dispersion correction in MACE")
-    temp_dir: str = Field(
-        ..., description="Path to temporary directory for distillation"
-    )
-    output_dir: str = Field(
-        ..., description="Path to save distillation outputs"
-    )
-    model_storage_path: str = Field(
-        ..., description="Path to cache MACE foundation models"
-    )
+    temp_dir: str = Field(..., description="Path to temporary directory for distillation")
+    output_dir: str = Field(..., description="Path to save distillation outputs")
+    model_storage_path: str = Field(..., description="Path to cache MACE foundation models")
 
     @model_validator(mode="after")
     def validate_thresholds_and_samples(self) -> "DistillationConfig":
@@ -649,9 +779,11 @@ class CutoutConfig(BaseModel):
     """Phase 3: Intelligent cutout and passivation configuration."""
 
     model_config = ConfigDict(extra="forbid")
-    core_radius: float = Field(default=3.0, description="Radius for core atoms (force weight 1.0)")
+    core_radius: float = Field(
+        default_factory=lambda: 3.0, description="Radius for core atoms (force weight 1.0)"
+    )
     buffer_radius: float = Field(
-        default=4.0, description="Radius for buffer layer (force weight 0.0)"
+        default_factory=lambda: 4.0, description="Radius for buffer layer (force weight 0.0)"
     )
     enable_pre_relaxation: bool = Field(
         default=True, description="Enable MACE pre-relaxation of buffer"
@@ -659,7 +791,26 @@ class CutoutConfig(BaseModel):
     enable_passivation: bool = Field(
         default=True, description="Enable automatic surface passivation"
     )
-    passivation_element: str = Field(default="H", description="Element used for passivation")
+    passivation_element: str = Field(
+        default_factory=lambda: "H", description="Element used for passivation"
+    )
+    vacuum_size: float = Field(
+        default=10.0, ge=0.0, description="Vacuum padding size in Angstroms for isolated clusters"
+    )
+    pre_relax_fmax: float = Field(
+        default=0.05, gt=0.0, description="Max force convergence criteria for MACE pre-relaxation"
+    )
+    pre_relax_steps: int = Field(
+        default=50, ge=1, description="Maximum number of optimization steps for MACE pre-relaxation"
+    )
+    neighbor_mult: float = Field(
+        default=1.2,
+        gt=0.0,
+        description="Multiplier for natural covalent cutoffs during passivation",
+    )
+    under_coordination_threshold: int = Field(
+        default=5, ge=1, description="Maximum neighbors to trigger passivation"
+    )
 
     @model_validator(mode="after")
     def validate_radii(self) -> "CutoutConfig":
@@ -688,7 +839,7 @@ class LoopStrategyConfig(BaseModel):
         ..., description="Size of history replay buffer to prevent catastrophic forgetting"
     )
     baseline_potential_type: str = Field(
-        default="LJ", description="Baseline physical potential type (e.g., LJ)"
+        default_factory=lambda: "LJ", description="Baseline physical potential type (e.g., LJ)"
     )
     thresholds: ActiveLearningThresholds = Field(default_factory=ActiveLearningThresholds)
     checkpoint_interval: int = Field(
@@ -699,6 +850,16 @@ class LoopStrategyConfig(BaseModel):
     )
     timeout_seconds: int = Field(
         ..., description="Maximum wall-clock timeout in seconds for a complete loop iteration"
+    )
+    allowed_cleanup_extensions: set[str] = Field(
+        default_factory=lambda: {".dat", ".wfc", ".lammps", ".yace"},
+        description="Allowed file extensions for artifact cleanup daemon",
+    )
+    cleanup_size_threshold: int = Field(
+        default=10240, description="Minimum file size in bytes to trigger cleanup"
+    )
+    swap_lock_file: str = Field(
+        default=".swap.lock", description="Filename for directory swap advisory locking"
     )
 
     @model_validator(mode="after")

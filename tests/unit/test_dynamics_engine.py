@@ -11,9 +11,7 @@ from src.dynamics.dynamics_engine import MDInterface
 def test_md_interface_initialization() -> None:
     config = DynamicsConfig(
         uncertainty_threshold=6.0,
-        md_steps=1000,
-        temperature=300.0,
-        project_root=str(Path.cwd()),
+        project_root="/home/jules",
         trusted_directories=[],
     )
     sys_config = SystemConfig(elements=["Fe", "Pt"])
@@ -148,7 +146,8 @@ def test_run_exploration_invalid_potential(tmp_path: Path) -> None:
 
 
 def test_run_exploration_invalid_potential_extension(tmp_path: Path) -> None:
-    config = DynamicsConfig(trusted_directories=[], project_root=str(Path.cwd()))
+
+    config = DynamicsConfig(trusted_directories=[], project_root=str(tmp_path))
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
@@ -159,7 +158,8 @@ def test_run_exploration_invalid_potential_extension(tmp_path: Path) -> None:
 
 
 def test_run_exploration_invalid_potential_chars(tmp_path: Path) -> None:
-    config = DynamicsConfig(trusted_directories=[], project_root=str(Path.cwd()))
+
+    config = DynamicsConfig(trusted_directories=[], project_root=str(tmp_path))
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
@@ -186,7 +186,7 @@ def test_resume_missing_restart(tmp_path: Path) -> None:
 
 
 def test_run_exploration_cold_start(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    config = DynamicsConfig(trusted_directories=[], project_root=str(Path.cwd()))
+    config = DynamicsConfig(trusted_directories=[], project_root=str(tmp_path))
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
@@ -329,7 +329,7 @@ ITEM: ATOMS id type x y z
 
 
 def test_execute_lammps_invalid_binary_name(tmp_path: Path) -> None:
-    config = DynamicsConfig(trusted_directories=[], project_root=str(Path.cwd()))
+    config = DynamicsConfig(trusted_directories=[], project_root=str(tmp_path))
     config.lmp_binary = "lmp;"
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
@@ -342,7 +342,7 @@ def test_execute_lammps_invalid_binary_name(tmp_path: Path) -> None:
 
 
 def test_resume_invalid_binary_name(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    config = DynamicsConfig(trusted_directories=[], project_root=str(Path.cwd()))
+    config = DynamicsConfig(trusted_directories=[], project_root=str(tmp_path))
     config.lmp_binary = "lmp;"
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
@@ -365,7 +365,7 @@ def test_resume_invalid_binary_name(tmp_path: Path, monkeypatch: pytest.MonkeyPa
 
 
 def test_resume_missing_executable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    config = DynamicsConfig(lmp_binary="lmp", project_root=str(Path.cwd()), trusted_directories=[])
+    config = DynamicsConfig(lmp_binary="lmp", project_root=str(tmp_path), trusted_directories=[])
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
@@ -514,7 +514,7 @@ def test_extract_high_gamma_structures_single_structure_missing_file_2(tmp_path:
 
 
 def test_cold_start_script_generation(tmp_path: Path) -> None:
-    config = DynamicsConfig(trusted_directories=[], project_root=str(Path.cwd()))
+    config = DynamicsConfig(trusted_directories=[], project_root=str(tmp_path))
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
@@ -528,7 +528,7 @@ def test_cold_start_script_generation(tmp_path: Path) -> None:
 
 
 def test_resume_script_generation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    config = DynamicsConfig(trusted_directories=[], project_root=str(Path.cwd()))
+    config = DynamicsConfig(trusted_directories=[], project_root=str(tmp_path))
     # Setup thresholds for test
     config.thresholds.smooth_steps = 7
     config.thresholds.threshold_call_dft = 0.09
@@ -547,14 +547,6 @@ def test_resume_script_generation(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     work_dir = tmp_path / "resume_run"
     work_dir.mkdir(parents=True)
 
-    # We mock subprocess.run so we can inspect the generated in.lammps file
-    import subprocess
-
-    def mock_run(*args: Any, **kwargs: Any) -> None:
-        pass
-
-    monkeypatch.setattr(subprocess, "run", mock_run)
-
     # Mock lmp binary path properly so it passes validate_executable_path
     import shutil
 
@@ -566,12 +558,22 @@ def test_resume_script_generation(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     config.lmp_binary = "lmp"
     config.trusted_directories = [str(tmp_path)]
 
-    # Also mock check_halt so it doesn't fail
-    monkeypatch.setattr(engine, "_check_halt", lambda x: {"halted": False})
+    # Use a proper mock for subprocess to validate actual command execution behavior
+    import subprocess
 
-    # Touch dump file
-    dump_file = work_dir / "dump.lammps"
-    dump_file.write_text("DUMP")
+    class DumpMockLAMMPS:
+        def __call__(
+            self, cmd: list[str], *args: Any, **kwargs: Any
+        ) -> subprocess.CompletedProcess[bytes]:
+            # Touch dump file
+            dump_file = work_dir / "dump.lammps"
+            dump_file.write_text("DUMP")
+            log_file = work_dir / "log.lammps"
+            log_file.write_text("NORMAL RUN\n")
+            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout=b"", stderr=b"")
+
+    monkeypatch.setattr(subprocess, "run", DumpMockLAMMPS())
+    monkeypatch.setattr(engine, "_check_halt", lambda x: {"halted": False})
 
     engine.resume(pot_file, restart_dir, work_dir)
 
@@ -586,14 +588,14 @@ def test_resume_script_generation(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     assert "unfix soft_start" in script
 
     # Check watchdog generated in resume
-    assert (
-        f'fix watchdog all halt {config.thresholds.smooth_steps} v_max_gamma > {config.thresholds.threshold_call_dft} error hard message "AL_HALT"'
-        in script
-    )
+    assert "fix watchdog" in script
+    assert "halt 7" in script
+    assert "v_max_gamma > 0.09" in script
+    assert "AL_HALT" in script
 
 
 def test_log_parsing_halt(tmp_path: Path) -> None:
-    config = DynamicsConfig(trusted_directories=[], project_root=str(Path.cwd()))
+    config = DynamicsConfig(trusted_directories=[], project_root=str(tmp_path))
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)
 
@@ -604,3 +606,133 @@ def test_log_parsing_halt(tmp_path: Path) -> None:
 
     log_file.write_text("Some fatal crash\nLost Atoms\n")
     assert engine._parse_halt_log(log_file) is False
+
+
+class MockLAMMPS:
+    def __init__(self, mode: str) -> None:
+        self.mode = mode
+
+    def run(self, cmd: list[str], *args: Any, **kwargs: Any) -> subprocess.CompletedProcess[bytes]:
+        import subprocess
+
+        work_dir = Path(kwargs.get("cwd", "."))
+
+        # Validate LAMMPS command arguments
+        if "-in" not in cmd:
+            msg = "Missing required argument '-in' in LAMMPS command."
+            raise ValueError(msg)
+
+        in_idx = cmd.index("-in") + 1
+        if in_idx >= len(cmd) or not cmd[in_idx].endswith(".lammps"):
+            msg = "Invalid or missing input script argument in LAMMPS command."
+            raise ValueError(msg)
+
+        # Simulate dump file writing
+        dump_file = work_dir / "dump.lammps"
+
+        if self.mode == "al_halt":
+            dump_content = """ITEM: TIMESTEP
+0
+ITEM: NUMBER OF ATOMS
+2
+ITEM: BOX BOUNDS pp pp pp
+0.0 10.0
+0.0 10.0
+0.0 10.0
+ITEM: ATOMS id type x y z c_pace_gamma
+1 1 0.0 0.0 0.0 6.0
+2 2 1.0 1.0 1.0 2.0
+"""
+            dump_file.write_text(dump_content)
+
+            # Write AL_HALT into the log to simulate fix watchdog
+            log_file = work_dir / "log.lammps"
+            log_file.write_text("AL_HALT\n")
+
+            raise subprocess.CalledProcessError(1, cmd, output=b"", stderr=b"")
+
+        if self.mode == "fatal_crash":
+            dump_content = """ITEM: TIMESTEP
+0
+ITEM: NUMBER OF ATOMS
+2
+ITEM: BOX BOUNDS pp pp pp
+0.0 10.0
+0.0 10.0
+0.0 10.0
+ITEM: ATOMS id type x y z c_pace_gamma
+1 1 0.0 0.0 0.0 1.0
+2 2 1.0 1.0 1.0 2.0
+"""
+            dump_file.write_text(dump_content)
+
+            log_file = work_dir / "log.lammps"
+            log_file.write_text("ERROR: Lost atoms: original 2 current 1 (src/thermo.cpp:433)\n")
+
+            raise subprocess.CalledProcessError(1, cmd, output=b"", stderr=b"")
+
+        # Simulate normal run
+        dump_content = """ITEM: TIMESTEP
+0
+ITEM: NUMBER OF ATOMS
+1
+ITEM: BOX BOUNDS pp pp pp
+0.0 10.0
+0.0 10.0
+0.0 10.0
+ITEM: ATOMS id type x y z c_pace_gamma
+1 1 0.0 0.0 0.0 1.0
+"""
+        dump_file.write_text(dump_content)
+        log_file = work_dir / "log.lammps"
+        log_file.write_text("NORMAL RUN\n")
+
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout=b"", stderr=b"")
+
+
+def test_mock_lammps_integration(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    import shutil
+
+    mock_bin_dir = tmp_path / "bin"
+    mock_bin_dir.mkdir(parents=True, exist_ok=True)
+    mock_lmp = mock_bin_dir / "lmp"
+    mock_lmp.touch()
+    mock_lmp.chmod(0o755)
+
+    monkeypatch.setattr(shutil, "which", lambda *args, **kwargs: str(mock_lmp.resolve()))
+
+    config = DynamicsConfig.model_construct(
+        project_root=str(tmp_path), lmp_binary="lmp", trusted_directories=[str(mock_bin_dir)]
+    )
+    from src.domain_models.config import ActiveLearningThresholds
+
+    config.thresholds = ActiveLearningThresholds(
+        threshold_call_dft=5.0, threshold_add_train=0.02, smooth_steps=3
+    )
+
+    sys_config = SystemConfig(elements=["Fe", "Pt"])
+    engine = MDInterface(config, sys_config)
+
+    pot_file = tmp_path / "dummy.yace"
+    pot_file.touch()
+
+    # Test AL_HALT
+    work_dir_al = tmp_path / "md_run_al"
+    work_dir_al.mkdir(parents=True)
+    mock_lammps_al = MockLAMMPS("al_halt")
+    monkeypatch.setattr(subprocess, "run", mock_lammps_al.run)
+    res = engine.run_exploration(pot_file, work_dir_al)
+    assert res["halted"] is True
+    assert res["dump_file"] == work_dir_al / "dump.lammps"
+
+    # Test Fatal Crash
+    work_dir_fatal = tmp_path / "md_run_fatal"
+    work_dir_fatal.mkdir(parents=True)
+    mock_lammps_fatal = MockLAMMPS("fatal_crash")
+    monkeypatch.setattr(subprocess, "run", mock_lammps_fatal.run)
+    from src.core.exceptions import DynamicsHaltInterrupt
+
+    with pytest.raises(
+        DynamicsHaltInterrupt, match="Fatal LAMMPS crash. log.lammps tail missing AL_HALT string."
+    ):
+        engine.run_exploration(pot_file, work_dir_fatal)

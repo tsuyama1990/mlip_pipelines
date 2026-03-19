@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 from ase import Atoms
@@ -127,7 +128,8 @@ def test_main_empty_input_mock_pyacemaker(monkeypatch: pytest.MonkeyPatch, tmp_p
 
     # mock sys.modules to simulate pyacemaker import
     class DummyCalc:
-        pass
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            self.loaded = True
 
     import sys
 
@@ -145,7 +147,6 @@ def test_main_empty_input_mock_pyacemaker(monkeypatch: pytest.MonkeyPatch, tmp_p
 
 def test_main_with_potential(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     import sys
-    import typing
 
     extxyz_data = """1
 Lattice="5.0 0.0 0.0 0.0 5.0 0.0 0.0 0.0 5.0" Properties=species:S:1:pos:R:3 pbc="T T T"
@@ -179,8 +180,8 @@ Fe       0.00000000       0.00000000       0.00000000
 
     # mock sys.modules to simulate pyacemaker import
     class DummyCalc:
-        def __init__(self, *args: typing.Any, **kwargs: typing.Any) -> None:
-            pass
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            self.loaded = True
 
     class MockPyacemakerModule:
         pyacemaker = DummyCalc
@@ -203,7 +204,6 @@ def test_main_with_potential_exception(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture
 ):
     import sys
-    import typing
 
     extxyz_data = """1
 Lattice="5.0 0.0 0.0 0.0 5.0 0.0 0.0 0.0 5.0" Properties=species:S:1:pos:R:3 pbc="T T T"
@@ -237,8 +237,8 @@ Fe       0.00000000       0.00000000       0.00000000
 
     # mock sys.modules to simulate pyacemaker import
     class DummyCalc:
-        def __init__(self, *args: typing.Any, **kwargs: typing.Any) -> None:
-            pass
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            self.loaded = True
 
     import sys
 
@@ -271,17 +271,16 @@ def test_read_coordinates_from_stdin_no_ase(
 
     # Mock import error for ase
     import builtins
-    import typing
 
     real_import = builtins.__import__
 
     def mock_import(
         name: str,
-        globals_: typing.Any = None,
-        locals_: typing.Any = None,
+        globals_: Any = None,
+        locals_: Any = None,
         fromlist: tuple = (),
         level: int = 0,
-    ) -> typing.Any:
+    ) -> Any:
         if name in {"ase", "ase.io"}:
             msg = "ase is not available"
             raise ImportError(msg)
@@ -323,17 +322,16 @@ def test_main_no_pyacemaker(monkeypatch: pytest.MonkeyPatch, capsys: pytest.Capt
         del sys.modules["pyacemaker.calculator"]
 
     import builtins
-    import typing
 
     real_import = builtins.__import__
 
     def mock_import(
         name: str,
-        globals_: typing.Any = None,
-        locals_: typing.Any = None,
+        globals_: Any = None,
+        locals_: Any = None,
         fromlist: tuple = (),
         level: int = 0,
-    ) -> typing.Any:
+    ) -> Any:
         if "pyacemaker" in name:
             msg = "pyacemaker is not available"
             raise ImportError(msg)

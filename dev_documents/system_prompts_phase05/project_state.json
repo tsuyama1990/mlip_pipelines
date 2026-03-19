@@ -1,0 +1,87 @@
+{
+  "project_session_id": "sessions/4570190131432534783",
+  "feature_branch": "dev/int-20260318-0052",
+  "integration_branch": "dev/int-20260318-0052",
+  "qa_session_id": "sessions/14733308637693167843",
+  "cycles": [
+    {
+      "id": "01",
+      "status": "completed",
+      "branch_name": null,
+      "jules_session_id": "sessions/1811339394323965345",
+      "current_iteration": 1,
+      "pr_url": null,
+      "last_error": null,
+      "session_restart_count": 0,
+      "max_session_restarts": 2,
+      "created_at": "2026-03-18T01:25:07.096433Z",
+      "updated_at": "2026-03-18T04:25:55.702850Z"
+    },
+    {
+      "id": "02",
+      "status": "completed",
+      "branch_name": null,
+      "jules_session_id": "sessions/17500538166116071456",
+      "current_iteration": 1,
+      "pr_url": null,
+      "last_error": "Jules Session Failed: Unknown error",
+      "session_restart_count": 0,
+      "max_session_restarts": 2,
+      "created_at": "2026-03-18T01:25:07.096448Z",
+      "updated_at": "2026-03-18T06:48:44.801768Z"
+    },
+    {
+      "id": "03",
+      "status": "completed",
+      "branch_name": null,
+      "jules_session_id": "sessions/3051212409515243454",
+      "current_iteration": 1,
+      "pr_url": null,
+      "last_error": null,
+      "session_restart_count": 0,
+      "max_session_restarts": 2,
+      "created_at": "2026-03-18T01:25:07.096453Z",
+      "updated_at": "2026-03-18T10:33:04.697283Z"
+    },
+    {
+      "id": "04",
+      "status": "completed",
+      "branch_name": null,
+      "jules_session_id": "sessions/1721855068178546990",
+      "current_iteration": 1,
+      "pr_url": null,
+      "last_error": null,
+      "session_restart_count": 0,
+      "max_session_restarts": 2,
+      "created_at": "2026-03-18T01:25:07.096457Z",
+      "updated_at": "2026-03-18T12:48:47.609174Z"
+    },
+    {
+      "id": "05",
+      "status": "completed",
+      "branch_name": null,
+      "jules_session_id": "sessions/18074224072260855306",
+      "current_iteration": 1,
+      "pr_url": null,
+      "last_error": null,
+      "session_restart_count": 0,
+      "max_session_restarts": 2,
+      "created_at": "2026-03-18T01:25:07.096461Z",
+      "updated_at": "2026-03-18T17:48:59.889314Z"
+    },
+    {
+      "id": "06",
+      "status": "completed",
+      "branch_name": null,
+      "jules_session_id": "sessions/5455894717209011338",
+      "current_iteration": 1,
+      "pr_url": null,
+      "last_error": null,
+      "session_restart_count": 0,
+      "max_session_restarts": 2,
+      "created_at": "2026-03-18T01:25:07.096464Z",
+      "updated_at": "2026-03-19T02:03:51.374320Z"
+    }
+  ],
+  "last_updated": "2026-03-19T02:26:42.382588Z"
+}

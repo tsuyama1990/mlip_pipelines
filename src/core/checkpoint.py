@@ -26,18 +26,16 @@ class CheckpointManager:
         self._init_db()
 
     def _init_db(self) -> None:
-        """Initializes the SQLite database with isolation_level=None for autocommit."""
+        """Initializes the SQLite database with isolation_level="IMMEDIATE" for autocommit."""
         try:
             # We use IMMEDIATE to grab an exclusive lock early, but we still need autocommit
             # so we let the context manager handle the transaction.
-            # Using isolation_level=None means autocommit mode.
-            with sqlite3.connect(self.db_path, isolation_level=None) as conn:
-                # We can't use 'IMMEDIATE' natively with context manager if isolation_level=None
+            # Using isolation_level="IMMEDIATE" means autocommit mode.
+            with sqlite3.connect(self.db_path, isolation_level="IMMEDIATE") as conn:
+                # We can't use 'IMMEDIATE' natively with context manager if isolation_level="IMMEDIATE"
                 # but we can execute standard queries safely.
                 # If we want transactions, we manage them manually, or just rely on autocommit.
-                conn.execute(
-                    "CREATE TABLE IF NOT EXISTS state (key TEXT PRIMARY KEY, value TEXT)"
-                )
+                conn.execute("CREATE TABLE IF NOT EXISTS state (key TEXT PRIMARY KEY, value TEXT)")
         except sqlite3.OperationalError as e:
             msg = f"Failed to initialize checkpoint database at {self.db_path}: {e}"
             logger.exception(msg)
@@ -52,7 +50,7 @@ class CheckpointManager:
         """
         try:
             serialized = json.dumps(value)
-            with sqlite3.connect(self.db_path, isolation_level=None) as conn:
+            with sqlite3.connect(self.db_path, isolation_level="IMMEDIATE") as conn:
                 conn.execute(
                     "INSERT OR REPLACE INTO state (key, value) VALUES (?, ?)",
                     (key, serialized),
@@ -72,7 +70,7 @@ class CheckpointManager:
             The JSON-deserialized value, or None if the key does not exist.
         """
         try:
-            with sqlite3.connect(self.db_path, isolation_level=None) as conn:
+            with sqlite3.connect(self.db_path, isolation_level="IMMEDIATE") as conn:
                 cursor = conn.execute("SELECT value FROM state WHERE key = ?", (key,))
                 row = cursor.fetchone()
                 if row is None:

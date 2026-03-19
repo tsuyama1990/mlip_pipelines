@@ -26,9 +26,11 @@ def test_full_pipeline_skeleton(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     )
 
     # Touch a README.md to satisfy project root validation
+
     (tmp_path / "README.md").touch()
 
     from src.domain_models.config import CutoutConfig, DistillationConfig, LoopStrategyConfig
+
     config = ProjectConfig(
         system=SystemConfig(elements=["Fe", "Pt"], baseline_potential="zbl"),
         dynamics=DynamicsConfig(
@@ -41,8 +43,12 @@ def test_full_pipeline_skeleton(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
         trainer=TrainerConfig(max_epochs=2, active_set_size=10, trusted_directories=[]),
         validator=ValidatorConfig(energy_rmse_threshold=0.05),
         project_root=tmp_path,
-        distillation_config=DistillationConfig(temp_dir=str(tmp_path), output_dir=str(tmp_path), model_storage_path=str(tmp_path)),
-        loop_strategy=LoopStrategyConfig(replay_buffer_size=1000, checkpoint_interval=5, timeout_seconds=3600),
+        distillation_config=DistillationConfig(
+            temp_dir=str(tmp_path), output_dir=str(tmp_path), model_storage_path=str(tmp_path)
+        ),
+        loop_strategy=LoopStrategyConfig(
+            replay_buffer_size=1000, checkpoint_interval=5, timeout_seconds=3600
+        ),
         cutout_config=CutoutConfig(),
     )
 

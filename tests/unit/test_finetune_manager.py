@@ -10,8 +10,11 @@ from src.trainers.finetune_manager import FinetuneManager
 
 
 @pytest.fixture
-def mock_config():
-    return TrainerConfig(trusted_directories=[])
+def mock_config(tmp_path):
+    import os
+
+    os.chown(tmp_path, os.getuid(), os.getgid())
+    return TrainerConfig(trusted_directories=[str(tmp_path.resolve(strict=False))])
 
 
 @pytest.fixture
@@ -75,12 +78,16 @@ def test_finetune_mace_no_model_produced(finetune_manager, tmp_path, monkeypatch
     monkeypatch.setattr(subprocess, "run", mock_run)
 
     with patch.object(finetune_manager, "_resolve_binary_path", return_value="mace_run_train"):
-        with pytest.raises(RuntimeError, match="mace_run_train completed but failed to produce a .model file."):
+        with pytest.raises(
+            RuntimeError, match="mace_run_train completed but failed to produce a .model file."
+        ):
             finetune_manager.finetune_mace(structures, "base.model", output_path)
 
 
 @patch("shutil.rmtree")
-def test_finetune_mace_permission_error_cleanup(mock_rmtree, finetune_manager, tmp_path, monkeypatch):
+def test_finetune_mace_permission_error_cleanup(
+    mock_rmtree, finetune_manager, tmp_path, monkeypatch
+):
     structures = [Atoms("Fe", positions=[(0, 0, 0)])]
     output_path = tmp_path / "output_model"
 
@@ -112,6 +119,7 @@ def test_finetune_mace_permission_error_cleanup(mock_rmtree, finetune_manager, t
     with patch.object(finetune_manager, "_resolve_binary_path", return_value="mace_run_train"):
         with patch("logging.warning"):
             import contextlib
+
             with contextlib.suppress(PermissionError):
                 result_path = finetune_manager.finetune_mace(structures, "base.model", output_path)
 

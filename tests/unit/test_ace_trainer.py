@@ -57,6 +57,7 @@ def test_select_local_active_set(monkeypatch: pytest.MonkeyPatch) -> None:
             return MockProcess(args=cmd, returncode=1, stdout="", stderr="Input file not found")
 
         from ase.io import write
+
         write(str(out_file), [anchor, *candidates[:4]], format="extxyz")
 
         return MockProcess(args=cmd, returncode=0, stdout="Success", stderr="")
@@ -288,13 +289,14 @@ class TestACETrainer:
         new_atoms = [Atoms("Fe", positions=[(i, 0, 0)]) for i in range(3)]
 
         # Sample with buffer_size = 5
-        combined = ace_trainer._manage_replay_buffer(new_atoms, history_file, buffer_size=5)
+        combined = ace_trainer.manage_replay_buffer(new_atoms, history_file, buffer_size=5)
 
         # Combined should be 5 + 3 = 8
         assert len(combined) == 8
 
         # History file should now have 13 atoms
         from ase.io import read
+
         updated_history = read(str(history_file), index=":")
         assert len(updated_history) == 13
 
@@ -312,7 +314,7 @@ class TestACETrainer:
         new_atoms = [Atoms("Fe", positions=[(i, 0, 0)]) for i in range(3)]
 
         # Sample with buffer_size = 5
-        combined = ace_trainer._manage_replay_buffer(new_atoms, history_file, buffer_size=5)
+        combined = ace_trainer.manage_replay_buffer(new_atoms, history_file, buffer_size=5)
 
         # Combined should be 2 + 3 = 5
         assert len(combined) == 5
