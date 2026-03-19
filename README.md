@@ -24,10 +24,37 @@ uv sync
 ```
 
 ## Usage
-PyAcemaker is fully automated and designed to run persistently in the background. To initiate the simulation workflow with active learning:
+PyAcemaker is fully automated and designed to run persistently in the background. To initiate the simulation workflow with active learning, check out the provided interactive Marimo tutorials:
 
 ```bash
-uv run python src/core/orchestrator.py
+uv run marimo run tutorials/FePt_MgO_interface_energy.py
+```
+
+Or run them headlessly:
+
+```bash
+uv run python tutorials/FePt_MgO_interface_energy.py
+```
+
+### Quick Start Example
+```python
+import tempfile
+from pathlib import Path
+from src.domain_models.config import ProjectConfig, SystemConfig, DynamicsConfig
+from src.core.orchestrator import Orchestrator
+
+tmp_dir = Path(tempfile.mkdtemp())
+(tmp_dir / "pyproject.toml").touch()
+
+config = ProjectConfig(
+    project_root=tmp_dir,
+    system=SystemConfig(elements=["Fe", "Pt", "Mg", "O"]),
+    dynamics=DynamicsConfig(project_root=str(tmp_dir), trusted_directories=[]),
+    # Add your preferred component configs here
+)
+
+orchestrator = Orchestrator(config)
+orchestrator.run_cycle()
 ```
 
 ## Project Structure
