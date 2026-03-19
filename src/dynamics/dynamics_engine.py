@@ -27,6 +27,7 @@ class MDInterface(AbstractDynamics):
 
     def _write_cold_start_input(self, tmp_in_file: Any, dump_name: str, work_dir: Path) -> None:
         from src.domain_models.config import _secure_resolve_and_validate_dir
+
         _secure_resolve_and_validate_dir(str(work_dir), check_exists=False)
         import string
 
@@ -105,6 +106,7 @@ write_data ${work_dir_str}/data.lammps
             raise ValueError(msg)
 
         import os
+
         pot_real = os.path.realpath(str(potential))
         if ".." in pot_real:
             msg = f"Path traversal characters detected in potential path: {potential}"
@@ -125,6 +127,7 @@ write_data ${work_dir_str}/data.lammps
         self, tmp_in_file: Any, potential: Path, dump_name: str, work_dir: Path
     ) -> None:
         from src.domain_models.config import _secure_resolve_and_validate_dir
+
         _secure_resolve_and_validate_dir(str(work_dir), check_exists=False)
         import string
 
@@ -345,6 +348,7 @@ write_data ${work_dir_str}/data.lammps
         work_dir: Path,
     ) -> None:
         from src.domain_models.config import _secure_resolve_and_validate_dir
+
         _secure_resolve_and_validate_dir(str(work_dir), check_exists=False)
         import string
 
