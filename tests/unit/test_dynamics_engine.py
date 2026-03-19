@@ -560,8 +560,11 @@ def test_resume_script_generation(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
 
     # Use a proper mock for subprocess to validate actual command execution behavior
     import subprocess
+
     class DumpMockLAMMPS:
-        def __call__(self, cmd: list[str], *args: Any, **kwargs: Any) -> subprocess.CompletedProcess[bytes]:
+        def __call__(
+            self, cmd: list[str], *args: Any, **kwargs: Any
+        ) -> subprocess.CompletedProcess[bytes]:
             # Touch dump file
             dump_file = work_dir / "dump.lammps"
             dump_file.write_text("DUMP")
@@ -689,6 +692,7 @@ ITEM: ATOMS id type x y z c_pace_gamma
 
 def test_mock_lammps_integration(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     import shutil
+
     mock_bin_dir = tmp_path / "bin"
     mock_bin_dir.mkdir(parents=True, exist_ok=True)
     mock_lmp = mock_bin_dir / "lmp"
@@ -698,12 +702,13 @@ def test_mock_lammps_integration(monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     monkeypatch.setattr(shutil, "which", lambda *args, **kwargs: str(mock_lmp.resolve()))
 
     config = DynamicsConfig.model_construct(
-        project_root=str(tmp_path),
-        lmp_binary="lmp",
-        trusted_directories=[str(mock_bin_dir)]
+        project_root=str(tmp_path), lmp_binary="lmp", trusted_directories=[str(mock_bin_dir)]
     )
     from src.domain_models.config import ActiveLearningThresholds
-    config.thresholds = ActiveLearningThresholds(threshold_call_dft=5.0, threshold_add_train=0.02, smooth_steps=3)
+
+    config.thresholds = ActiveLearningThresholds(
+        threshold_call_dft=5.0, threshold_add_train=0.02, smooth_steps=3
+    )
 
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = MDInterface(config, sys_config)

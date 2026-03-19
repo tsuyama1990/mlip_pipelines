@@ -137,8 +137,11 @@ def test_project_config_env_value() -> None:
     with pytest.raises(ValueError, match=".*contains command injection characters.*"):
         _validate_env_value("value; rm -rf")
 
-    # "../secret" is now valid under the relaxed r"^[-a-zA-Z0-9_.:/=,+]*$" rule
-    # and no longer triggers a ValueError in _validate_env_value itself
+    with pytest.raises(ValueError, match=".*Path traversal sequences not allowed.*"):
+        _validate_env_value("../secret")
+
+    with pytest.raises(ValueError, match=".*Backslashes are not allowed.*"):
+        _validate_env_value("value\\with\\backslash")
 
 
 def test_project_config_env_file_security(tmp_path: Path) -> None:
