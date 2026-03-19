@@ -294,7 +294,9 @@ def test_validate_work_dir_outside_root(tmp_path: Path):
     sys_config = SystemConfig(elements=["Fe", "Pt"])
     engine = EONWrapper(config, sys_config)
 
-    with pytest.raises(ValueError, match="Path traversal sequences"):
+    with pytest.raises(
+        ValueError, match="Working directory .* is outside the allowed project root."
+    ):
         engine._validate_work_dir(tmp_path / "../outside")
 
 

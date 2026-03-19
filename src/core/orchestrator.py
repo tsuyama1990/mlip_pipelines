@@ -73,7 +73,6 @@ class Orchestrator:
     def resume_state(self) -> None:
         """Scans the potentials directory to find the highest completed iteration."""
         import re
-        import shutil
 
         pot_dir = self.config.project_root / "potentials"
         if not pot_dir.exists():
@@ -331,8 +330,6 @@ class Orchestrator:
         data_dir.mkdir(parents=True, exist_ok=True)
 
         # Isolate this specific iteration's new data into a temporary batch file
-        import os
-        import tempfile
 
         from ase.io import read, write
 
@@ -409,9 +406,8 @@ class Orchestrator:
     def _secure_copy_potential(
         self, src_pot: Path, pot_dir: Path, iteration: int, tmp_work_dir: Path
     ) -> Path:
+        import fcntl
         import hashlib
-        import os
-        import tempfile
 
         from src.domain_models.config import _secure_resolve_and_validate_dir
 
@@ -423,7 +419,7 @@ class Orchestrator:
             msg = "Source potential file missing or invalid"
             raise FileNotFoundError(msg)
 
-        resolved_src = src_pot.resolve(strict=True)
+        resolved_src = Path(os.path.realpath(str(src_pot.resolve(strict=True))))
 
         if not re.match(r"^[a-zA-Z0-9_]+\.yace$", src_pot.name) or src_pot.name.startswith("-"):
             msg = "Source potential file must have a valid .yace filename format"
@@ -435,8 +431,7 @@ class Orchestrator:
         allowed_src_dir = os.path.realpath(str(tmp_work_dir.resolve(strict=True)))
         try:
             is_valid_path = (
-                os.path.commonpath([allowed_src_dir, os.path.realpath(str(resolved_src))])
-                == allowed_src_dir
+                os.path.commonpath([allowed_src_dir, str(resolved_src)]) == allowed_src_dir
             )
         except ValueError:
             is_valid_path = False
@@ -449,16 +444,6 @@ class Orchestrator:
             msg = "Security Violation: Path depth exceeds maximum allowed limit of 50."
             raise ValueError(msg)
 
-        if src_pot.is_symlink():
-            target = os.path.realpath(str(src_pot.resolve(strict=True)))
-            try:
-                if os.path.commonpath([allowed_src_dir, target]) != allowed_src_dir:
-                    msg = "Symlink target outside allowed directory"
-                    raise ValueError(msg)
-            except ValueError as e:
-                msg = "Symlink target outside allowed directory"
-                raise ValueError(msg) from e
-
         pot_dir.mkdir(parents=True, exist_ok=True)
         resolved_pot_dir = pot_dir.resolve()
         final_dest = resolved_pot_dir / f"generation_{iteration:03d}.yace"
@@ -470,6 +455,7 @@ class Orchestrator:
             raise ValueError(msg)
 
         # Secure cross-filesystem atomic copy with streaming hash avoiding TOCTOU attacks
+        # Using advisory lock on source to prevent race conditions during copy
         try:
             fd, tmp_path_str = tempfile.mkstemp(dir=str(resolved_pot_dir), prefix=".tmp_pot_")
             tmp_path = Path(tmp_path_str)
@@ -481,9 +467,14 @@ class Orchestrator:
                 # Open source file with O_RDONLY and O_NOFOLLOW to ensure we're reading exactly the validated file
                 src_fd = os.open(resolved_src, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
                 with os.fdopen(fd, "wb") as f_out, os.fdopen(src_fd, "rb") as f_in:
-                    for chunk in iter(lambda: f_in.read(8192), b""):
-                        sha256_src.update(chunk)
-                        f_out.write(chunk)
+                    # Advisory lock on source file
+                    fcntl.flock(f_in.fileno(), fcntl.LOCK_SH)
+                    try:
+                        for chunk in iter(lambda: f_in.read(8192), b""):
+                            sha256_src.update(chunk)
+                            f_out.write(chunk)
+                    finally:
+                        fcntl.flock(f_in.fileno(), fcntl.LOCK_UN)
 
                 expected_hash = sha256_src.hexdigest()
 
@@ -529,7 +520,7 @@ class Orchestrator:
         _secure_resolve_and_validate_dir(str(tmp_work_dir), check_exists=False)
         _secure_resolve_and_validate_dir(str(work_dir), check_exists=False)
         import fcntl
-        import shutil
+        import time
 
         # To prevent race conditions and cross-filesystem issues, we will just use a direct copytree
         # onto a temporary resolved destination, then perform an atomic rename.
@@ -537,7 +528,6 @@ class Orchestrator:
 
         lock_name = getattr(self.config.loop_strategy, "swap_lock_file", ".swap.lock")
         lock_file = final_dest.parent / lock_name
-        import time
 
         lock_acquired = False
         timeout = 60.0
@@ -566,15 +556,17 @@ class Orchestrator:
                 # Atomic swap
                 if final_dest.exists():
                     backup_dest = temp_swap / "backup"
+                    # Path.rename is atomic when both paths are on the same filesystem
                     Path(final_dest).rename(backup_dest)
                     try:
                         Path(temp_swap / "new_work").rename(final_dest)
                     except Exception:
                         # Rollback
-                        if final_dest.exists():
-                            Path(backup_dest).replace(final_dest)
-                        else:
+                        try:
                             Path(backup_dest).rename(final_dest)
+                        except OSError as rollback_err:
+                            msg = f"Rollback failed during directory swap! System may be in inconsistent state: {rollback_err}"
+                            logging.critical(msg)
                         raise
                 else:
                     Path(temp_swap / "new_work").rename(final_dest)
@@ -586,6 +578,7 @@ class Orchestrator:
             fcntl.flock(f_lock, fcntl.LOCK_UN)
             f_lock.close()
             import contextlib
+
             with contextlib.suppress(OSError):
                 lock_file.unlink()
 
@@ -681,11 +674,14 @@ class Orchestrator:
 
     def _cleanup_artifacts(self, paths: list[Path]) -> None:
         """Daemon to aggressively clean up huge files to prevent HPC quota breaches."""
-        import os
 
         # Authorized base path for cleanups
         active_learning_dir_str = str(
-            (self.config.project_root / "active_learning").resolve(strict=False)
+            Path(
+                os.path.realpath(
+                    str((self.config.project_root / "active_learning").resolve(strict=False))
+                )
+            )
         )
         allowed_extensions = getattr(
             self.config.loop_strategy,
@@ -701,21 +697,35 @@ class Orchestrator:
                 if not path.exists() or not path.is_file():
                     continue
 
-                canonical_path = path.resolve(strict=True)
+                # Ensure we resolve symlinks completely
+                canonical_path = Path(os.path.realpath(str(path.resolve(strict=True))))
                 canonical_str = str(canonical_path)
 
-                # Extension whitelist validation
-                if (
-                    canonical_path.suffix not in allowed_extensions
-                    and canonical_path.name != "dump.lammps"
-                ):
+                # Robust extension check: make sure the entire suffix matches exactly
+                # Check actual filename against complete list of explicit exceptions
+                has_allowed_ext = False
+                for ext in allowed_extensions:
+                    if canonical_path.name.endswith(ext):
+                        has_allowed_ext = True
+                        break
+
+                if not has_allowed_ext and canonical_path.name != "dump.lammps":
                     logging.warning(
                         f"Validation Error: Refusing to delete file with unauthorized extension: {canonical_str}"
                     )
                     continue
 
                 # Ensure path is strictly within the allowed directory
-                if not canonical_str.startswith(active_learning_dir_str):
+                # Check based on exact active_learning directory bounds
+                try:
+                    is_within_bounds = (
+                        os.path.commonpath([active_learning_dir_str, canonical_str])
+                        == active_learning_dir_str
+                    )
+                except ValueError:
+                    is_within_bounds = False
+
+                if not is_within_bounds:
                     logging.warning(
                         f"Security Violation: Refusing to delete artifact outside active_learning directory: {canonical_str}"
                     )
@@ -755,7 +765,6 @@ class Orchestrator:
 
     def run_cycle(self) -> str | None:  # noqa: PLR0911
         """Runs the 4-phase Hierarchical Distillation Workflow infinitely or bounded."""
-        import tempfile
         import time
 
         max_iters = getattr(self.config.loop_strategy, "max_iterations", 1000)
@@ -767,6 +776,20 @@ class Orchestrator:
             timeout_seconds = 86400
 
         start_time = time.time()
+
+        @contextlib.contextmanager
+        def isolated_work_dir(base: Path) -> Generator[Path, None, None]:
+            import shutil
+            import tempfile
+
+            tmp_path = Path(tempfile.mkdtemp(dir=str(base)))
+            if tmp_path.stat().st_uid == os.getuid():
+                tmp_path.chmod(0o700)
+            try:
+                yield tmp_path
+            finally:
+                if tmp_path.exists():
+                    shutil.rmtree(tmp_path, ignore_errors=True)
 
         while self.iteration < max_iters:
             if time.time() - start_time > timeout_seconds:
@@ -787,17 +810,6 @@ class Orchestrator:
             base_dir: Path = self.config.project_root / "active_learning"
             base_dir.mkdir(parents=True, exist_ok=True)
             work_dir: Path = base_dir / f"iter_{self.iteration:03d}"
-
-            @contextlib.contextmanager
-            def isolated_work_dir(base: Path) -> Generator[Path, None, None]:
-                tmp_path = Path(tempfile.mkdtemp(dir=str(base)))
-                if tmp_path.stat().st_uid == os.getuid():
-                    tmp_path.chmod(0o700)
-                try:
-                    yield tmp_path
-                finally:
-                    if tmp_path.exists():
-                        shutil.rmtree(tmp_path, ignore_errors=True)
 
             try:
                 if current_state in ("PHASE1_DISTILLATION", "PHASE2_VALIDATION"):
@@ -888,7 +900,9 @@ class Orchestrator:
                                                     )
                                                 )
                                                 # Update primary oracle with the awakened MACE model
-                                                self.oracle.primary_oracle.mace_model_path = str(new_mace_model)  # type: ignore[attr-defined]
+                                                self.oracle.primary_oracle.mace_model_path = str(
+                                                    new_mace_model
+                                                )  # type: ignore[attr-defined]
                                         except Exception as e:
                                             logging.warning(f"Finetuning MACE failed: {e}")
 
