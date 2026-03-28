@@ -345,12 +345,49 @@ class DFTManager(BaseOracle):
         else:
             calc.parameters["input_data"]["electrons"]["mixing_beta"] = 0.1
 
+    def _compute_single_structure(self, i: int, atoms: Atoms, resolved_calc_dir: Path) -> Atoms:
+        from src.core.exceptions import OracleConvergenceError
+
+        work_dir = resolved_calc_dir / f"struct_{i}"
+        work_dir.mkdir(parents=True, exist_ok=True)
+
+        embedded_atoms = self._apply_periodic_embedding(atoms)
+        calc = self._get_calculator(embedded_atoms, work_dir)
+        embedded_atoms.calc = calc
+
+        success = False
+        last_exception = None
+
+        for attempt in range(self.config.max_retries + 1):
+            try:
+                embedded_atoms.get_potential_energy()  # type: ignore[no-untyped-call]
+                embedded_atoms.get_forces()  # type: ignore[no-untyped-call]
+                embedded_atoms.get_stress()  # type: ignore[no-untyped-call]
+                success = True
+                break
+            except Exception as e:
+                last_exception = e
+                if attempt < self.config.max_retries:
+                    logging.warning(
+                        f"SCF failed for struct {i} attempt {attempt + 1}: {e}. Attempting self-healing..."
+                    )
+                    self._update_calc_parameters(calc, attempt)
+                else:
+                    logging.warning(
+                        f"Failed completely for struct {i} after {self.config.max_retries} retries: {e}"
+                    )
+
+        if not success:
+            msg = f"Failed to converge structure {i} after {self.config.max_retries} retries."
+            raise OracleConvergenceError(msg) from last_exception
+
+        return embedded_atoms
+
     def compute_batch(self, structures: list[Atoms], calc_dir: Path) -> list[Atoms]:
         """Runs DFT on a batch of structures with self-healing."""
+        import concurrent.futures
         import os
         import tempfile
-
-        from src.core.exceptions import OracleConvergenceError
 
         # Secure workspace execution: ensure calc_dir is inside tempfile.gettempdir()
         tmp_base = Path(tempfile.gettempdir()).resolve(strict=True)
@@ -367,39 +404,12 @@ class DFTManager(BaseOracle):
         resolved_calc_dir.mkdir(parents=True, exist_ok=True)
         results = []
 
-        for i, atoms in enumerate(structures):
-            work_dir = resolved_calc_dir / f"struct_{i}"
-            work_dir.mkdir(parents=True, exist_ok=True)
-
-            embedded_atoms = self._apply_periodic_embedding(atoms)
-            calc = self._get_calculator(embedded_atoms, work_dir)
-            embedded_atoms.calc = calc
-
-            success = False
-            last_exception = None
-
-            for attempt in range(self.config.max_retries + 1):
-                try:
-                    embedded_atoms.get_potential_energy()  # type: ignore[no-untyped-call]
-                    embedded_atoms.get_forces()  # type: ignore[no-untyped-call]
-                    embedded_atoms.get_stress()  # type: ignore[no-untyped-call]
-                    results.append(embedded_atoms)
-                    success = True
-                    break
-                except Exception as e:
-                    last_exception = e
-                    if attempt < self.config.max_retries:
-                        logging.warning(
-                            f"SCF failed for struct {i} attempt {attempt + 1}: {e}. Attempting self-healing..."
-                        )
-                        self._update_calc_parameters(calc, attempt)
-                    else:
-                        logging.warning(
-                            f"Failed completely for struct {i} after {self.config.max_retries} retries: {e}"
-                        )
-
-            if not success:
-                msg = f"Failed to converge structure {i} after {self.config.max_retries} retries."
-                raise OracleConvergenceError(msg) from last_exception
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            futures = [
+                executor.submit(self._compute_single_structure, i, atoms, resolved_calc_dir)
+                for i, atoms in enumerate(structures)
+            ]
+            for future in futures:
+                results.append(future.result())
 
         return results
