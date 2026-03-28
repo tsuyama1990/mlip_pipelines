@@ -23,11 +23,7 @@ def test_material_features_valid() -> None:
 
 def test_exploration_strategy_valid() -> None:
     strategy = ExplorationStrategy(
-        md_mc_ratio=0.5,
-        t_max=500.0,
-        n_defects=0.1,
-        strain_range=0.15,
-        policy_name="random"
+        md_mc_ratio=0.5, t_max=500.0, n_defects=0.1, strain_range=0.15, policy_name="random"
     )
     assert strategy.policy_name == "random"
     assert strategy.t_max == 500.0
@@ -49,7 +45,9 @@ def test_halt_info_valid() -> None:
 
 def test_halt_info_invalid() -> None:
     # halted without high_gamma_atoms
-    with pytest.raises(ValueError, match=".*high_gamma_atoms must not be None when halted is True.*"):
+    with pytest.raises(
+        ValueError, match=".*high_gamma_atoms must not be None when halted is True.*"
+    ):
         _ = HaltInfo(halted=True, high_gamma_atoms=None)
 
 

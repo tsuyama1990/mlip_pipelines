@@ -57,6 +57,7 @@ def test_select_local_active_set(monkeypatch: pytest.MonkeyPatch) -> None:
             return MockProcess(args=cmd, returncode=1, stdout="", stderr="Input file not found")
 
         from ase.io import write
+
         write(str(out_file), [anchor, *candidates[:4]], format="extxyz")
 
         return MockProcess(args=cmd, returncode=0, stdout="Success", stderr="")
@@ -295,6 +296,7 @@ class TestACETrainer:
 
         # History file should now have 13 atoms
         from ase.io import read
+
         updated_history = read(str(history_file), index=":")
         assert len(updated_history) == 13
 

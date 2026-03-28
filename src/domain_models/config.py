@@ -609,15 +609,9 @@ class DistillationConfig(BaseModel):
         default="float32", description="Default dtype for MACE (e.g., float32, float64)"
     )
     dispersion: bool = Field(default=False, description="Enable dispersion correction in MACE")
-    temp_dir: str = Field(
-        ..., description="Path to temporary directory for distillation"
-    )
-    output_dir: str = Field(
-        ..., description="Path to save distillation outputs"
-    )
-    model_storage_path: str = Field(
-        ..., description="Path to cache MACE foundation models"
-    )
+    temp_dir: str = Field(..., description="Path to temporary directory for distillation")
+    output_dir: str = Field(..., description="Path to save distillation outputs")
+    model_storage_path: str = Field(..., description="Path to cache MACE foundation models")
 
     @model_validator(mode="after")
     def validate_thresholds_and_samples(self) -> "DistillationConfig":

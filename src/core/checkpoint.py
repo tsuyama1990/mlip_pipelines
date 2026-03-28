@@ -35,9 +35,7 @@ class CheckpointManager:
                 # We can't use 'IMMEDIATE' natively with context manager if isolation_level=None
                 # but we can execute standard queries safely.
                 # If we want transactions, we manage them manually, or just rely on autocommit.
-                conn.execute(
-                    "CREATE TABLE IF NOT EXISTS state (key TEXT PRIMARY KEY, value TEXT)"
-                )
+                conn.execute("CREATE TABLE IF NOT EXISTS state (key TEXT PRIMARY KEY, value TEXT)")
         except sqlite3.OperationalError as e:
             msg = f"Failed to initialize checkpoint database at {self.db_path}: {e}"
             logger.exception(msg)
