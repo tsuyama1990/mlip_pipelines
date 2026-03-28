@@ -30,10 +30,10 @@ The project comes with a built-in User Acceptance Test (UAT) implemented as an i
 
 ```bash
 # To run the tutorial headlessly
-uv run python tutorials/uat_and_tutorial.py
+uv run python tutorials/UAT_AND_TUTORIAL.py
 
 # To open the interactive notebook
-uv run marimo edit tutorials/uat_and_tutorial.py
+uv run marimo edit tutorials/UAT_AND_TUTORIAL.py
 ```
 
 ## Structure
