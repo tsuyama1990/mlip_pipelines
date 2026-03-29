@@ -272,6 +272,31 @@ def test_get_latest_potential_no_dir(
     assert latest is None
 
 
+def test_get_latest_potential_numeric_sorting(
+    monkeypatch: pytest.MonkeyPatch, mock_project_config: ProjectConfig, tmp_path: Path
+) -> None:
+    """Verifies that the Orchestrator correctly identifies the latest potential by numeric iteration."""
+    import sys
+
+    monkeypatch.setitem(
+        sys.modules, "pyacemaker.calculator", type("pyacemaker", (), {"pyacemaker": True})
+    )
+    orch = Orchestrator(mock_project_config)
+    pot_dir = tmp_path / "potentials"
+    pot_dir.mkdir(parents=True)
+
+    # generation_2.yace > generation_10.yace lexicographically, but 10 > 2 numerically
+    pot_2 = pot_dir / "generation_2.yace"
+    pot_2.write_text("elements version b_functions")
+    pot_10 = pot_dir / "generation_10.yace"
+    pot_10.write_text("elements version b_functions")
+
+    orch.config.project_root = tmp_path
+
+    latest = orch.get_latest_potential()
+    assert latest == pot_10.resolve()
+
+
 def test_resume_state_finds_highest_iteration(
     monkeypatch: pytest.MonkeyPatch, mock_project_config: ProjectConfig, tmp_path: Path
 ) -> None:
