@@ -12,11 +12,12 @@ def _compute_phonopy_forces(
     if supercells is not None:
         from ase.build import make_supercell
 
+        base_supercell = make_supercell(atoms, [[2, 0, 0], [0, 2, 0], [0, 0, 2]])
+
         for sc in supercells:
             if sc is None:
                 continue
-            disp_atoms = atoms.copy()  # type: ignore[no-untyped-call]
-            disp_atoms = make_supercell(atoms, [[2, 0, 0], [0, 2, 0], [0, 0, 2]])
+            disp_atoms = base_supercell.copy()  # type: ignore[no-untyped-call]
             disp_atoms.set_positions(sc.get_positions())  # type: ignore[no-untyped-call]
             disp_atoms.calc = calc
             forces = disp_atoms.get_forces()  # type: ignore[no-untyped-call]
