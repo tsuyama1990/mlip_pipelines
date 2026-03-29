@@ -9,14 +9,14 @@ import pytest
 from src.trainers.binary_resolver import BinaryResolverMixin
 
 class MockConfig:
-    def __init__(self, trusted_directories=None, binary_hashes=None, project_root=None):
+    def __init__(self, trusted_directories=None, binary_hashes=None, project_root=None) -> None:
         self.trusted_directories = trusted_directories or []
         self.binary_hashes = binary_hashes or {}
         if project_root:
             self.project_root = project_root
 
 class DummyResolver(BinaryResolverMixin):
-    def __init__(self, config):
+    def __init__(self, config) -> None:
         self.config = config
 
 @pytest.fixture
@@ -34,23 +34,25 @@ def trusted_dir(tmp_path):
     d.mkdir()
     return d
 
-def test_get_trusted_dirs_basic():
-    config = MockConfig(trusted_directories=["/tmp/trusted"])
+def test_get_trusted_dirs_basic(tmp_path):
+    trusted_path = str(tmp_path / "trusted")
+    config = MockConfig(trusted_directories=[trusted_path])
     resolver = DummyResolver(config)
     trusted = resolver._get_trusted_dirs()
 
-    assert "/tmp/trusted" in trusted
+    assert trusted_path in trusted
     assert str(Path(sys.prefix) / "bin") in trusted
     assert not any("project_root" in d for d in trusted)
 
 def test_get_trusted_dirs_with_project_root(tmp_path):
     project_root = tmp_path / "project"
     project_root.mkdir()
-    config = MockConfig(trusted_directories=["/tmp/trusted"], project_root=str(project_root))
+    trusted_path = str(tmp_path / "trusted")
+    config = MockConfig(trusted_directories=[trusted_path], project_root=str(project_root))
     resolver = DummyResolver(config)
     trusted = resolver._get_trusted_dirs()
 
-    assert "/tmp/trusted" in trusted
+    assert trusted_path in trusted
     assert str(Path(sys.prefix) / "bin") in trusted
     assert str(project_root / "bin") in trusted
 
