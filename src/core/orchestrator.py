@@ -108,13 +108,18 @@ class Orchestrator:
         if not pot_dir.exists():
             return None
 
-        # Glob generation_XXX.yace
+        # Find the latest generation_*.yace by numeric index
         files = list(pot_dir.glob("generation_*.yace"))
         if not files:
             return None
 
         try:
-            latest_pot = max(files).resolve(strict=True)
+
+            def _extract_iteration(f: Path) -> int:
+                match = re.search(r"generation_(\d+)\.yace", f.name)
+                return int(match.group(1)) if match else -1
+
+            latest_pot = max(files, key=_extract_iteration).resolve(strict=True)
 
             # Directory traversal vulnerability fix
             if not latest_pot.is_relative_to(pot_dir.resolve()):
