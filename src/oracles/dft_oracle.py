@@ -74,7 +74,7 @@ class DFTManager(BaseOracle):
         return embedded
 
     def _validate_symbols(self, atoms: Atoms) -> None:
-        for symbol in atoms.get_chemical_symbols():
+        for symbol in set(atoms.get_chemical_symbols()):
             if symbol not in atomic_numbers:
                 msg = f"Invalid chemical symbol detected in structure: {symbol}"
                 raise ValueError(msg)
@@ -321,9 +321,10 @@ class DFTManager(BaseOracle):
         }
 
         transition_metals = set(self.config.transition_metals)
-        if any(el in transition_metals for el in symbols):
+        tm_present = symbols.intersection(transition_metals)
+        if tm_present:
             input_data["system"]["nspin"] = 2  # type: ignore[index]
-            start_mag = {el: 1.0 for el in atoms.get_chemical_symbols() if el in transition_metals}  # type: ignore[no-untyped-call]
+            start_mag = {el: 1.0 for el in tm_present}
             input_data["system"]["starting_magnetization"] = start_mag  # type: ignore[index]
 
         return Espresso(  # type: ignore[no-untyped-call]
